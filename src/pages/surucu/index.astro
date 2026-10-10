@@ -1,0 +1,115 @@
+---
+/** The driver's jobs: the one in progress first, then upcoming, then the last few days. */
+import DriverLayout from "../../layouts/DriverLayout.astro";
+import { getDb } from "../../server/db";
+import { driverJobs, jobBadge, sessionDriver, when, type DriverJob } from "../../server/driver-app";
+
+const db = await getDb(Astro.locals);
+const driver = await sessionDriver(db, Astro.cookies);
+if (!driver) return Astro.redirect("/surucu/giris");
+
+const { open, done } = await driverJobs(db, driver.id);
+const active = open.filter((j) => ["driver_en_route", "driver_arrived", "on_board"].includes(j.booking.status));
+const upcoming = open.filter((j) => !active.includes(j));
+const waiting = upcoming.filter((j) => !j.response).length;
+const sections: { title: string; jobs: DriverJob[] }[] = [
+	{ title: "Şu an", jobs: active },
+	{ title: "Yaklaşan işler", jobs: upcoming },
+	{ title: "Son günler", jobs: done },
+];
+---
+
+<DriverLayout title="İşlerim" driver={driver} refresh={60}>
+	<h1>Merhaba, {driver.name.split(" ")[0]}</h1>
+	{waiting > 0 && <p class="drv-notice" style="background:#fffaeb;color:#b54708;border-color:#fedf89">{waiting} yeni iş onayınızı bekliyor.</p>}
+	{
+		sections.map(
+			(section) =>
+				section.jobs.length > 0 && (
+					<section>
+						<h2>{section.title}</h2>
+						{section.jobs.map((job) => {
+							const w = when(job.booking.pickup_at);
+							const badge = jobBadge(job);
+							return (
+								<a class="drv-card job" href={`/surucu/is/${job.booking.code}`}>
+									<div class="job-top">
+										<div class="job-when">
+											<strong>{w.time}</strong>
+											<span>{w.day}</span>
+										</div>
+										<span class:list={["drv-pill", badge.tone]}>{badge.label}</span>
+									</div>
+									<div class="job-route">
+										<span class="dot" aria-hidden="true" />
+										{job.fromName}
+									</div>
+									<div class="job-route">
+										<span class="dot to" aria-hidden="true" />
+										{job.toName}
+									</div>
+									<div class="job-meta drv-muted">
+										{job.booking.pax} kişi · {job.booking.bags} bavul · {job.className}
+										{job.booking.flight_no && <> · {job.booking.flight_no}</>}
+									</div>
+								</a>
+							);
+						})}
+					</section>
+				),
+		)
+	}
+	{
+		open.length === 0 && done.length === 0 && (
+			<div class="drv-card" style="text-align:center;padding:32px 16px">
+				<strong>Şu an atanmış işiniz yok.</strong>
+				<p class="drv-muted" style="margin:6px 0 0">Operasyon size iş atadığında burada görünür. Sayfa dakikada bir yenilenir.</p>
+			</div>
+		)
+	}
+</DriverLayout>
+
+<style>
+	.job {
+		display: grid;
+		gap: 8px;
+	}
+	.job-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 10px;
+	}
+	.job-when {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+	.job-when strong {
+		font-size: 24px;
+		font-variant-numeric: tabular-nums;
+	}
+	.job-when span {
+		color: var(--drv-muted);
+		font-weight: 600;
+	}
+	.job-route {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-weight: 600;
+	}
+	.dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 999px;
+		border: 2px solid var(--drv-blue);
+		flex: none;
+	}
+	.dot.to {
+		background: var(--drv-blue);
+	}
+	.job-meta {
+		font-size: 14px;
+	}
+</style>

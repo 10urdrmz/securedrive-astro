@@ -1,0 +1,304 @@
+---
+/**
+ * One job for the driver: who, where, what to collect, and the next step of the trip.
+ * Each step is version-checked like every other booking change, so a double tap or
+ * a change ops made meanwhile cannot skip a step.
+ */
+import DriverLayout from "../../../layouts/DriverLayout.astro";
+import { getDb } from "../../../server/db";
+import { ConflictError, PAYMENT_METHOD_LABELS, type BookingStatus } from "../../../server/bookings";
+import { DRIVER_STEPS, driverJob, driverStep, jobBadge, respond, sessionDriver, when } from "../../../server/driver-app";
+import { formatMoney, readForm, text } from "../../../server/ops";
+
+const db = await getDb(Astro.locals);
+const driver = await sessionDriver(db, Astro.cookies);
+if (!driver) return Astro.redirect(`/surucu/giris`);
+
+const code = (Astro.params.code ?? "").toUpperCase();
+let job = await driverJob(db, driver.id, code);
+if (!job) return Astro.redirect("/surucu");
+
+let error = "";
+const form = await readForm(Astro);
+if (form) {
+	const intent = text(form, "intent", 20);
+	try {
+		if (Number(text(form, "version", 10)) !== job.booking.version) throw new ConflictError();
+		if (intent === "accept") await respond(db, job, driver, "accepted");
+		else if (intent === "decline") {
+			await respond(db, job, driver, "declined");
+			return Astro.redirect("/surucu", 303);
+		} else if (intent === "step") await driverStep(db, job, driver, text(form, "to", 30) as BookingStatus);
+		return Astro.redirect(`/surucu/is/${code}`, 303);
+	} catch (e) {
+		error = e instanceof ConflictError ? "Bu iş siz bakarken güncellendi. Güncel hali aşağıda." : e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+	job = await driverJob(db, driver.id, code);
+	if (!job) return Astro.redirect("/surucu");
+}
+
+const b = job.booking;
+const w = when(b.pickup_at);
+const badge = jobBadge(job);
+const steps = DRIVER_STEPS[b.status] ?? [];
+const needsAnswer = b.status === "assigned" && !job.response && !!job.assignmentId;
+const digits = (phone: string) => phone.replace(/\D/g, "").replace(/^0/, "90");
+const maps = (place: string) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${place}, İstanbul`)}`;
+const pickupPlace = b.pickup_address || job.fromName;
+const dropoffPlace = b.dropoff_address || job.toName;
+const collect = (b.payment_method === "cash" || b.payment_method === "card_in_vehicle") && b.payment_status !== "paid";
+const tripStarted = ["driver_en_route", "driver_arrived", "on_board"].includes(b.status);
+---
+
+<DriverLayout title={b.code} driver={driver} back>
+	{error && <p class="drv-notice error" role="alert">{error}</p>}
+
+	<div class="head">
+		<div>
+			<div class="when"><strong>{w.time}</strong> <span>{w.day}</span></div>
+			<div class="drv-muted code">{b.code}</div>
+		</div>
+		<span class:list={["drv-pill", badge.tone]}>{badge.label}</span>
+	</div>
+
+	{
+		needsAnswer && (
+			<div class="drv-card actions">
+				<strong>Bu işi alıyor musunuz?</strong>
+				<form method="post">
+					<input type="hidden" name="intent" value="accept" />
+					<input type="hidden" name="version" value={b.version} />
+					<button type="submit" class="drv-btn green">Kabul et</button>
+				</form>
+				<details>
+					<summary class="drv-btn danger">Reddet</summary>
+					<form method="post" class="confirm">
+						<p class="drv-muted">İş operasyona geri döner ve başka sürücüye verilir.</p>
+						<input type="hidden" name="intent" value="decline" />
+						<input type="hidden" name="version" value={b.version} />
+						<button type="submit" class="drv-btn danger">Evet, reddet</button>
+					</form>
+				</details>
+			</div>
+		)
+	}
+
+	{
+		steps.length > 0 && !needsAnswer && (
+			<div class="drv-card actions">
+				{steps.map((step, i) => (
+					<form method="post">
+						<input type="hidden" name="intent" value="step" />
+						<input type="hidden" name="version" value={b.version} />
+						<input type="hidden" name="to" value={step.to} />
+						<button type="submit" class:list={["drv-btn", i === 0 ? (step.to === "completed" ? "green" : "") : "ghost"]}>
+							{step.label}
+						</button>
+					</form>
+				))}
+			</div>
+		)
+	}
+
+	<section class="drv-card">
+		<div class="stop">
+			<span class="dot" aria-hidden="true" />
+			<div>
+				<div class="label">Alış</div>
+				<strong>{job.fromName}</strong>
+				{b.pickup_address && <div>{b.pickup_address}</div>}
+			</div>
+			<a class="nav" href={maps(pickupPlace)} target="_blank" rel="noopener">Yol tarifi</a>
+		</div>
+		<div class="stop">
+			<span class="dot to" aria-hidden="true" />
+			<div>
+				<div class="label">Bırakış</div>
+				<strong>{job.toName}</strong>
+				{b.dropoff_address && <div>{b.dropoff_address}</div>}
+			</div>
+			{tripStarted && (
+				<a class="nav" href={maps(dropoffPlace)} target="_blank" rel="noopener">
+					Yol tarifi
+				</a>
+			)}
+		</div>
+	</section>
+
+	<section class="drv-card">
+		<div class="label">Yolcu</div>
+		<strong class="big">{b.contact_name}</strong>
+		<div class="drv-muted">{b.contact_phone}</div>
+		<div class="two">
+			<a class="drv-btn ghost" href={`tel:${b.contact_phone.replace(/[^\d+]/g, "")}`}>Ara</a>
+			<a class="drv-btn ghost" href={`https://wa.me/${digits(b.contact_phone)}`} target="_blank" rel="noopener">WhatsApp</a>
+		</div>
+		<dl class="facts">
+			<div><dt>Kişi / bavul</dt><dd>{b.pax} / {b.bags}</dd></div>
+			<div><dt>Araç</dt><dd>{job.className}</dd></div>
+			{
+				b.flight_no && (
+					<div>
+						<dt>Uçuş</dt>
+						<dd>
+							<a href={`https://www.flightradar24.com/data/flights/${encodeURIComponent(b.flight_no.replace(/\s/g, "").toLowerCase())}`} target="_blank" rel="noopener">
+								{b.flight_no}
+							</a>
+						</dd>
+					</div>
+				)
+			}
+			{b.sign_name && <div><dt>Karşılama tabelası</dt><dd>{b.sign_name}</dd></div>}
+		</dl>
+		{b.notes && <p class="note">“{b.notes}”</p>}
+	</section>
+
+	<section class="drv-card">
+		<div class="label">Ödeme</div>
+		{
+			collect ? (
+				<p class="money warn">
+					Yolcudan tahsil edin: <strong>{formatMoney(b.price_minor)} ₺</strong>
+					<span>{PAYMENT_METHOD_LABELS[b.payment_method]}</span>
+				</p>
+			) : (
+				<p class="money ok">Tahsilat yok · {b.payment_status === "paid" ? "ödendi" : PAYMENT_METHOD_LABELS[b.payment_method]}</p>
+			)
+		}
+		{b.payout_minor != null && <p class="drv-muted" style="margin:6px 0 0">Sizin payınız: {formatMoney(b.payout_minor)} ₺</p>}
+	</section>
+</DriverLayout>
+
+<style>
+	.head {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 12px;
+		margin: 4px 0 14px;
+	}
+	.when strong {
+		font-size: 30px;
+		font-variant-numeric: tabular-nums;
+	}
+	.when span {
+		font-size: 18px;
+		font-weight: 600;
+		color: var(--drv-muted);
+	}
+	.code {
+		font-size: 14px;
+		font-variant-numeric: tabular-nums;
+	}
+	.actions {
+		display: grid;
+		gap: 10px;
+	}
+	.actions form {
+		margin: 0;
+	}
+	details summary {
+		list-style: none;
+	}
+	details summary::-webkit-details-marker {
+		display: none;
+	}
+	.confirm {
+		display: grid;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.confirm p {
+		margin: 0;
+		font-size: 14px;
+	}
+	.stop {
+		display: grid;
+		grid-template-columns: 12px 1fr auto;
+		gap: 12px;
+		align-items: start;
+		padding: 6px 0;
+	}
+	.stop + .stop {
+		border-top: 1px solid var(--drv-line);
+		padding-top: 12px;
+		margin-top: 6px;
+	}
+	.dot {
+		width: 10px;
+		height: 10px;
+		margin-top: 22px;
+		border-radius: 999px;
+		border: 2px solid var(--drv-blue);
+	}
+	.dot.to {
+		background: var(--drv-blue);
+	}
+	.label {
+		font-size: 13px;
+		color: var(--drv-muted);
+		font-weight: 600;
+	}
+	.nav {
+		align-self: center;
+		padding: 8px 12px;
+		border-radius: 10px;
+		background: #eff8ff;
+		color: #175cd3;
+		font-weight: 600;
+		font-size: 14px;
+		text-decoration: none;
+		white-space: nowrap;
+	}
+	.big {
+		font-size: 19px;
+	}
+	.two {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+		margin: 12px 0;
+	}
+	.facts {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 10px;
+		margin: 0;
+	}
+	.facts dt {
+		font-size: 13px;
+		color: var(--drv-muted);
+	}
+	.facts dd {
+		margin: 2px 0 0;
+		font-weight: 600;
+	}
+	.facts a {
+		color: #175cd3;
+	}
+	.note {
+		margin: 12px 0 0;
+		padding: 10px 12px;
+		border-radius: 10px;
+		background: var(--drv-bg);
+	}
+	.money {
+		margin: 4px 0 0;
+		padding: 12px;
+		border-radius: 10px;
+		font-size: 17px;
+	}
+	.money span {
+		display: block;
+		font-size: 14px;
+		color: var(--drv-muted);
+	}
+	.money.warn {
+		background: #fffaeb;
+		color: #93370d;
+	}
+	.money.ok {
+		background: #ecfdf3;
+		color: #05603a;
+	}
+</style>

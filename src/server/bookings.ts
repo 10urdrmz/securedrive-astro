@@ -103,9 +103,9 @@ export interface Booking {
 	updated_at: string;
 }
 
-/** Who did it: an ops user, the passenger (through the site) or the system. */
+/** Who did it: an ops user, the passenger (through the site), the driver (through the driver app) or the system. */
 export interface Actor {
-	kind: "ops" | "passenger" | "system";
+	kind: "ops" | "passenger" | "driver" | "system";
 	userId?: string | null;
 }
 

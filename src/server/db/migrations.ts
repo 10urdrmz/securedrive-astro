@@ -289,4 +289,31 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		name: "0005_driver_app",
+		statements: [
+			// Sign-in for the driver app (/surucu): phone + a PIN that ops hands out.
+			`CREATE TABLE IF NOT EXISTS sd_driver_access (
+				driver_id TEXT PRIMARY KEY REFERENCES sd_drivers(id),
+				pin_hash TEXT NOT NULL,
+				failures INTEGER NOT NULL DEFAULT 0,
+				locked_until TEXT,
+				updated_at TEXT NOT NULL
+			)`,
+			`CREATE TABLE IF NOT EXISTS sd_driver_sessions (
+				token_hash TEXT PRIMARY KEY,
+				driver_id TEXT NOT NULL REFERENCES sd_drivers(id),
+				user_agent TEXT,
+				created_at TEXT NOT NULL DEFAULT (${NOW}),
+				expires_at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_driver_sessions_driver ON sd_driver_sessions(driver_id)`,
+			// The driver's answer to an assignment. No row yet: waiting for the driver.
+			`CREATE TABLE IF NOT EXISTS sd_assignment_acks (
+				assignment_id TEXT PRIMARY KEY REFERENCES sd_assignments(id),
+				response TEXT NOT NULL CHECK (response IN ('accepted','declined')),
+				at TEXT NOT NULL
+			)`,
+		],
+	},
 ];
