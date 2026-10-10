@@ -1,4 +1,6 @@
 import { defineMiddleware } from "astro:middleware";
+import { getDb } from "./server/db";
+import { PRIVATE_PATH, purgeEdgeCacheOnce } from "./server/edge-cache";
 
 /**
  * Adds the SecureDrive theme to the EmDash admin.
@@ -33,6 +35,11 @@ function forbiddenCrossSite(request: Request, url: URL): boolean {
 export const onRequest = defineMiddleware(async (context, next) => {
 	if (forbiddenCrossSite(context.request, context.url)) {
 		return new Response("Cross-site POST form submissions are forbidden", { status: 403 });
+	}
+	// Personal pages (and their redirects and 404s) never go to the edge cache.
+	if (PRIVATE_PATH.test(context.url.pathname)) {
+		if (context.cache?.enabled) context.cache.set(false);
+		if (import.meta.env.PROD) await purgeEdgeCacheOnce(await getDb(context.locals));
 	}
 	const response = await next();
 	if (!context.url.pathname.startsWith("/_emdash/admin")) return response;
