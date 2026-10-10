@@ -2,6 +2,7 @@ import cloudflare from "@astrojs/cloudflare";
 import { cacheCloudflare } from "@astrojs/cloudflare/cache";
 import node from "@astrojs/node";
 import react from "@astrojs/react";
+import tailwindcss from "@tailwindcss/vite";
 import { d1, r2 } from "@emdash-cms/cloudflare";
 import { defineConfig, fontProviders } from "astro/config";
 import emdash, { local } from "emdash/astro";
@@ -42,6 +43,7 @@ export default defineConfig({
 			"/[...path]": cachedPage,
 		},
 	}),
+	vite: { plugins: [tailwindcss()] },
 	build: { inlineStylesheets: "always" },
 	image: {
 		layout: "constrained",
@@ -51,11 +53,21 @@ export default defineConfig({
 		// EmDash's admin UI is a React app; public pages ship no React.
 		react(),
 		emdash({
-			...(onCloudflare && { siteUrl: "https://securedrive.org" }),
+			// Passkeys are bound to this origin. Set EMDASH_SITE_URL at build time to
+			// run the admin on another hostname (e.g. the workers.dev preview).
+			...(onCloudflare && { siteUrl: env.EMDASH_SITE_URL || "https://securedrive.org" }),
 			database: onCloudflare ? d1({ binding: "DB", session: "auto" }) : sqlite({ url: "file:./data.db" }),
 			storage: onCloudflare
 				? r2({ binding: "MEDIA" })
 				: local({ directory: "./uploads", baseUrl: "/_emdash/api/media/file" }),
+			// The admin carries the company's name and logo; its colours come from public/admin-theme.css.
+			admin: {
+				logo: "/logo.png",
+				// Shown next to the logo in the sidebar and in the browser tab.
+				siteName: "Yönetim Paneli",
+				footerLabel: "SecureDrive",
+				favicon: "/favicon.svg",
+			},
 			plugins: [inquiriesPlugin({ notifyEmail: env.INQUIRY_NOTIFY_EMAIL || undefined })],
 		}),
 	],

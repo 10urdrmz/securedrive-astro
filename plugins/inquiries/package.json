@@ -4,7 +4,10 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./places": "./src/places.ts",
+		"./admin": "./src/admin.tsx",
+		"./reference": "./src/reference.ts"
 	},
 	"peerDependencies": {
 		"emdash": "*"

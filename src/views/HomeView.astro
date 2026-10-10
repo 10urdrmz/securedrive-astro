@@ -11,7 +11,9 @@ import CtaBand from "../components/sections/CtaBand.astro";
 import { pagePath, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import { byOrder, getLocalized, getLocalizedEntry, slugOf } from "../lib/content";
+import { airportName } from "../lib/routes";
 import { businessJsonLd, faqJsonLd } from "../lib/schema";
+import { AIRPORT_CODES, DISTRICTS } from "securedrive-inquiries/places";
 
 interface Props {
 	locale: Locale;
@@ -71,11 +73,17 @@ const today = new Date().toISOString().slice(0, 10);
 				<h2>{t("quick.title")}</h2>
 				<div class="field">
 					<label for="q-from">{t("quick.from")}</label>
-					<input id="q-from" name="from" placeholder={t("quick.fromPlaceholder")} list="q-places" autocomplete="off" />
+					<select id="q-from" name="from">
+						<option value="">{t("form.choose")}</option>
+						{AIRPORT_CODES.map((code) => <option value={code}>{airportName(code, locale)}</option>)}
+					</select>
 				</div>
 				<div class="field">
 					<label for="q-to">{t("quick.to")}</label>
-					<input id="q-to" name="to" placeholder={t("quick.toPlaceholder")} list="q-places" autocomplete="off" />
+					<select id="q-to" name="to">
+						<option value="">{t("form.choose")}</option>
+						{DISTRICTS.map((district) => <option value={district}>{district}</option>)}
+					</select>
 				</div>
 				<div class="quick-row">
 					<div class="field">
@@ -87,11 +95,6 @@ const today = new Date().toISOString().slice(0, 10);
 						<input id="q-pax" name="passengers" type="number" min="1" max="60" value="2" inputmode="numeric" />
 					</div>
 				</div>
-				<datalist id="q-places">
-					<option value="İstanbul Havalimanı (IST)"></option>
-					<option value="Sabiha Gökçen Havalimanı (SAW)"></option>
-					{routes.slice(0, 40).map((r) => <option value={r.data.destination} />)}
-				</datalist>
 				<button type="submit" class="btn btn--primary btn--block">
 					{t("quick.submit")}
 					<Icon name="arrow" size={18} class="flip-rtl" />

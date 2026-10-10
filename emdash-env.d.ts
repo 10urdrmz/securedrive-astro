@@ -11,7 +11,7 @@ export interface Faq {
   status: string;
   question: string;
   answer: string;
-  category?: string;
+  category?: "booking" | "airport" | "payment" | "corporate" | "general";
   featured?: boolean;
   order?: number;
   createdAt: Date;
@@ -27,8 +27,8 @@ export interface Inquiry {
   slug: string | null;
   status: string;
   title: string;
-  kind?: string;
-  status_label?: string;
+  kind?: "transfer" | "contact" | "corporate";
+  status_label?: "new" | "contacted" | "quoted" | "booked" | "closed";
   name?: string;
   phone?: string;
   email?: string;
@@ -38,6 +38,7 @@ export interface Inquiry {
   form_locale?: string;
   submitted_at?: string;
   internal_notes?: string;
+  reference?: string;
   createdAt: Date;
   updatedAt: Date;
   publishedAt: Date | null;
@@ -51,7 +52,7 @@ export interface Page {
   slug: string | null;
   status: string;
   title: string;
-  kind?: string;
+  kind?: "page" | "legal";
   headline?: string;
   summary?: string;
   hero_image?: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; focalX?: number; focalY?: number; provider?: string; previewUrl?: string; meta?: Record<string, unknown>; darkVariant?: { id: string; src?: string; alt?: string; width?: number; height?: number; filename?: string; mimeType?: string; blurhash?: string; dominantColor?: string; focalX?: number; focalY?: number; provider?: string; previewUrl?: string; meta?: Record<string, unknown> } };
@@ -85,9 +86,9 @@ export interface Route {
   slug: string | null;
   status: string;
   title: string;
-  origin: string;
+  origin: "IST" | "SAW";
   destination: string;
-  side?: string;
+  side?: "Avrupa" | "Anadolu";
   distance_km?: number;
   duration_min?: number;
   vito_price_try: number;
@@ -109,7 +110,7 @@ export interface Service {
   status: string;
   title: string;
   badge?: string;
-  icon?: string;
+  icon?: "plane" | "clock" | "building" | "route" | "shield" | "star";
   summary: string;
   features?: { "text": string }[];
   cta_label?: string;

@@ -1,0 +1,15 @@
+---
+/** Rezervasyon sorgula behind a language prefix: /en/sorgula. */
+import { DEFAULT_LOCALE, isLocale } from "../../i18n/locales";
+import { runLookupPage } from "../../lib/track-page";
+import LookupView from "../../views/LookupView.astro";
+import NotFoundView from "../../views/NotFoundView.astro";
+
+const { lang } = Astro.params;
+const locale = isLocale(lang) && lang !== DEFAULT_LOCALE ? lang : null;
+const result = locale ? await runLookupPage(Astro, locale) : null;
+if (result instanceof Response) return result;
+if (!result) Astro.response.status = 404;
+---
+
+{result ? <LookupView {...result} /> : <NotFoundView locale={DEFAULT_LOCALE} />}

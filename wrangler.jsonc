@@ -8,6 +8,7 @@
 		{
 			"binding": "DB",
 			"database_name": "securedrive",
+			"database_id": "31c4ea55-ac34-41a9-8c2d-3d9b78b9ebb1",
 		},
 	],
 	"r2_buckets": [

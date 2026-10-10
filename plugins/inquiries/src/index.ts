@@ -10,6 +10,9 @@
  */
 import { definePlugin, definePluginRoute } from "emdash";
 import type { PluginDescriptor } from "emdash";
+import { linkInquiryToMember } from "./member-link";
+import { AIRPORTS, matchAirport, matchDistrict } from "./places";
+import { inquiryReference, nextReference } from "./reference";
 
 const PLUGIN_ID = "inquiries";
 const VERSION = "0.1.0";
@@ -19,6 +22,15 @@ const COLLECTION = "inquiries";
 const MAX_PER_HOUR = 8;
 const KINDS = ["transfer", "contact", "corporate"] as const;
 type Kind = (typeof KINDS)[number];
+
+/** Steps a request moves through; the values of the collection's "Durum" (status_label) field. */
+export const STATUSES = ["new", "contacted", "quoted", "booked", "closed"] as const;
+/** How many requests the admin board loads (newest first). */
+const BOARD_LIMIT = 500;
+
+const ADMIN_PAGES = [{ path: "/talepler", label: "Talep Yönetimi", icon: "inbox" }];
+/** Summary of open requests on the admin's first screen (Kontrol Paneli). */
+const ADMIN_WIDGETS = [{ id: "talepler", title: "Talepler", size: "full" as const }];
 
 export interface InquiriesOptions {
 	/** Where new submissions are emailed. Leave empty to only store them in the admin. */
@@ -32,6 +44,9 @@ export function inquiriesPlugin(options: InquiriesOptions = {}): PluginDescripto
 		format: "native",
 		entrypoint: "securedrive-inquiries",
 		options,
+		adminEntry: "securedrive-inquiries/admin",
+		adminPages: ADMIN_PAGES,
+		adminWidgets: ADMIN_WIDGETS,
 	};
 }
 
@@ -76,8 +91,72 @@ export function createPlugin(options: InquiriesOptions = {}) {
 		id: PLUGIN_ID,
 		version: VERSION,
 		capabilities: ["content:write", "email:send"],
+		admin: { entry: "securedrive-inquiries/admin", pages: ADMIN_PAGES, widgets: ADMIN_WIDGETS },
 
 		routes: {
+			/** Requests for the admin board (Talep Yönetimi), newest first. Editors and above. */
+			board: definePluginRoute({
+				permission: "content:edit_any",
+				methods: ["GET"],
+				request: { body: "none" },
+				handler: async (ctx) => {
+					const items: Record<string, unknown>[] = [];
+					let cursor: string | undefined;
+					do {
+						const page = await ctx.content!.list(COLLECTION, {
+							limit: 100,
+							cursor,
+							orderBy: { createdAt: "desc" },
+						});
+						for (const item of page.items) {
+							const d = item.data;
+							items.push({
+								id: item.id,
+								reference: inquiryReference(item.id, d.reference),
+								kind: d.kind,
+								status: d.status_label || "new",
+								name: d.name,
+								phone: d.phone,
+								email: d.email,
+								company: d.company,
+								message: d.message,
+								details: d.details,
+								locale: d.form_locale,
+								notes: d.internal_notes,
+								submittedAt: d.submitted_at || item.createdAt,
+							});
+						}
+						cursor = page.hasMore ? page.cursor : undefined;
+					} while (cursor && items.length < BOARD_LIMIT);
+					return { ok: true, items, truncated: Boolean(cursor) };
+				},
+			}),
+
+			/** Change the status and/or the operations notes of one request from the admin board. */
+			update: definePluginRoute({
+				permission: "content:edit_any",
+				methods: ["POST"],
+				request: { body: "json", maxBytes: 16 * 1024 },
+				handler: async (ctx) => {
+					const input = (ctx.input ?? {}) as Record<string, unknown>;
+					const id = line(input.id, 64);
+					if (!id) return fail("ID_REQUIRED", "id");
+					const changes: Record<string, unknown> = {};
+					if (input.status !== undefined) {
+						if (!(STATUSES as readonly string[]).includes(String(input.status))) {
+							return fail("STATUS_INVALID", "status");
+						}
+						changes.status_label = input.status;
+					}
+					if (input.notes !== undefined) changes.internal_notes = paragraph(input.notes, 5000);
+					if (Object.keys(changes).length === 0) return fail("NOTHING_TO_CHANGE", "changes");
+					const existing = await ctx.content!.get(COLLECTION, id);
+					if (!existing) return fail("NOT_FOUND", "id");
+					await ctx.content!.update!(COLLECTION, id, changes);
+					return { ok: true };
+				},
+			}),
+
 			submit: definePluginRoute({
 				public: true,
 				methods: ["POST"],
@@ -103,8 +182,10 @@ export function createPlugin(options: InquiriesOptions = {}) {
 
 					const details: Record<string, unknown> = {};
 					if (kind === "transfer") {
-						details.from = line(input.from, 160);
-						details.to = line(input.to, 160);
+						// Only the listed airports and districts are served; free text is rejected.
+						const airport = matchAirport(line(input.from, 160));
+						details.from = airport && AIRPORTS[airport];
+						details.to = matchDistrict(line(input.to, 160));
 						details.date = DATE.test(String(input.date)) ? input.date : undefined;
 						details.time = TIME.test(String(input.time)) ? input.time : undefined;
 						details.passengers = count(input.passengers, 60);
@@ -129,11 +210,13 @@ export function createPlugin(options: InquiriesOptions = {}) {
 
 					const submittedAt = new Date().toISOString();
 					const route = kind === "transfer" ? `${details.from} → ${details.to}` : company;
-					const title = [KIND_LABEL[kind], name, route].filter(Boolean).join(" · ");
+					const reference = await nextReference();
+					const title = [reference, KIND_LABEL[kind], name, route].filter(Boolean).join(" · ");
 					const locale = line(input.locale, 8) || "tr";
 
-					await ctx.content!.create!(COLLECTION, {
+					const entry = await ctx.content!.create!(COLLECTION, {
 						title,
+						reference,
 						kind,
 						status_label: "new",
 						name,
@@ -145,12 +228,22 @@ export function createPlugin(options: InquiriesOptions = {}) {
 						form_locale: locale,
 						submitted_at: submittedAt,
 					});
-					ctx.log.info("Inquiry received", { kind });
+					ctx.log.info("Inquiry received", { kind, reference });
+
+					// Signed-in members see their own requests on their account page.
+					try {
+						const member = await linkInquiryToMember(ctx.request, entry.id);
+						ctx.log.info("Inquiry member link", { member });
+					} catch (error) {
+						// The request is already saved; a failed link must not fail the visitor's form.
+						ctx.log.warn("Inquiry could not be linked to a member", { error: String(error) });
+					}
 
 					const to = options.notifyEmail;
 					if (to && ctx.email) {
 						const lines = [
 							`${KIND_LABEL[kind]} (${locale.toUpperCase()})`,
+							`Talep no: ${reference}`,
 							"",
 							`Ad: ${name}`,
 							`Telefon: ${phone}`,
@@ -173,7 +266,8 @@ export function createPlugin(options: InquiriesOptions = {}) {
 							ctx.log.warn("Inquiry email failed", { error: String(error) });
 						}
 					}
-					return { ok: true };
+					// The entry id is long and random; the site uses it as the secret in the tracking link.
+					return { ok: true, reference, trackingId: entry.id };
 				},
 			}),
 		},

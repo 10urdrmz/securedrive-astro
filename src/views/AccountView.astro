@@ -1,0 +1,391 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import StatusBadge from "../components/account/StatusBadge.astro";
+import { ACCOUNT_SLUG, LOCALE_META, accountPath, localizePath, pagePath, trackPath, type AccountAction } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import type { AccountPage } from "../lib/account-page";
+import { PASSWORD_MAX, PASSWORD_MIN } from "../lib/members";
+import { presentRequest } from "../lib/requests-view";
+
+type Props = AccountPage;
+
+const { view, locale, member, requests, error, errorForm, notice, values } = Astro.props;
+const t = useTranslations(locale);
+
+const ACTIONS: Record<AccountPage["view"], AccountAction> = {
+	account: "",
+	profile: "profil",
+	security: "guvenlik",
+	login: "giris",
+	register: "uye-ol",
+};
+const action = ACTIONS[view];
+const path = [ACCOUNT_SLUG, action].filter(Boolean).join("/");
+const guest = view === "login" || view === "register";
+const title = view === "login" ? t("account.loginTitle") : view === "register" ? t("account.registerTitle") : t("account.title");
+const lead = view === "login" ? t("account.loginLead") : view === "register" ? t("account.registerLead") : undefined;
+
+const since = member ? new Date(member.created_at).toLocaleDateString(LOCALE_META[locale].intl, { dateStyle: "long" }) : "";
+const profile = { name: member?.name, email: member?.email, phone: member?.phone ?? "", ...(errorForm === "profile" ? values : {}) };
+const password = { minlength: PASSWORD_MIN, maxlength: PASSWORD_MAX, required: true } as const;
+
+const trips = requests.map((request) => presentRequest(request, locale));
+const stats = [
+	{ label: t("account.stats.total"), value: trips.length },
+	{ label: t("account.stats.active"), value: trips.filter((trip) => trip.status !== "booked" && trip.status !== "closed").length },
+	{ label: t("account.stats.booked"), value: trips.filter((trip) => trip.status === "booked").length },
+];
+const tabs = [
+	{ view: "account", action: "", label: t("account.nav.requests"), icon: "route" },
+	{ view: "profile", action: "profil", label: t("account.nav.profile"), icon: "user" },
+	{ view: "security", action: "guvenlik", label: t("account.nav.security"), icon: "shield" },
+] as const;
+const initials = (member?.name ?? "")
+	.split(/\s+/)
+	.filter(Boolean)
+	.slice(0, 2)
+	.map((word) => word[0]!.toLocaleUpperCase(LOCALE_META[locale].intl))
+	.join("");
+
+const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0_6px_20px_-12px_rgb(16_24_40/0.18)]";
+---
+
+<Base locale={locale} path={path} title={title} description={lead} noindex>
+	{guest && <PageHero locale={locale} title={title} lead={lead} />}
+
+	{
+		guest && (
+			<section class="section">
+				<div class="container guest">
+				{
+					view === "login" && (
+						<div class="panel">
+							<form class="form" method="post" action={accountPath(locale, "giris")}>
+								{error && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
+								{values.next && <input type="hidden" name="next" value={values.next} />}
+								<div class="field">
+									<label for="login-identifier">{t("account.identifier")}</label>
+									<input id="login-identifier" name="identifier" required autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr" value={values.identifier} />
+								</div>
+								<div class="field">
+									<label for="login-password">{t("account.password")}</label>
+									<input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength={PASSWORD_MAX} dir="ltr" />
+								</div>
+								<button type="submit" class="btn btn--primary btn--block">{t("account.loginButton")}</button>
+							</form>
+							<p class="switch">
+								{t("account.noAccount")} <a href={accountPath(locale, "uye-ol")}>{t("account.registerTitle")}</a>
+							</p>
+						</div>
+					)
+				}
+
+				{
+					view === "register" && (
+						<div class="panel">
+							<form class="form" method="post" action={accountPath(locale, "uye-ol")}>
+								{error && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
+								<div class="form-row">
+									<div class="field">
+										<label for="reg-name">{t("form.name")}</label>
+										<input id="reg-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={values.name} />
+									</div>
+									<div class="field">
+										<label for="reg-username">{t("account.username")}</label>
+										<input id="reg-username" name="username" required minlength="3" maxlength="24" pattern="[A-Za-z0-9][A-Za-z0-9._\-]+[A-Za-z0-9]" autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr" aria-describedby="reg-username-hint" value={values.username} />
+										<small id="reg-username-hint">{t("account.usernameHint")}</small>
+									</div>
+								</div>
+								<div class="form-row">
+									<div class="field">
+										<label for="reg-email">{t("form.email")}</label>
+										<input id="reg-email" name="email" type="email" required maxlength="120" autocomplete="email" dir="ltr" value={values.email} />
+									</div>
+									<div class="field">
+										<label for="reg-phone">{t("form.phone")}</label>
+										<input id="reg-phone" name="phone" type="tel" maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={values.phone} />
+									</div>
+								</div>
+								<div class="form-row">
+									<div class="field">
+										<label for="reg-password">{t("account.password")}</label>
+										<input id="reg-password" name="password" type="password" autocomplete="new-password" dir="ltr" aria-describedby="reg-password-hint" {...password} />
+										<small id="reg-password-hint">{t("account.passwordHint", { n: PASSWORD_MIN })}</small>
+									</div>
+									<div class="field">
+										<label for="reg-password-repeat">{t("account.passwordRepeat")}</label>
+										<input id="reg-password-repeat" name="password_repeat" type="password" autocomplete="new-password" dir="ltr" {...password} />
+									</div>
+								</div>
+								<div class="hp-field" aria-hidden="true">
+									<label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
+								</div>
+								<label class="checkbox">
+									<input type="checkbox" name="consent" required />
+									<span>{t("account.consent")} <a href={localizePath(locale, "kvkk")} target="_blank">{t("form.consentLink")}</a></span>
+								</label>
+								<button type="submit" class="btn btn--primary btn--block">{t("account.registerButton")}</button>
+							</form>
+							<p class="switch">
+								{t("account.haveAccount")} <a href={accountPath(locale, "giris")}>{t("account.loginButton")}</a>
+							</p>
+						</div>
+					)
+				}
+				</div>
+			</section>
+		)
+	}
+
+	{
+		!guest && member && (
+			<>
+				{/* Account banner: who is signed in, and the one thing they most likely came to do. */}
+				<section class="bg-[radial-gradient(900px_320px_at_85%_-20%,rgb(29_95_155/0.45),transparent_70%),linear-gradient(180deg,var(--color-ink-900),var(--color-ink-800))] text-white">
+					<div class="container flex flex-wrap items-center gap-5 py-10">
+						<span class="grid place-items-center size-16 shrink-0 rounded-full bg-white/10 border border-solid border-white/20 font-display text-xl font-bold">
+							{initials}
+						</span>
+						<div class="flex-1 min-w-48">
+							<h1 class="font-display text-2xl sm:text-3xl font-bold leading-tight">{t("account.hello", { name: member.name })}</h1>
+							<p class="mt-1 text-sm text-white/70">
+								<span dir="ltr">@{member.username}</span> · {t("account.memberSince")} {since}
+							</p>
+						</div>
+						<a href={pagePath(locale, "transfer")} class="btn btn--light">
+							{t("nav.book")}
+							<Icon name="arrow" size={18} class="flip-rtl" />
+						</a>
+					</div>
+				</section>
+
+				<section class="bg-gray-100 py-8 sm:py-12 min-h-[50vh]">
+					<div class="container grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-8 items-start">
+						<nav class:list={[card, "min-w-0 p-2 lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]"]} aria-label={t("account.title")}>
+							<ul class="flex lg:flex-col gap-1 list-none p-0 overflow-x-auto">
+								{
+									tabs.map((tab) => (
+										<li class="shrink-0">
+											<a
+												href={accountPath(locale, tab.action)}
+												aria-current={tab.view === view ? "page" : undefined}
+												class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-gray-600 whitespace-nowrap transition-colors hover:bg-gray-100 aria-[current=page]:bg-navy-700 aria-[current=page]:text-white"
+											>
+												<Icon name={tab.icon} size={18} />
+												{tab.label}
+											</a>
+										</li>
+									))
+								}
+								<li class="shrink-0 lg:mt-1 lg:pt-1 lg:border-0 lg:border-t lg:border-solid lg:border-gray-200">
+									<form method="post" action={accountPath(locale)}>
+										<input type="hidden" name="intent" value="logout" />
+										<button
+											type="submit"
+											class="flex w-full items-center gap-3 px-4 py-3 border-0 bg-transparent rounded-xl text-sm font-semibold text-gray-600 whitespace-nowrap cursor-pointer transition-colors hover:bg-gray-100 hover:text-[#b42318]"
+										>
+											<Icon name="close" size={18} />
+											{t("account.logout")}
+										</button>
+									</form>
+								</li>
+							</ul>
+						</nav>
+
+						<div class="grid gap-6 min-w-0">
+							{notice && <p class="form-status" data-state="success" role="status">{t(`account.notice.${notice}`)}</p>}
+
+							{
+								view === "account" && (
+									<>
+										<ul class="grid grid-cols-3 gap-3 sm:gap-4 list-none p-0">
+											{
+												stats.map((stat) => (
+													<li class:list={[card, "px-4 py-4 sm:px-6 sm:py-5"]}>
+														<div class="font-display text-2xl sm:text-3xl font-bold text-navy-700 tabular-nums">{stat.value}</div>
+														<div class="mt-1 text-xs sm:text-sm text-gray-600">{stat.label}</div>
+													</li>
+												))
+											}
+										</ul>
+
+										<div class="flex items-center justify-between gap-4">
+											<h2 class="font-display text-xl font-bold">{t("account.requests")}</h2>
+										</div>
+
+										{
+											trips.length === 0 && (
+												<div class:list={[card, "grid justify-items-center gap-4 px-6 py-12 text-center"]}>
+													<span class="grid place-items-center size-14 rounded-full bg-navy-50 text-navy-700">
+														<Icon name="route" size={26} />
+													</span>
+													<p class="max-w-md text-gray-600">{t("account.requestsEmpty")}</p>
+													<a href={pagePath(locale, "transfer")} class="btn btn--primary">{t("nav.book")}</a>
+												</div>
+											)
+										}
+
+										<ul class="grid gap-4 list-none p-0">
+											{
+												trips.map((trip) => (
+													<li class:list={[card, "overflow-hidden transition-shadow hover:shadow-[0_14px_32px_-16px_rgb(10_37_64/0.35)]"]}>
+														<div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-navy-50/60 border-0 border-b border-solid border-gray-200">
+															<span class="font-display font-bold text-navy-800 tabular-nums" dir="ltr">{trip.reference}</span>
+															<StatusBadge locale={locale} status={trip.status} />
+														</div>
+														<div class="grid gap-5 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+															<div class="grid gap-4">
+																{/* The route as a two-stop line: airport, then district. */}
+																<ol class="grid gap-3 list-none p-0">
+																	<li class="relative flex items-center gap-3 font-semibold after:absolute after:start-[5px] after:top-[calc(50%+8px)] after:h-[calc(100%-4px)] after:w-0.5 after:bg-gray-300">
+																		<span class="size-3 shrink-0 rounded-full border-2 border-solid border-navy-700 bg-white" />
+																		{trip.from}
+																	</li>
+																	<li class="flex items-center gap-3 font-semibold">
+																		<span class="size-3 shrink-0 rounded-full bg-navy-700" />
+																		{trip.to}
+																	</li>
+																</ol>
+																<ul class="flex flex-wrap gap-x-5 gap-y-2 list-none p-0 text-sm text-gray-600">
+																	{trip.day && (
+																		<li class="inline-flex items-center gap-1.5">
+																			<Icon name="calendar" size={16} />
+																			{[trip.day, trip.time].filter(Boolean).join(" · ")}
+																		</li>
+																	)}
+																	{trip.passengers && (
+																		<li class="inline-flex items-center gap-1.5">
+																			<Icon name="users" size={16} />
+																			{t("account.passengersCount", { n: trip.passengers })}
+																		</li>
+																	)}
+																	{trip.flight && (
+																		<li class="inline-flex items-center gap-1.5">
+																			<Icon name="plane" size={16} />
+																			<span dir="ltr">{trip.flight}</span>
+																		</li>
+																	)}
+																	{trip.vehicle && <li>{trip.vehicle}</li>}
+																	{trip.returnTrip && <li>{t("account.requestReturn")}</li>}
+																</ul>
+															</div>
+															<div class="flex items-center justify-between gap-4 sm:flex-col sm:items-end">
+																<small class="text-xs text-gray-500">
+																	{t("account.requestSent")} {trip.sent}
+																</small>
+																<a href={trackPath(locale, trip.id)} class="btn btn--ghost btn--sm">
+																	{t("account.track")}
+																	<Icon name="arrow" size={16} class="flip-rtl" />
+																</a>
+															</div>
+														</div>
+													</li>
+												))
+											}
+										</ul>
+									</>
+								)
+							}
+
+							{
+								view === "profile" && (
+									<div class:list={[card, "p-6 sm:p-8"]}>
+										<h2 class="font-display text-xl font-bold mb-6">{t("account.profile")}</h2>
+										<form class="form" method="post" action={accountPath(locale, "profil")}>
+											<input type="hidden" name="intent" value="profile" />
+											{error && errorForm === "profile" && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
+											<div class="form-row">
+												<div class="field">
+													<label for="acc-name">{t("form.name")}</label>
+													<input id="acc-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={profile.name} />
+												</div>
+												<div class="field">
+													<label for="acc-username">{t("account.username")}</label>
+													<input id="acc-username" value={member.username} dir="ltr" disabled />
+												</div>
+											</div>
+											<div class="form-row">
+												<div class="field">
+													<label for="acc-email">{t("form.email")}</label>
+													<input id="acc-email" name="email" type="email" required maxlength="120" autocomplete="email" dir="ltr" value={profile.email} />
+												</div>
+												<div class="field">
+													<label for="acc-phone">{t("form.phone")}</label>
+													<input id="acc-phone" name="phone" type="tel" maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={profile.phone} />
+												</div>
+											</div>
+											<button type="submit" class="btn btn--primary justify-self-start">{t("account.save")}</button>
+										</form>
+									</div>
+								)
+							}
+
+							{
+								view === "security" && (
+									<div class:list={[card, "p-6 sm:p-8"]}>
+										<h2 class="font-display text-xl font-bold">{t("account.changePassword")}</h2>
+										<p class="mt-2 mb-6 text-sm text-gray-600">{t("account.security")}</p>
+										<form class="form" method="post" action={accountPath(locale, "guvenlik")}>
+											<input type="hidden" name="intent" value="password" />
+											{error && errorForm === "password" && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
+											<div class="field">
+												<label for="acc-current">{t("account.currentPassword")}</label>
+												<input id="acc-current" name="current_password" type="password" required autocomplete="current-password" maxlength={PASSWORD_MAX} dir="ltr" />
+											</div>
+											<div class="form-row">
+												<div class="field">
+													<label for="acc-password">{t("account.newPassword")}</label>
+													<input id="acc-password" name="password" type="password" autocomplete="new-password" dir="ltr" aria-describedby="acc-password-hint" {...password} />
+													<small id="acc-password-hint">{t("account.passwordHint", { n: PASSWORD_MIN })}</small>
+												</div>
+												<div class="field">
+													<label for="acc-password-repeat">{t("account.passwordRepeat")}</label>
+													<input id="acc-password-repeat" name="password_repeat" type="password" autocomplete="new-password" dir="ltr" {...password} />
+												</div>
+											</div>
+											<button type="submit" class="btn btn--primary justify-self-start">{t("account.changePassword")}</button>
+										</form>
+									</div>
+								)
+							}
+						</div>
+					</div>
+				</section>
+			</>
+		)
+	}
+</Base>
+
+<style>
+	.guest {
+		max-width: 560px;
+	}
+
+	/* Keep inputs level when only one field of a row has a hint below it. */
+	.field {
+		align-content: start;
+	}
+
+	.field small {
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+
+	.field input:disabled {
+		background: var(--gray-100);
+		color: var(--gray-600);
+	}
+
+	.switch {
+		margin: var(--space-6) 0 0;
+		text-align: center;
+	}
+
+	.switch a {
+		color: var(--color-brand);
+		font-weight: 600;
+		text-decoration: underline;
+	}
+</style>

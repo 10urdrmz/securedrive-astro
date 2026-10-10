@@ -52,6 +52,31 @@ export function localizePath(locale: Locale, path: string): string {
 	return `${localePrefix(locale)}/${clean}`.replace(/\/$/, "") || "/";
 }
 
+/** Member pages live under /hesap: requests, profile ("profil"), password ("guvenlik"), sign-in ("giris") and sign-up ("uye-ol"). */
+export const ACCOUNT_SLUG = "hesap";
+export type AccountAction = "" | "profil" | "guvenlik" | "giris" | "uye-ol";
+
+/** Address of a member page in a language. */
+export function accountPath(locale: Locale, action: AccountAction = ""): string {
+	return localizePath(locale, [ACCOUNT_SLUG, action].filter(Boolean).join("/"));
+}
+
+/** Every request has its own tracking page: /takip/<tracking id>. */
+export const TRACK_SLUG = "takip";
+
+/** Address of a request's tracking page in a language. */
+export function trackPath(locale: Locale, trackingId: string): string {
+	return localizePath(locale, `${TRACK_SLUG}/${trackingId.toLowerCase()}`);
+}
+
+/** Where visitors who are not signed in look up a request by its number and their phone or e-mail. */
+export const LOOKUP_SLUG = "sorgula";
+
+/** Address of the request lookup page in a language. */
+export function lookupPath(locale: Locale): string {
+	return localizePath(locale, LOOKUP_SLUG);
+}
+
 /** Find which hand-built page a slug belongs to. */
 export function pageKeyForSlug(slug: string): PageKey | undefined {
 	return (Object.keys(PAGE_SLUGS) as PageKey[]).find((key) => key !== "home" && PAGE_SLUGS[key] === slug);
@@ -83,9 +108,9 @@ export const LEGACY_REDIRECTS: Record<string, string> = {
 	privacy: "/gizlilik-politikasi",
 	cancellation: "/iptal-ve-iade",
 	home: "/",
-	account: "/",
-	login: "/",
-	register: "/",
+	account: "/hesap",
+	login: "/hesap/giris",
+	register: "/hesap/uye-ol",
 	passenger: "/",
 	driver: "/",
 	admin: "/_emdash/admin",

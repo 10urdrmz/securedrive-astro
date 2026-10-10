@@ -1,0 +1,64 @@
+---
+/**
+ * Rezervasyon sorgula: visitors who are not signed in find a request with its
+ * number and the phone or e-mail they sent it with. A match is shown right
+ * here, with the same view members get.
+ */
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import TrackView from "./TrackView.astro";
+import { LOOKUP_SLUG, accountPath } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import type { LookupPage } from "../lib/track-page";
+
+type Props = LookupPage;
+
+const { locale, request, error, values, next } = Astro.props;
+const t = useTranslations(locale);
+const login = accountPath(locale, "giris") + (next ? `?next=${encodeURIComponent(next)}` : "");
+---
+
+{
+	request ? (
+		<TrackView locale={locale} request={request} path={LOOKUP_SLUG} lookedUp />
+	) : (
+		<Base locale={locale} path={LOOKUP_SLUG} title={t("lookup.title")} description={t("lookup.lead")} noindex>
+			<PageHero locale={locale} title={t("lookup.title")} lead={t("lookup.lead")} />
+			<section class="bg-gray-100 py-8 sm:py-12">
+				<div class="container grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,560px)_minmax(0,1fr)] lg:gap-10 items-start">
+					<div class="bg-white border border-solid border-gray-200 rounded-2xl shadow-[0_6px_20px_-12px_rgb(16_24_40/0.18)] p-6 sm:p-8">
+						<form class="form" method="post" action={Astro.url.pathname}>
+							{error && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
+							{next && <input type="hidden" name="next" value={next} />}
+							<div class="field">
+								<label for="lookup-reference">{t("lookup.reference")}</label>
+								<input id="lookup-reference" name="reference" required maxlength="24" autocomplete="off" autocapitalize="characters" spellcheck="false" dir="ltr" placeholder="SD-2610-0042" value={values.reference} />
+							</div>
+							<div class="field">
+								<label for="lookup-contact">{t("lookup.contact")}</label>
+								<input id="lookup-contact" name="contact" required maxlength="120" autocomplete="off" autocapitalize="none" spellcheck="false" dir="ltr" aria-describedby="lookup-contact-hint" value={values.contact} />
+								<small id="lookup-contact-hint" class="text-sm text-gray-600">{t("lookup.contactHint")}</small>
+							</div>
+							<button type="submit" class="btn btn--primary btn--block">{t("lookup.submit")}</button>
+						</form>
+					</div>
+					<aside class="grid gap-4">
+						<div class="flex items-start gap-4">
+							<span class="grid place-items-center size-11 shrink-0 rounded-xl bg-navy-700 text-white">
+								<Icon name="user" size={20} />
+							</span>
+							<div>
+								<p class="font-semibold">{t("lookup.member")}</p>
+								<a href={login} class="link-arrow mt-1">
+									{t("account.loginButton")}
+									<Icon name="arrow" size={16} class="flip-rtl" />
+								</a>
+							</div>
+						</div>
+					</aside>
+				</div>
+			</section>
+		</Base>
+	)
+}

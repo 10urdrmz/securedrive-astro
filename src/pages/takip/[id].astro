@@ -1,0 +1,10 @@
+---
+/** A request's tracking page in Turkish: /takip/<tracking id>. Other languages: src/pages/[lang]/takip. */
+import { runTrackPage } from "../../lib/track-page";
+import TrackView from "../../views/TrackView.astro";
+
+const result = await runTrackPage(Astro, "tr", Astro.params.id ?? "");
+if (result instanceof Response) return result;
+---
+
+<TrackView locale="tr" request={result} />

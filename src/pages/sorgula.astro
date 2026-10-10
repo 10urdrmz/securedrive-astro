@@ -1,0 +1,10 @@
+---
+/** Rezervasyon sorgula in Turkish: /sorgula. Other languages: src/pages/[lang]/sorgula.astro. */
+import { runLookupPage } from "../lib/track-page";
+import LookupView from "../views/LookupView.astro";
+
+const result = await runLookupPage(Astro, "tr");
+if (result instanceof Response) return result;
+---
+
+<LookupView {...result} />
