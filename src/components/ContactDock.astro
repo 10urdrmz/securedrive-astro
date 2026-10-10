@@ -1,0 +1,85 @@
+---
+import Icon from "./Icon.astro";
+import { pagePath, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { telHref, whatsappHref } from "../lib/site";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+---
+
+<a class="wa-float" href={whatsappHref()} target="_blank" rel="noopener" aria-label={t("common.whatsapp")}>
+	<Icon name="whatsapp" size={26} />
+</a>
+
+<nav class="dock" aria-label={t("footer.contact")}>
+	<a href={telHref}><Icon name="phone" size={20} /><span>{t("nav.call")}</span></a>
+	<a href={whatsappHref()} target="_blank" rel="noopener"><Icon name="whatsapp" size={20} /><span>WhatsApp</span></a>
+	<a href={pagePath(locale, "transfer")} class="dock-primary"><Icon name="calendar" size={20} /><span>{t("nav.book")}</span></a>
+</nav>
+
+<style>
+	.wa-float {
+		position: fixed;
+		inset-inline-end: 24px;
+		bottom: 24px;
+		z-index: 40;
+		display: grid;
+		place-items: center;
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background: #1fa855;
+		color: #fff;
+		box-shadow: 0 12px 28px -10px rgb(0 0 0 / 0.45);
+		transition: transform 0.2s var(--ease);
+	}
+
+	.wa-float:hover {
+		transform: scale(1.06);
+	}
+
+	.dock {
+		display: none;
+	}
+
+	@media (max-width: 520px) {
+		.wa-float {
+			display: none;
+		}
+
+		.dock {
+			position: fixed;
+			inset-inline: 0;
+			bottom: 0;
+			z-index: 40;
+			display: grid;
+			grid-template-columns: 1fr 1fr 1.4fr;
+			gap: 1px;
+			background: var(--color-border);
+			border-top: 1px solid var(--color-border);
+			padding-bottom: env(safe-area-inset-bottom);
+			box-shadow: 0 -8px 24px -12px rgb(0 0 0 / 0.25);
+		}
+
+		.dock a {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			gap: var(--space-2);
+			min-height: 56px;
+			background: #fff;
+			font-size: var(--text-sm);
+			font-weight: 600;
+		}
+
+		.dock .dock-primary {
+			background: var(--navy-700);
+			color: #fff;
+		}
+	}
+</style>

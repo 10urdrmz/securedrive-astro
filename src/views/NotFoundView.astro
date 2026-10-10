@@ -1,0 +1,75 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import { pagePath, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const links = [
+	["services", "nav.services"],
+	["fleet", "nav.fleet"],
+	["routes", "nav.routes"],
+	["contact", "nav.contact"],
+] as const;
+---
+
+<Base locale={locale} path="404" title={t("notFound.title")} noindex>
+	<section class="section not-found">
+		<div class="container">
+			<p class="code">404</p>
+			<h1>{t("notFound.title")}</h1>
+			<p class="lead">{t("notFound.text")}</p>
+			<a href={pagePath(locale, "home") || "/"} class="btn btn--primary">{t("notFound.home")}</a>
+			<ul>
+				{
+					links.map(([key, label]) => (
+						<li>
+							<a href={pagePath(locale, key)} class="link-arrow">
+								{t(label)} <Icon name="arrow" size={16} class="flip-rtl" />
+							</a>
+						</li>
+					))
+				}
+			</ul>
+		</div>
+	</section>
+</Base>
+
+<style>
+	.not-found {
+		text-align: center;
+		padding-block: calc(var(--section-y) * 1.5);
+	}
+
+	.code {
+		font-family: var(--font-display);
+		font-size: clamp(4rem, 2rem + 8vw, 8rem);
+		line-height: 1;
+		color: var(--color-accent);
+	}
+
+	h1 {
+		font-size: var(--text-3xl);
+		margin-top: var(--space-4);
+	}
+
+	.lead {
+		color: var(--color-muted);
+		margin-block: var(--space-4) var(--space-8);
+	}
+
+	ul {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: center;
+		gap: var(--space-4) var(--space-8);
+		margin-top: var(--space-10);
+		padding: 0;
+		list-style: none;
+	}
+</style>

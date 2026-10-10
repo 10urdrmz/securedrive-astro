@@ -1,0 +1,371 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import TrustStrip from "../components/sections/TrustStrip.astro";
+import ServiceCard from "../components/sections/ServiceCard.astro";
+import VehicleCard from "../components/sections/VehicleCard.astro";
+import RouteCard from "../components/sections/RouteCard.astro";
+import HowSteps from "../components/sections/HowSteps.astro";
+import FaqList from "../components/sections/FaqList.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { pagePath, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { byOrder, getLocalized, getLocalizedEntry, slugOf } from "../lib/content";
+import { businessJsonLd, faqJsonLd } from "../lib/schema";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+
+const [home, services, vehicles, routes, faqs] = await Promise.all([
+	getLocalizedEntry(Astro, "pages", "home", locale),
+	getLocalized(Astro, "services", locale),
+	getLocalized(Astro, "vehicles", locale),
+	getLocalized(Astro, "routes", locale),
+	getLocalized(Astro, "faqs", locale),
+]);
+
+const headline = home?.data.headline || t("hero.title");
+const subtitle = home?.data.summary || t("hero.subtitle");
+const featuredRoutes = routes.filter((r) => r.data.featured).slice(0, 6);
+const featuredFaqs = faqs
+	.filter((f) => f.data.featured)
+	.sort(byOrder)
+	.map((f) => ({ question: f.data.question, answer: f.data.answer }));
+const today = new Date().toISOString().slice(0, 10);
+---
+
+<Base
+	locale={locale}
+	path=""
+	description={subtitle}
+	overlayHeader
+	jsonLd={[businessJsonLd(locale, t("meta.defaultDescription")), ...(featuredFaqs.length ? [faqJsonLd(featuredFaqs)] : [])]}
+>
+	<section class="hero">
+		<img
+			class="hero-bg"
+			src="/images/fleet/vito-vip.webp"
+			srcset="/images/fleet/vito-vip-sm.webp 688w, /images/fleet/vito-vip.webp 1376w"
+			sizes="100vw"
+			alt=""
+			width="1376"
+			height="768"
+			fetchpriority="high"
+		/>
+		<div class="container hero-inner">
+			<div class="hero-copy">
+				<p class="eyebrow">{t("hero.eyebrow")}</p>
+				<h1>{headline}</h1>
+				<p class="hero-lead">{subtitle}</p>
+				<div class="hero-actions">
+					<a href={pagePath(locale, "transfer")} class="btn btn--light">{t("hero.ctaPrimary")}</a>
+					<a href={pagePath(locale, "fleet")} class="btn btn--ghost-light">{t("hero.ctaSecondary")}</a>
+				</div>
+			</div>
+
+			<form class="quick" action={pagePath(locale, "transfer")} method="get">
+				<h2>{t("quick.title")}</h2>
+				<div class="field">
+					<label for="q-from">{t("quick.from")}</label>
+					<input id="q-from" name="from" placeholder={t("quick.fromPlaceholder")} list="q-places" autocomplete="off" />
+				</div>
+				<div class="field">
+					<label for="q-to">{t("quick.to")}</label>
+					<input id="q-to" name="to" placeholder={t("quick.toPlaceholder")} list="q-places" autocomplete="off" />
+				</div>
+				<div class="quick-row">
+					<div class="field">
+						<label for="q-date">{t("quick.date")}</label>
+						<input id="q-date" name="date" type="date" min={today} />
+					</div>
+					<div class="field">
+						<label for="q-pax">{t("quick.passengers")}</label>
+						<input id="q-pax" name="passengers" type="number" min="1" max="60" value="2" inputmode="numeric" />
+					</div>
+				</div>
+				<datalist id="q-places">
+					<option value="İstanbul Havalimanı (IST)"></option>
+					<option value="Sabiha Gökçen Havalimanı (SAW)"></option>
+					{routes.slice(0, 40).map((r) => <option value={r.data.destination} />)}
+				</datalist>
+				<button type="submit" class="btn btn--primary btn--block">
+					{t("quick.submit")}
+					<Icon name="arrow" size={18} class="flip-rtl" />
+				</button>
+			</form>
+		</div>
+	</section>
+
+	<section class="section trust-section">
+		<div class="container">
+			<TrustStrip locale={locale} />
+		</div>
+	</section>
+
+	<section class="section section--surface" aria-labelledby="services-title">
+		<div class="container">
+			<div class="section-head">
+				<div>
+					<p class="eyebrow">SecureDrive</p>
+					<h2 class="section-title" id="services-title">{t("section.services")}</h2>
+					<p class="section-lead">{t("section.servicesLead")}</p>
+				</div>
+				<a href={pagePath(locale, "services")} class="link-arrow">{t("common.viewAll")} <Icon name="arrow" size={16} class="flip-rtl" /></a>
+			</div>
+			<div class="grid grid--3">
+				{
+					services.sort(byOrder).slice(0, 6).map((s) => (
+						<ServiceCard
+							href={pagePath(locale, "services", slugOf(s))}
+							title={s.data.title}
+							summary={s.data.summary}
+							badge={s.data.badge}
+							icon={s.data.icon}
+							features={s.data.features}
+						/>
+					))
+				}
+			</div>
+		</div>
+	</section>
+
+	<section class="section" aria-labelledby="fleet-title">
+		<div class="container">
+			<div class="section-head">
+				<div>
+					<p class="eyebrow">Mercedes-Benz</p>
+					<h2 class="section-title" id="fleet-title">{t("section.fleet")}</h2>
+					<p class="section-lead">{t("section.fleetLead")}</p>
+				</div>
+				<a href={pagePath(locale, "fleet")} class="link-arrow">{t("common.viewAll")} <Icon name="arrow" size={16} class="flip-rtl" /></a>
+			</div>
+			<div class="grid grid--2">
+				{
+					vehicles.sort(byOrder).map((v) => (
+						<VehicleCard
+							locale={locale}
+							href={pagePath(locale, "fleet", slugOf(v))}
+							name={v.data.name}
+							classLabel={v.data.class_label}
+							summary={v.data.summary}
+							seats={v.data.seats}
+							luggage={v.data.luggage}
+							image={v.data.image}
+							fallback={v.data.fallback_image}
+						/>
+					))
+				}
+			</div>
+		</div>
+	</section>
+
+	{
+		featuredRoutes.length > 0 && (
+			<section class="section section--surface" aria-labelledby="routes-title">
+				<div class="container">
+					<div class="section-head">
+						<div>
+							<p class="eyebrow">IST · SAW</p>
+							<h2 class="section-title" id="routes-title">{t("section.routes")}</h2>
+							<p class="section-lead">{t("section.routesLead")}</p>
+						</div>
+						<a href={pagePath(locale, "routes")} class="link-arrow">{t("common.viewAll")} <Icon name="arrow" size={16} class="flip-rtl" /></a>
+					</div>
+					<div class="grid grid--3">
+						{featuredRoutes.map((r) => (
+							<RouteCard
+								locale={locale}
+								href={pagePath(locale, "routes", slugOf(r))}
+								origin={r.data.origin}
+								destination={r.data.destination}
+								distanceKm={r.data.distance_km}
+								durationMin={r.data.duration_min}
+								price={r.data.vito_price_try}
+								badge={r.data.badge}
+							/>
+						))}
+					</div>
+				</div>
+			</section>
+		)
+	}
+
+	<section class="section section--dark" aria-labelledby="how-title">
+		<div class="container">
+			<div class="section-head">
+				<div>
+					<p class="eyebrow">{t("nav.how")}</p>
+					<h2 class="section-title" id="how-title">{t("section.howLead")}</h2>
+				</div>
+			</div>
+			<HowSteps locale={locale} />
+		</div>
+	</section>
+
+	<section class="section corporate" aria-labelledby="corp-title">
+		<div class="container corporate-inner">
+			<div class="corporate-media reveal">
+				<img src="/images/fleet/sprinter-vip-sm.webp" alt="" width="688" height="384" loading="lazy" />
+			</div>
+			<div class="reveal">
+				<p class="eyebrow">B2B</p>
+				<h2 class="section-title" id="corp-title">{t("section.corporate")}</h2>
+				<p class="section-lead">{t("section.corporateLead")}</p>
+				<a href={pagePath(locale, "corporate")} class="btn btn--primary corporate-cta">{t("corporate.formTitle")}</a>
+			</div>
+		</div>
+	</section>
+
+	{
+		featuredFaqs.length > 0 && (
+			<section class="section section--surface" aria-labelledby="faq-title">
+				<div class="container faq-layout">
+					<div>
+						<p class="eyebrow">{t("nav.faq")}</p>
+						<h2 class="section-title" id="faq-title">{t("section.faq")}</h2>
+						<p class="section-lead">{t("section.faqLead")}</p>
+						<a href={pagePath(locale, "faq")} class="link-arrow faq-more">{t("common.viewAll")} <Icon name="arrow" size={16} class="flip-rtl" /></a>
+					</div>
+					<FaqList items={featuredFaqs} />
+				</div>
+			</section>
+		)
+	}
+
+	<CtaBand locale={locale} />
+</Base>
+
+<style>
+	.hero {
+		position: relative;
+		min-height: min(100svh, 920px);
+		display: flex;
+		align-items: center;
+		color: #fff;
+		background: var(--ink-950);
+		overflow: hidden;
+		padding-block: calc(var(--header-h) + var(--space-12)) var(--space-16);
+	}
+
+	.hero-bg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		object-position: 35% 60%;
+		opacity: 0.75;
+	}
+
+	.hero::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		background:
+			linear-gradient(90deg, rgb(11 13 16 / 0.92) 0%, rgb(11 13 16 / 0.7) 45%, rgb(11 13 16 / 0.35) 100%),
+			linear-gradient(0deg, rgb(11 13 16 / 0.85) 0%, transparent 35%);
+	}
+
+	:global([dir="rtl"]) .hero::after {
+		background:
+			linear-gradient(270deg, rgb(11 13 16 / 0.92) 0%, rgb(11 13 16 / 0.7) 45%, rgb(11 13 16 / 0.35) 100%),
+			linear-gradient(0deg, rgb(11 13 16 / 0.85) 0%, transparent 35%);
+	}
+
+	.hero-inner {
+		position: relative;
+		z-index: 1;
+		display: grid;
+		grid-template-columns: minmax(0, 1.2fr) minmax(320px, 420px);
+		gap: clamp(2rem, 1rem + 4vw, 5rem);
+		align-items: center;
+	}
+
+	.hero h1 {
+		font-size: var(--text-4xl);
+		max-width: 16ch;
+	}
+
+	.hero-lead {
+		margin-top: var(--space-5);
+		font-size: var(--text-lg);
+		color: #c9d1da;
+		max-width: 52ch;
+	}
+
+	.hero-actions {
+		display: flex;
+		gap: var(--space-3);
+		flex-wrap: wrap;
+		margin-top: var(--space-8);
+	}
+
+	.quick {
+		display: grid;
+		gap: var(--space-4);
+		padding: var(--space-8);
+		background: rgb(255 255 255 / 0.97);
+		color: var(--ink-900);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.quick h2 {
+		font-size: var(--text-xl);
+	}
+
+	.quick-row {
+		display: grid;
+		grid-template-columns: 1.4fr 1fr;
+		gap: var(--space-3);
+	}
+
+	.trust-section {
+		padding-block: var(--space-12);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.corporate-inner {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: clamp(2rem, 1rem + 4vw, 5rem);
+		align-items: center;
+	}
+
+	.corporate-media img {
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-lg);
+		width: 100%;
+	}
+
+	.corporate-cta {
+		margin-top: var(--space-8);
+	}
+
+	.faq-layout {
+		display: grid;
+		grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+		gap: clamp(2rem, 1rem + 4vw, 5rem);
+		align-items: start;
+	}
+
+	.faq-more {
+		margin-top: var(--space-6);
+	}
+
+	@media (max-width: 900px) {
+		.hero-inner,
+		.corporate-inner,
+		.faq-layout {
+			grid-template-columns: 1fr;
+		}
+
+		.hero {
+			min-height: auto;
+		}
+	}
+</style>

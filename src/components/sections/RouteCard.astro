@@ -1,0 +1,97 @@
+---
+import Icon from "../Icon.astro";
+import type { Locale } from "../../i18n/locales";
+import { useTranslations } from "../../i18n/ui";
+import { formatApprox, formatTry } from "../../lib/format";
+import { airportName } from "../../lib/routes";
+
+interface Props {
+	locale: Locale;
+	href: string;
+	origin: string;
+	destination: string;
+	distanceKm?: number | null;
+	durationMin?: number | null;
+	price: number;
+	badge?: string | null;
+}
+
+const { locale, href, origin, destination, distanceKm, durationMin, price, badge } = Astro.props;
+const t = useTranslations(locale);
+---
+
+<article class="card route reveal">
+	<div class="card-body">
+		<div class="route-top">
+			<span class="route-origin"><Icon name="plane" size={16} />{airportName(origin, locale)}</span>
+			{badge && locale === "tr" && <span class="badge badge--gold">{badge}</span>}
+		</div>
+		<h3 class="card-title"><a href={href} class="card-link">{destination}</a></h3>
+		<ul class="route-meta">
+			{durationMin ? <li><Icon name="clock" size={16} />{t("common.minutes", { n: durationMin })}</li> : null}
+			{distanceKm ? <li><Icon name="route" size={16} />{t("common.km", { n: distanceKm })}</li> : null}
+		</ul>
+		<div class="route-price">
+			<span class="route-price-label">{t("common.from")}</span>
+			<strong>{formatTry(price, locale)}</strong>
+			<span class="route-price-approx">≈ {formatApprox(price, locale)}</span>
+		</div>
+	</div>
+</article>
+
+<style>
+	.route-top {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-2);
+		align-items: center;
+	}
+
+	.route-origin {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--color-muted);
+		text-transform: uppercase;
+		letter-spacing: 0.06em;
+	}
+
+	.route-meta {
+		display: flex;
+		gap: var(--space-4);
+		list-style: none;
+		padding: 0;
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+
+	.route-meta li {
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
+	}
+
+	.route-price {
+		display: flex;
+		align-items: baseline;
+		flex-wrap: wrap;
+		gap: var(--space-2);
+		margin-top: auto;
+		padding-top: var(--space-4);
+		border-top: 1px dashed var(--color-border);
+	}
+
+	.route-price strong {
+		font-family: var(--font-display);
+		font-size: var(--text-2xl);
+		color: var(--navy-800);
+	}
+
+	.route-price-label,
+	.route-price-approx {
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+</style>

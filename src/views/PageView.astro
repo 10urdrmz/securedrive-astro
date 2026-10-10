@@ -1,0 +1,65 @@
+---
+import { PortableText } from "emdash/ui";
+import Base from "../layouts/Base.astro";
+import Photo from "../components/Photo.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import type { Locale } from "../i18n/locales";
+import { imageUrl, slugOf } from "../lib/content";
+
+interface Props {
+	locale: Locale;
+	entry: any;
+}
+
+const { locale, entry } = Astro.props;
+const slug = slugOf(entry);
+const d = entry.data;
+const legal = d.kind === "legal";
+const updated = d.updatedAt ? new Date(d.updatedAt) : null;
+---
+
+<Base
+	locale={locale}
+	path={slug}
+	title={d.title}
+	description={d.summary}
+	image={imageUrl(d.hero_image)}
+	content={{ collection: "pages", id: d.id, slug }}
+>
+	<PageHero locale={locale} title={d.headline || d.title} lead={d.summary} />
+
+	<section class="section">
+		<div class:list={["container", legal ? "legal" : "page"]}>
+			{d.hero_image?.id && <Photo image={d.hero_image} alt="" class="page-image" />}
+			<article class="prose">
+				{d.content && <PortableText value={d.content} />}
+			</article>
+			{updated && legal && <p class="updated"><time datetime={updated.toISOString()}>{updated.toLocaleDateString(locale)}</time></p>}
+		</div>
+	</section>
+
+	{!legal && <CtaBand locale={locale} />}
+</Base>
+
+<style>
+	.page,
+	.legal {
+		max-width: 820px;
+	}
+
+	.legal :global(.prose) {
+		font-size: var(--text-sm);
+	}
+
+	:global(.page-image) {
+		border-radius: var(--radius-lg);
+		margin-bottom: var(--space-8);
+	}
+
+	.updated {
+		margin-top: var(--space-10);
+		color: var(--color-muted);
+		font-size: var(--text-sm);
+	}
+</style>

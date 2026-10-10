@@ -1,0 +1,156 @@
+---
+import { PortableText } from "emdash/ui";
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import Photo from "../components/Photo.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import ServiceCard from "../components/sections/ServiceCard.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { byOrder, getLocalized, imageUrl, slugOf, texts } from "../lib/content";
+import { breadcrumbJsonLd } from "../lib/schema";
+import { SITE } from "../lib/site";
+
+interface Props {
+	locale: Locale;
+	entry: any;
+}
+
+const { locale, entry } = Astro.props;
+const t = useTranslations(locale);
+const slug = slugOf(entry);
+const path = `${PAGE_SLUGS.services}/${slug}`;
+const features = texts(entry.data.features);
+const others = (await getLocalized(Astro, "services", locale)).sort(byOrder).filter((s) => slugOf(s) !== slug).slice(0, 3);
+
+const jsonLd = [
+	{
+		"@context": "https://schema.org",
+		"@type": "Service",
+		name: entry.data.title,
+		description: entry.data.summary,
+		serviceType: entry.data.title,
+		areaServed: { "@type": "City", name: "İstanbul" },
+		provider: { "@id": `${SITE.url}/#business` },
+	},
+	breadcrumbJsonLd([
+		{ name: t("common.home"), path: pagePath(locale, "home") || "/" },
+		{ name: t("nav.services"), path: pagePath(locale, "services") },
+		{ name: entry.data.title, path: pagePath(locale, "services", slug) },
+	]),
+];
+---
+
+<Base
+	locale={locale}
+	path={path}
+	title={entry.data.title}
+	description={entry.data.summary}
+	image={imageUrl(entry.data.image)}
+	content={{ collection: "services", id: entry.data.id, slug }}
+	jsonLd={jsonLd}
+>
+	<PageHero
+		locale={locale}
+		title={entry.data.title}
+		lead={entry.data.summary}
+		eyebrow={entry.data.badge}
+		crumbs={[{ href: pagePath(locale, "services"), label: t("nav.services") }]}
+	>
+		<div class="hero-actions">
+			<a href={pagePath(locale, "transfer")} class="btn btn--light">{entry.data.cta_label || t("common.book")}</a>
+			<a href={pagePath(locale, "contact")} class="btn btn--ghost-light">{t("nav.contact")}</a>
+		</div>
+	</PageHero>
+
+	<section class="section">
+		<div class="container detail">
+			<article class="prose">
+				{entry.data.image?.id && <Photo image={entry.data.image} alt={entry.data.title} class="detail-photo" />}
+				{entry.data.content && <PortableText value={entry.data.content} />}
+			</article>
+			{
+				features.length > 0 && (
+					<aside class="panel">
+						<p class="fieldset-title">{t("fleet.features")}</p>
+						<ul class="check-list">
+							{features.map((f) => (
+								<li>
+									<Icon name="check" size={18} />
+									{f}
+								</li>
+							))}
+						</ul>
+						<a href={pagePath(locale, "transfer")} class="btn btn--primary btn--block">
+							{t("common.book")}
+						</a>
+					</aside>
+				)
+			}
+		</div>
+	</section>
+
+	{
+		others.length > 0 && (
+			<section class="section section--surface">
+				<div class="container">
+					<div class="section-head">
+						<h2 class="section-title">{t("section.services")}</h2>
+					</div>
+					<div class="grid grid--3">
+						{others.map((s) => (
+							<ServiceCard
+								href={pagePath(locale, "services", slugOf(s))}
+								title={s.data.title}
+								summary={s.data.summary}
+								icon={s.data.icon}
+								badge={s.data.badge}
+							/>
+						))}
+					</div>
+				</div>
+			</section>
+		)
+	}
+
+	<CtaBand locale={locale} />
+</Base>
+
+<style>
+	.hero-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3);
+		margin-top: var(--space-8);
+	}
+
+	.detail {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 340px;
+		gap: clamp(2rem, 1rem + 4vw, 4rem);
+		align-items: start;
+	}
+
+	.detail aside {
+		position: sticky;
+		top: calc(var(--header-h) + var(--space-6));
+		display: grid;
+		gap: var(--space-5);
+	}
+
+	:global(.detail-photo) {
+		border-radius: var(--radius-lg);
+		margin-bottom: var(--space-8);
+	}
+
+	@media (max-width: 900px) {
+		.detail {
+			grid-template-columns: 1fr;
+		}
+
+		.detail aside {
+			position: static;
+		}
+	}
+</style>

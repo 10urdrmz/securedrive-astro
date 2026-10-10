@@ -1,0 +1,61 @@
+---
+import type { Locale } from "../../i18n/locales";
+import { useTranslations } from "../../i18n/ui";
+
+interface Props {
+	locale: Locale;
+}
+
+const t = useTranslations(Astro.props.locale);
+const steps = [1, 2, 3] as const;
+---
+
+<ol class="steps">
+	{
+		steps.map((n) => (
+			<li class="reveal">
+				<span class="step-num">0{n}</span>
+				<h3>{t(`how.${n}.title`)}</h3>
+				<p>{t(`how.${n}.text`)}</p>
+			</li>
+		))
+	}
+</ol>
+
+<style>
+	.steps {
+		list-style: none;
+		padding: 0;
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+		gap: var(--space-6);
+		counter-reset: step;
+	}
+
+	li {
+		position: relative;
+		padding: var(--space-8);
+		border-radius: var(--radius-lg);
+		background: rgb(255 255 255 / 0.04);
+		border: 1px solid rgb(255 255 255 / 0.08);
+	}
+
+	.step-num {
+		display: block;
+		font-family: var(--font-display);
+		font-size: var(--text-3xl);
+		font-weight: 700;
+		color: var(--gold-300);
+		margin-bottom: var(--space-4);
+	}
+
+	h3 {
+		font-size: var(--text-xl);
+		color: #fff;
+		margin-bottom: var(--space-2);
+	}
+
+	p {
+		color: #a9b3bf;
+	}
+</style>

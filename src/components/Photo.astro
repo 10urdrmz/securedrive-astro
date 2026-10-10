@@ -1,0 +1,41 @@
+---
+import { Image } from "emdash/ui";
+
+/**
+ * An uploaded media-library image when the editor set one, otherwise the
+ * bundled static image (used by the seed content until real photos are uploaded).
+ */
+interface Props {
+	image?: unknown;
+	fallback?: string | null;
+	alt: string;
+	class?: string;
+	sizes?: string;
+	loading?: "lazy" | "eager";
+	width?: number;
+	height?: number;
+}
+
+const { image, fallback, alt, class: className, sizes = "(max-width: 700px) 100vw, 50vw", loading = "lazy", width = 1376, height = 768 } = Astro.props;
+const media = image && typeof image === "object" && "id" in image && (image as { id?: string }).id ? image : null;
+// Prefer the smaller bundled variant for card-sized slots.
+const small = fallback?.replace(/\.webp$/, "-sm.webp");
+---
+
+{
+	media ? (
+		<Image image={media as never} alt={alt} class={className} sizes={sizes} loading={loading} />
+	) : fallback ? (
+		<img
+			src={fallback}
+			srcset={small ? `${small} 688w, ${fallback} 1376w` : undefined}
+			sizes={sizes}
+			alt={alt}
+			width={width}
+			height={height}
+			loading={loading}
+			decoding="async"
+			class={className}
+		/>
+	) : null
+}

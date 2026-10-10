@@ -1,0 +1,154 @@
+---
+import { PortableText } from "emdash/ui";
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import Photo from "../components/Photo.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { imageUrl, slugOf, texts } from "../lib/content";
+import { breadcrumbJsonLd } from "../lib/schema";
+
+interface Props {
+	locale: Locale;
+	entry: any;
+}
+
+const { locale, entry } = Astro.props;
+const t = useTranslations(locale);
+const slug = slugOf(entry);
+const d = entry.data;
+const features = texts(d.features);
+const specs = [
+	{ label: t("fleet.capacity"), value: [t("common.seats", { n: d.seats }), d.luggage != null ? t("common.luggage", { n: d.luggage }) : null].filter(Boolean).join(" · ") },
+	{ label: t("fleet.engine"), value: d.engine },
+	{ label: t("fleet.transmission"), value: d.transmission },
+	{ label: t("fleet.year"), value: d.model_year },
+].filter((s) => s.value);
+const transferHref = `${pagePath(locale, "transfer")}?vehicle=${encodeURIComponent(d.name)}`;
+---
+
+<Base
+	locale={locale}
+	path={`${PAGE_SLUGS.fleet}/${slug}`}
+	title={d.name}
+	description={d.summary}
+	image={imageUrl(d.image, d.fallback_image)}
+	content={{ collection: "vehicles", id: d.id, slug }}
+	jsonLd={[
+		breadcrumbJsonLd([
+			{ name: t("common.home"), path: pagePath(locale, "home") || "/" },
+			{ name: t("nav.fleet"), path: pagePath(locale, "fleet") },
+			{ name: d.name, path: pagePath(locale, "fleet", slug) },
+		]),
+	]}
+>
+	<PageHero locale={locale} title={d.name} lead={d.summary} eyebrow={d.class_label} crumbs={[{ href: pagePath(locale, "fleet"), label: t("nav.fleet") }]} />
+
+	<section class="section">
+		<div class="container vehicle">
+			<div class="vehicle-media">
+				<Photo image={d.image} fallback={d.fallback_image} alt={d.name} loading="eager" sizes="(max-width: 900px) 100vw, 60vw" class="vehicle-photo" />
+			</div>
+			<aside class="panel">
+				<p class="fieldset-title">{t("fleet.specs")}</p>
+				<dl class="specs">
+					{
+						specs.map((s) => (
+							<div>
+								<dt>{s.label}</dt>
+								<dd>{s.value}</dd>
+							</div>
+						))
+					}
+				</dl>
+				<a href={transferHref} class="btn btn--primary btn--block">{t("common.book")}</a>
+			</aside>
+		</div>
+	</section>
+
+	<section class="section section--surface">
+		<div class="container vehicle-body">
+			{
+				features.length > 0 && (
+					<div>
+						<h2 class="section-title">{t("fleet.features")}</h2>
+						<ul class="check-list feature-list">
+							{features.map((f) => (
+								<li>
+									<Icon name="check" size={18} />
+									{f}
+								</li>
+							))}
+						</ul>
+					</div>
+				)
+			}
+			{d.content && <article class="prose"><PortableText value={d.content} /></article>}
+		</div>
+	</section>
+
+	<CtaBand locale={locale} />
+</Base>
+
+<style>
+	.vehicle {
+		display: grid;
+		grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+		gap: clamp(2rem, 1rem + 3vw, 3.5rem);
+		align-items: start;
+	}
+
+	:global(.vehicle-photo) {
+		width: 100%;
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-lg);
+	}
+
+	.vehicle aside {
+		display: grid;
+		gap: var(--space-5);
+	}
+
+	.specs {
+		display: grid;
+		gap: var(--space-3);
+		margin: 0;
+	}
+
+	.specs div {
+		display: flex;
+		justify-content: space-between;
+		gap: var(--space-4);
+		padding-bottom: var(--space-3);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.specs dt {
+		color: var(--color-muted);
+	}
+
+	.specs dd {
+		margin: 0;
+		font-weight: 600;
+		text-align: end;
+	}
+
+	.vehicle-body {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+		gap: clamp(2rem, 1rem + 4vw, 5rem);
+	}
+
+	.feature-list {
+		margin-top: var(--space-6);
+	}
+
+	@media (max-width: 900px) {
+		.vehicle,
+		.vehicle-body {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

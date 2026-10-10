@@ -1,0 +1,51 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import ServiceCard from "../components/sections/ServiceCard.astro";
+import TrustStrip from "../components/sections/TrustStrip.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { byOrder, getLocalized, slugOf } from "../lib/content";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const services = (await getLocalized(Astro, "services", locale)).sort(byOrder);
+---
+
+<Base locale={locale} path={PAGE_SLUGS.services} title={t("section.services")} description={t("section.servicesLead")}>
+	<PageHero locale={locale} title={t("section.services")} lead={t("section.servicesLead")} eyebrow="SecureDrive VIP" />
+
+	<section class="section">
+		<div class="container">
+			{services.length === 0 && <p>{t("common.empty")}</p>}
+			<div class="grid grid--3">
+				{
+					services.map((s) => (
+						<ServiceCard
+							href={pagePath(locale, "services", slugOf(s))}
+							title={s.data.title}
+							summary={s.data.summary}
+							badge={s.data.badge}
+							icon={s.data.icon}
+							features={s.data.features}
+							cta={t("common.details")}
+						/>
+					))
+				}
+			</div>
+		</div>
+	</section>
+
+	<section class="section section--surface">
+		<div class="container">
+			<TrustStrip locale={locale} />
+		</div>
+	</section>
+
+	<CtaBand locale={locale} />
+</Base>

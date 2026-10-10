@@ -1,0 +1,82 @@
+---
+/**
+ * Single entry point for every public page, in every language.
+ *
+ * The first path segment may be a language ("en", "ar", "ru"); Turkish has no
+ * prefix. The next segment picks a hand-built section (filo, rotalar, …) and an
+ * optional third one an entry inside it. Anything else is looked up in the
+ * Pages collection (Hakkımızda, legal texts, …) before falling through to 404.
+ */
+import { LEGACY_REDIRECTS, PAGE_SLUGS, pageKeyForSlug, parsePath, localizePath } from "../i18n/locales";
+import { getLocalizedEntry } from "../lib/content";
+import HomeView from "../views/HomeView.astro";
+import ServicesView from "../views/ServicesView.astro";
+import ServiceView from "../views/ServiceView.astro";
+import FleetView from "../views/FleetView.astro";
+import VehicleView from "../views/VehicleView.astro";
+import RoutesView from "../views/RoutesView.astro";
+import RouteView from "../views/RouteView.astro";
+import CorporateView from "../views/CorporateView.astro";
+import FaqView from "../views/FaqView.astro";
+import ContactView from "../views/ContactView.astro";
+import HowView from "../views/HowView.astro";
+import TransferView from "../views/TransferView.astro";
+import BlogView from "../views/BlogView.astro";
+import PostView from "../views/PostView.astro";
+import PageView from "../views/PageView.astro";
+import NotFoundView from "../views/NotFoundView.astro";
+
+const { locale, segments } = parsePath(Astro.url.pathname);
+const [first, second, ...rest] = segments;
+
+// Old React-site addresses (Turkish only) move permanently to their new home.
+if (locale === "tr" && first && !second && LEGACY_REDIRECTS[first]) {
+	return Astro.redirect(LEGACY_REDIRECTS[first], 301);
+}
+if (first === "home" && !second) return Astro.redirect(localizePath(locale, ""), 301);
+
+const DETAIL_COLLECTIONS = { services: "services", fleet: "vehicles", routes: "routes", blog: "posts" } as const;
+type DetailKey = keyof typeof DETAIL_COLLECTIONS;
+
+const key = first ? pageKeyForSlug(first) : "home";
+let view: string | null = null;
+// The content entry a detail or CMS page renders, resolved here so a missing one is a real 404.
+let entry: any = null;
+
+if (rest.length === 0) {
+	if (key === "home" && !second) {
+		view = "home";
+	} else if (key === "about" && !second) {
+		entry = await getLocalizedEntry(Astro, "pages", PAGE_SLUGS.about, locale);
+		if (entry) view = "page";
+	} else if (key && !second) {
+		view = key;
+	} else if (key && second && key in DETAIL_COLLECTIONS) {
+		entry = await getLocalizedEntry(Astro, DETAIL_COLLECTIONS[key as DetailKey], second, locale);
+		if (entry) view = `${key}:detail`;
+	} else if (!key && first && !second) {
+		entry = await getLocalizedEntry(Astro, "pages", first, locale);
+		if (entry) view = "page";
+	}
+}
+
+if (!view) Astro.response.status = 404;
+const props = { locale, entry };
+---
+
+{view === "home" && <HomeView {...props} />}
+{view === "services" && <ServicesView {...props} />}
+{view === "services:detail" && <ServiceView {...props} />}
+{view === "fleet" && <FleetView {...props} />}
+{view === "fleet:detail" && <VehicleView {...props} />}
+{view === "routes" && <RoutesView {...props} />}
+{view === "routes:detail" && <RouteView {...props} />}
+{view === "corporate" && <CorporateView {...props} />}
+{view === "faq" && <FaqView {...props} />}
+{view === "contact" && <ContactView {...props} />}
+{view === "how" && <HowView {...props} />}
+{view === "transfer" && <TransferView {...props} />}
+{view === "blog" && <BlogView {...props} />}
+{view === "blog:detail" && <PostView {...props} />}
+{view === "page" && <PageView {...props} />}
+{!view && <NotFoundView locale={locale} />}

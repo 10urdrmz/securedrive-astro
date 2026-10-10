@@ -1,0 +1,118 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import InquiryForm from "../components/InquiryForm.astro";
+import { PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { SITE, telHref, whatsappHref } from "../lib/site";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+---
+
+<Base locale={locale} path={PAGE_SLUGS.contact} title={t("contact.title")} description={t("contact.lead")}>
+	<PageHero locale={locale} title={t("contact.title")} lead={t("contact.lead")} />
+
+	<section class="section">
+		<div class="container contact">
+			<div class="channels">
+				<a class="channel" href={telHref}>
+					<span class="icon-box"><Icon name="phone" size={22} /></span>
+					<span>
+						<small>{t("contact.phone")}</small>
+						<strong dir="ltr">{SITE.phoneDisplay}</strong>
+					</span>
+				</a>
+				<a class="channel" href={whatsappHref()} target="_blank" rel="noopener">
+					<span class="icon-box"><Icon name="whatsapp" size={22} /></span>
+					<span>
+						<small>WhatsApp</small>
+						<strong>{t("common.whatsapp")}</strong>
+					</span>
+				</a>
+				<a class="channel" href={`mailto:${SITE.email}`}>
+					<span class="icon-box"><Icon name="mail" size={22} /></span>
+					<span>
+						<small>{t("contact.email")}</small>
+						<strong dir="ltr">{SITE.email}</strong>
+					</span>
+				</a>
+				<div class="channel">
+					<span class="icon-box"><Icon name="pin" size={22} /></span>
+					<span>
+						<small>{t("contact.desks")}</small>
+						<strong>{t("contact.desksText")}</strong>
+					</span>
+				</div>
+				<p class="licenses">
+					D2: {SITE.licenses.d2} · TÜRSAB: {SITE.licenses.tursab}
+				</p>
+			</div>
+			<div class="panel">
+				<h2 class="form-title">{t("contact.formTitle")}</h2>
+				<InquiryForm locale={locale} kind="contact" />
+			</div>
+		</div>
+	</section>
+</Base>
+
+<style>
+	.contact {
+		display: grid;
+		grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+		gap: clamp(2rem, 1rem + 4vw, 5rem);
+		align-items: start;
+	}
+
+	.channels {
+		display: grid;
+		gap: var(--space-3);
+	}
+
+	.channel {
+		display: flex;
+		align-items: center;
+		gap: var(--space-4);
+		padding: var(--space-5);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-lg);
+		background: var(--color-bg);
+		transition: border-color 0.2s var(--ease);
+	}
+
+	a.channel:hover {
+		border-color: var(--color-brand);
+	}
+
+	.channel small {
+		display: block;
+		color: var(--color-muted);
+		font-size: var(--text-sm);
+	}
+
+	.channel strong {
+		font-weight: 600;
+	}
+
+	.licenses {
+		margin-top: var(--space-4);
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+
+	.form-title {
+		font-size: var(--text-2xl);
+		margin-bottom: var(--space-6);
+	}
+
+	@media (max-width: 900px) {
+		.contact {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

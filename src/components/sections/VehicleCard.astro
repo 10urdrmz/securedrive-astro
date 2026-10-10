@@ -1,0 +1,76 @@
+---
+import Icon from "../Icon.astro";
+import Photo from "../Photo.astro";
+import type { Locale } from "../../i18n/locales";
+import { useTranslations } from "../../i18n/ui";
+
+interface Props {
+	locale: Locale;
+	href: string;
+	name: string;
+	classLabel?: string | null;
+	summary?: string | null;
+	seats: number;
+	luggage?: number | null;
+	image?: unknown;
+	fallback?: string | null;
+}
+
+const { locale, href, name, classLabel, summary, seats, luggage, image, fallback } = Astro.props;
+const t = useTranslations(locale);
+---
+
+<article class="card vehicle reveal">
+	<div class="vehicle-media">
+		<Photo image={image} fallback={fallback} alt={name} sizes="(max-width: 900px) 100vw, 50vw" />
+	</div>
+	<div class="card-body">
+		{classLabel && <span class="badge">{classLabel}</span>}
+		<h3 class="card-title"><a href={href} class="card-link">{name}</a></h3>
+		{summary && <p class="card-text">{summary}</p>}
+		<ul class="specs">
+			<li><Icon name="users" size={18} />{t("common.seats", { n: seats })}</li>
+			{luggage ? <li><Icon name="luggage" size={18} />{t("common.luggage", { n: luggage })}</li> : null}
+		</ul>
+	</div>
+</article>
+
+<style>
+	.vehicle-media {
+		aspect-ratio: 16 / 9;
+		background: var(--ink-900);
+		overflow: hidden;
+	}
+
+	.vehicle-media :global(img) {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		transition: transform 0.6s var(--ease);
+	}
+
+	.vehicle:hover .vehicle-media :global(img) {
+		transform: scale(1.03);
+	}
+
+	.specs {
+		display: flex;
+		gap: var(--space-5);
+		list-style: none;
+		padding: 0;
+		margin-top: auto;
+		padding-top: var(--space-3);
+		font-size: var(--text-sm);
+		font-weight: 600;
+	}
+
+	.specs li {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.specs :global(svg) {
+		color: var(--navy-700);
+	}
+</style>

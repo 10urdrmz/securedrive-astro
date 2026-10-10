@@ -1,0 +1,30 @@
+---
+import { pagePath, type Locale } from "../../i18n/locales";
+import { useTranslations } from "../../i18n/ui";
+
+interface Props {
+	locale: Locale;
+	title: string;
+	lead?: string | null;
+	eyebrow?: string | null;
+	/** Trail between Home and this page. */
+	crumbs?: { href: string; label: string }[];
+}
+
+const { locale, title, lead, eyebrow, crumbs = [] } = Astro.props;
+const t = useTranslations(locale);
+---
+
+<section class="page-hero">
+	<div class="container">
+		<ol class="breadcrumbs" aria-label="Breadcrumb">
+			<li><a href={pagePath(locale, "home")}>{t("common.home")}</a></li>
+			{crumbs.map((c) => <li><a href={c.href}>{c.label}</a></li>)}
+			<li aria-current="page">{title}</li>
+		</ol>
+		{eyebrow && <p class="eyebrow">{eyebrow}</p>}
+		<h1>{title}</h1>
+		{lead && <p>{lead}</p>}
+		<slot />
+	</div>
+</section>

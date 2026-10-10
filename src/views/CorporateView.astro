@@ -1,0 +1,91 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import InquiryForm from "../components/InquiryForm.astro";
+import { PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const benefits = [
+	{ icon: "wallet", n: 1 },
+	{ icon: "headset", n: 2 },
+	{ icon: "award", n: 3 },
+	{ icon: "users", n: 4 },
+] as const;
+---
+
+<Base locale={locale} path={PAGE_SLUGS.corporate} title={t("section.corporate")} description={t("section.corporateLead")}>
+	<PageHero locale={locale} title={t("section.corporate")} lead={t("section.corporateLead")} eyebrow="B2B" />
+
+	<section class="section">
+		<div class="container corp">
+			<div class="benefits">
+				{
+					benefits.map((b) => (
+						<div class="benefit reveal">
+							<span class="icon-box"><Icon name={b.icon} size={24} /></span>
+							<div>
+								<h2>{t(`corporate.b${b.n}.title`)}</h2>
+								<p>{t(`corporate.b${b.n}.text`)}</p>
+							</div>
+						</div>
+					))
+				}
+			</div>
+			<div class="panel" id="basvuru">
+				<h2 class="form-title">{t("corporate.formTitle")}</h2>
+				<p class="form-lead">{t("corporate.formLead")}</p>
+				<InquiryForm locale={locale} kind="corporate" />
+			</div>
+		</div>
+	</section>
+</Base>
+
+<style>
+	.corp {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+		gap: clamp(2rem, 1rem + 4vw, 5rem);
+		align-items: start;
+	}
+
+	.benefits {
+		display: grid;
+		gap: var(--space-8);
+	}
+
+	.benefit {
+		display: flex;
+		gap: var(--space-5);
+	}
+
+	.benefit h2 {
+		font-size: var(--text-lg);
+		margin-bottom: var(--space-2);
+	}
+
+	.benefit p {
+		color: var(--color-muted);
+	}
+
+	.form-title {
+		font-size: var(--text-2xl);
+	}
+
+	.form-lead {
+		color: var(--color-muted);
+		margin-block: var(--space-2) var(--space-6);
+	}
+
+	@media (max-width: 900px) {
+		.corp {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

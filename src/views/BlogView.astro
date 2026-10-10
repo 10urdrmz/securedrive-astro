@@ -1,0 +1,58 @@
+---
+import Base from "../layouts/Base.astro";
+import Photo from "../components/Photo.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { getLocalized, slugOf } from "../lib/content";
+import { formatDate } from "../lib/format";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const posts = await getLocalized(Astro, "posts", locale);
+const dateOf = (p: any): Date | null => {
+	const value = p.data.publishedAt ?? p.data.published_at ?? p.data.createdAt;
+	return value ? new Date(value) : null;
+};
+posts.sort((a, b) => (dateOf(b)?.getTime() ?? 0) - (dateOf(a)?.getTime() ?? 0));
+---
+
+<Base locale={locale} path={PAGE_SLUGS.blog} title={t("section.blog")} description={t("section.blogLead")}>
+	<PageHero locale={locale} title={t("section.blog")} lead={t("section.blogLead")} />
+
+	<section class="section">
+		<div class="container">
+			{posts.length === 0 && <p>{t("blog.empty")}</p>}
+			<div class="grid grid--3">
+				{
+					posts.map((p) => {
+						const date = dateOf(p);
+						return (
+							<article class="card reveal">
+								{p.data.featured_image?.id && <Photo image={p.data.featured_image} alt="" sizes="(max-width: 700px) 100vw, 33vw" />}
+								<div class="card-body">
+									{date && <time datetime={date.toISOString()}>{formatDate(date, locale)}</time>}
+									<h2 class="card-title">
+										<a href={pagePath(locale, "blog", slugOf(p))} class="card-link">{p.data.title}</a>
+									</h2>
+									{p.data.excerpt && <p>{p.data.excerpt}</p>}
+								</div>
+							</article>
+						);
+					})
+				}
+			</div>
+		</div>
+	</section>
+</Base>
+
+<style>
+	time {
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+</style>

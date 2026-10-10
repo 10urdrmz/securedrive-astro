@@ -1,0 +1,4146 @@
+{
+	"$schema": "https://emdashcms.com/seed.schema.json",
+	"version": "1",
+	"meta": {
+		"name": "SecureDrive VIP",
+		"description": "İstanbul VIP transfer ve şoförlü araç tahsisi sitesi.",
+		"author": "SecureDrive"
+	},
+	"defaultLocale": "tr",
+	"settings": {
+		"title": "SecureDrive VIP",
+		"tagline": "İstanbul VIP transfer ve şoförlü araç tahsisi",
+		"timezone": "Europe/Istanbul"
+	},
+	"collections": [
+		{
+			"slug": "pages",
+			"urlPattern": "/{slug}",
+			"label": "Sayfalar",
+			"labelSingular": "Sayfa",
+			"description": "Hakkımızda, Nasıl Çalışır, ana sayfa üst alanı ve yasal metinler.",
+			"supports": [
+				"drafts",
+				"revisions",
+				"search",
+				"seo"
+			],
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Başlık",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "kind",
+					"label": "Tür",
+					"type": "select",
+					"options": [
+						"page",
+						"legal"
+					],
+					"defaultValue": "page"
+				},
+				{
+					"slug": "headline",
+					"label": "Büyük başlık (isteğe bağlı)",
+					"type": "string"
+				},
+				{
+					"slug": "summary",
+					"label": "Özet",
+					"type": "text",
+					"searchable": true
+				},
+				{
+					"slug": "hero_image",
+					"label": "Üst görsel",
+					"type": "image"
+				},
+				{
+					"slug": "content",
+					"label": "İçerik",
+					"type": "portableText",
+					"searchable": true
+				}
+			]
+		},
+		{
+			"slug": "services",
+			"urlPattern": "/hizmetler/{slug}",
+			"label": "Hizmetler",
+			"labelSingular": "Hizmet",
+			"supports": [
+				"drafts",
+				"revisions",
+				"search",
+				"seo"
+			],
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Başlık",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "badge",
+					"label": "Etiket",
+					"type": "string"
+				},
+				{
+					"slug": "icon",
+					"label": "Simge",
+					"type": "select",
+					"options": [
+						"plane",
+						"clock",
+						"building",
+						"route",
+						"shield",
+						"star"
+					],
+					"defaultValue": "star"
+				},
+				{
+					"slug": "summary",
+					"label": "Kısa açıklama",
+					"type": "text",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "features",
+					"label": "Öne çıkanlar",
+					"type": "repeater",
+					"validation": {
+						"maxItems": 12,
+						"subFields": [
+							{
+								"slug": "text",
+								"label": "Metin",
+								"type": "string",
+								"required": true
+							}
+						]
+					}
+				},
+				{
+					"slug": "cta_label",
+					"label": "Buton metni",
+					"type": "string"
+				},
+				{
+					"slug": "image",
+					"label": "Görsel",
+					"type": "image"
+				},
+				{
+					"slug": "content",
+					"label": "Ayrıntılı içerik",
+					"type": "portableText",
+					"searchable": true
+				},
+				{
+					"slug": "order",
+					"label": "Sıra",
+					"type": "integer",
+					"defaultValue": 10
+				}
+			]
+		},
+		{
+			"slug": "vehicles",
+			"urlPattern": "/filo/{slug}",
+			"label": "Filo",
+			"labelSingular": "Araç",
+			"supports": [
+				"drafts",
+				"revisions",
+				"search",
+				"seo"
+			],
+			"fields": [
+				{
+					"slug": "name",
+					"label": "Araç adı",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "class_label",
+					"label": "Sınıf",
+					"type": "string"
+				},
+				{
+					"slug": "seats",
+					"label": "Yolcu kapasitesi",
+					"type": "integer",
+					"required": true
+				},
+				{
+					"slug": "luggage",
+					"label": "Bagaj kapasitesi",
+					"type": "integer"
+				},
+				{
+					"slug": "engine",
+					"label": "Motor",
+					"type": "string"
+				},
+				{
+					"slug": "transmission",
+					"label": "Şanzıman",
+					"type": "string"
+				},
+				{
+					"slug": "model_year",
+					"label": "Model yılı",
+					"type": "string"
+				},
+				{
+					"slug": "summary",
+					"label": "Kısa açıklama",
+					"type": "text",
+					"searchable": true
+				},
+				{
+					"slug": "features",
+					"label": "Donanım",
+					"type": "repeater",
+					"validation": {
+						"maxItems": 12,
+						"subFields": [
+							{
+								"slug": "text",
+								"label": "Metin",
+								"type": "string",
+								"required": true
+							}
+						]
+					}
+				},
+				{
+					"slug": "image",
+					"label": "Görsel",
+					"type": "image"
+				},
+				{
+					"slug": "fallback_image",
+					"label": "Hazır görsel yolu (görsel yüklenmezse)",
+					"type": "string"
+				},
+				{
+					"slug": "content",
+					"label": "Ayrıntılı içerik",
+					"type": "portableText"
+				},
+				{
+					"slug": "order",
+					"label": "Sıra",
+					"type": "integer",
+					"defaultValue": 10
+				}
+			]
+		},
+		{
+			"slug": "routes",
+			"urlPattern": "/rotalar/{slug}",
+			"label": "Rotalar",
+			"labelSingular": "Rota",
+			"description": "Sabit fiyatlı transfer güzergâhları. Fiyatlar TL, araç başı ve her şey dahildir.",
+			"supports": [
+				"drafts",
+				"search",
+				"seo"
+			],
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Başlık",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "origin",
+					"label": "Kalkış",
+					"type": "select",
+					"required": true,
+					"options": [
+						"IST",
+						"SAW"
+					]
+				},
+				{
+					"slug": "destination",
+					"label": "Varış",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "side",
+					"label": "Yaka",
+					"type": "select",
+					"options": [
+						"Avrupa",
+						"Anadolu"
+					]
+				},
+				{
+					"slug": "distance_km",
+					"label": "Mesafe (km)",
+					"type": "integer"
+				},
+				{
+					"slug": "duration_min",
+					"label": "Süre (dk)",
+					"type": "integer"
+				},
+				{
+					"slug": "vito_price_try",
+					"label": "Vito VIP fiyatı (TL)",
+					"type": "number",
+					"required": true
+				},
+				{
+					"slug": "sprinter_price_try",
+					"label": "Sprinter VIP fiyatı (TL)",
+					"type": "number"
+				},
+				{
+					"slug": "badge",
+					"label": "Etiket",
+					"type": "string"
+				},
+				{
+					"slug": "featured",
+					"label": "Ana sayfada göster",
+					"type": "boolean",
+					"defaultValue": false
+				},
+				{
+					"slug": "content",
+					"label": "Rota hakkında (isteğe bağlı)",
+					"type": "portableText"
+				}
+			]
+		},
+		{
+			"slug": "faqs",
+			"label": "SSS",
+			"labelSingular": "Soru",
+			"supports": [
+				"drafts",
+				"search"
+			],
+			"fields": [
+				{
+					"slug": "question",
+					"label": "Soru",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "answer",
+					"label": "Cevap",
+					"type": "text",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "category",
+					"label": "Kategori",
+					"type": "select",
+					"options": [
+						"booking",
+						"airport",
+						"payment",
+						"corporate",
+						"general"
+					],
+					"defaultValue": "general"
+				},
+				{
+					"slug": "featured",
+					"label": "Ana sayfada göster",
+					"type": "boolean",
+					"defaultValue": false
+				},
+				{
+					"slug": "order",
+					"label": "Sıra",
+					"type": "integer",
+					"defaultValue": 10
+				}
+			]
+		},
+		{
+			"slug": "posts",
+			"urlPattern": "/blog/{slug}",
+			"label": "Blog",
+			"labelSingular": "Yazı",
+			"supports": [
+				"drafts",
+				"revisions",
+				"search",
+				"seo",
+				"scheduling"
+			],
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Başlık",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "excerpt",
+					"label": "Özet",
+					"type": "text",
+					"searchable": true
+				},
+				{
+					"slug": "featured_image",
+					"label": "Kapak görseli",
+					"type": "image"
+				},
+				{
+					"slug": "content",
+					"label": "İçerik",
+					"type": "portableText",
+					"searchable": true
+				}
+			]
+		},
+		{
+			"slug": "inquiries",
+			"label": "Gelen Talepler",
+			"labelSingular": "Talep",
+			"description": "Sitedeki transfer, iletişim ve kurumsal formlarından gelen talepler. Sitede gösterilmez.",
+			"supports": [
+				"drafts",
+				"search"
+			],
+			"fields": [
+				{
+					"slug": "title",
+					"label": "Özet",
+					"type": "string",
+					"required": true,
+					"searchable": true
+				},
+				{
+					"slug": "kind",
+					"label": "Form",
+					"type": "select",
+					"options": [
+						"transfer",
+						"contact",
+						"corporate"
+					]
+				},
+				{
+					"slug": "status_label",
+					"label": "Durum",
+					"type": "select",
+					"options": [
+						"new",
+						"contacted",
+						"quoted",
+						"booked",
+						"closed"
+					],
+					"defaultValue": "new"
+				},
+				{
+					"slug": "name",
+					"label": "Ad soyad",
+					"type": "string",
+					"searchable": true
+				},
+				{
+					"slug": "phone",
+					"label": "Telefon",
+					"type": "string",
+					"searchable": true
+				},
+				{
+					"slug": "email",
+					"label": "E-posta",
+					"type": "string",
+					"searchable": true
+				},
+				{
+					"slug": "company",
+					"label": "Firma",
+					"type": "string",
+					"searchable": true
+				},
+				{
+					"slug": "message",
+					"label": "Mesaj",
+					"type": "text"
+				},
+				{
+					"slug": "details",
+					"label": "Yolculuk ayrıntıları",
+					"type": "json"
+				},
+				{
+					"slug": "form_locale",
+					"label": "Site dili",
+					"type": "string"
+				},
+				{
+					"slug": "submitted_at",
+					"label": "Gönderim zamanı",
+					"type": "datetime"
+				},
+				{
+					"slug": "internal_notes",
+					"label": "Operasyon notları",
+					"type": "text"
+				}
+			]
+		}
+	],
+	"taxonomies": [
+		{
+			"name": "category",
+			"label": "Kategoriler",
+			"labelSingular": "Kategori",
+			"hierarchical": false,
+			"collections": [
+				"posts"
+			],
+			"terms": [
+				{
+					"slug": "rehber",
+					"label": "Rehber"
+				},
+				{
+					"slug": "haberler",
+					"label": "Haberler"
+				}
+			]
+		}
+	],
+	"content": {
+		"pages": [
+			{
+				"id": "page-home",
+				"slug": "home",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Ana sayfa",
+					"kind": "page",
+					"headline": "Havalimanından kapınıza, kusursuz bir yolculuk.",
+					"summary": "Uçuşunuzu takip eden protokol şoförleri, Mercedes VIP araçlar ve önceden bilinen sabit fiyat. Köprü, otoyol ve bekleme dahil."
+				}
+			},
+			{
+				"id": "page-home-en",
+				"slug": "home",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"title": "Home",
+					"kind": "page",
+					"headline": "From the airport to your door, flawlessly.",
+					"summary": "Professional chauffeurs who track your flight, Mercedes VIP vehicles and a fixed price agreed in advance. Bridges, tolls and waiting time included."
+				},
+				"translationOf": "page-home"
+			},
+			{
+				"id": "page-home-ar",
+				"slug": "home",
+				"status": "published",
+				"locale": "ar",
+				"data": {
+					"title": "الرئيسية",
+					"kind": "page",
+					"headline": "من المطار إلى باب منزلك، رحلة بلا عناء.",
+					"summary": "سائقون محترفون يتابعون رحلتك الجوية، وسيارات مرسيدس VIP، وسعر ثابت متفق عليه مسبقاً. الجسور والطرق السريعة ووقت الانتظار مشمولة."
+				},
+				"translationOf": "page-home"
+			},
+			{
+				"id": "page-home-ru",
+				"slug": "home",
+				"status": "published",
+				"locale": "ru",
+				"data": {
+					"title": "Главная",
+					"kind": "page",
+					"headline": "Из аэропорта до вашей двери — безупречно.",
+					"summary": "Профессиональные водители, которые следят за вашим рейсом, автомобили Mercedes VIP и фиксированная цена, согласованная заранее. Мосты, платные дороги и ожидание включены."
+				},
+				"translationOf": "page-home"
+			},
+			{
+				"id": "page-about",
+				"slug": "hakkimizda",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Hakkımızda",
+					"kind": "page",
+					"headline": "Türkiye'nin güvenilir VIP transfer markası",
+					"summary": "SecureDrive, üst düzey protokol taşımacılığı standartlarını şeffaf fiyatlandırmayla birleştirerek konforlu ve yasal güvenceli bir yolculuk sunar.",
+					"content": [
+						{
+							"_type": "block",
+							"_key": "k0001",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0002",
+									"text": "Geleneksel transfer standartlarını yeniden tanımlıyoruz"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0003",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0004",
+									"text": "SecureDrive, Türkiye'de premium VIP karayolu taşımacılığında güvenilirliği, sabit fiyat garantisini ve hizmet kalitesini tek çatı altında toplamak için kuruldu. Transfer sektöründeki fiyat belirsizliğini, yetkisiz araçları ve gecikmeleri; lisanslı filo, eğitimli protokol şoförleri ve şeffaf fiyatlandırmayla ortadan kaldırıyoruz."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0005",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0006",
+									"text": "Lisanslarımız"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0007",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0008",
+									"text": "T.C. Ulaştırma Bakanlığı D2 Yetki Belgesi",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0009",
+									"text": " (Belge No: İST.U-NET.D2.34992). Tüm transferler U-ETDS sistemine anlık bildirilir; araçlarımız yolcu koltuk sigortalıdır."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0010",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0011",
+									"text": "TÜRSAB A Grubu Seyahat Acentası",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0012",
+									"text": " (Belge No: 12450). Yerli ve yabancı misafirlerimize kurumsal turizm standartlarında hizmet veriyoruz."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0013",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0014",
+									"text": "Havalimanı karşılama noktaları.",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0015",
+									"text": " İstanbul Havalimanı (IST) ve Sabiha Gökçen (SAW) dış hatlar gelen yolcu çıkışlarında 7/24 karşılama ekibimiz misafirlerimizi bekletmeden ağırlar."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0016",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0017",
+									"text": "Hizmet kalitesi ilkelerimiz"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0018",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0019",
+									"text": "Şoförlerimiz adli sicil, psikoteknik ve ileri sürüş eğitimlerinden geçmiş, takım elbiseli protokol uzmanlarıdır."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0020",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0021",
+									"text": "Uçuş numaranız canlı olarak izlenir. Uçağınız rötar yapsa dahi 60 dakika ücretsiz bekleme garantisi sunulur."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0022",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0023",
+									"text": "Elektrikli ara bölmeli araçlarımızda iş görüşmeleriniz ve özel konuşmalarınız tam gizlilik içinde kalır."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0024",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0025",
+									"text": "Köprü, otoyol, tünel geçişleri ve karşılama fiyata dahildir. Yolculuk sonunda ek ücret talep edilmez."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						}
+					]
+				}
+			},
+			{
+				"id": "page-about-en",
+				"slug": "hakkimizda",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"title": "About us",
+					"kind": "page",
+					"headline": "Türkiye's trusted VIP transfer company",
+					"summary": "SecureDrive combines protocol-level chauffeur standards with transparent pricing for comfortable, fully licensed travel.",
+					"content": [
+						{
+							"_type": "block",
+							"_key": "k0026",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0027",
+									"text": "Redefining the standard of airport transfers"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0028",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0029",
+									"text": "SecureDrive was founded to bring reliability, fixed-price certainty and premium service together in VIP road travel across Türkiye. We replace the uncertain prices, unlicensed vehicles and delays common in the transfer business with a licensed fleet, trained protocol chauffeurs and transparent pricing."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0030",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0031",
+									"text": "Our licences"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0032",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0033",
+									"text": "Ministry of Transport D2 Operating Licence",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0034",
+									"text": " (No. İST.U-NET.D2.34992). Every journey is reported to the national U-ETDS system and every seat is insured."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0035",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0036",
+									"text": "TÜRSAB Group A Travel Agency",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0037",
+									"text": " (No. 12450). We serve guests from Türkiye and abroad to corporate tourism standards."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0038",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0039",
+									"text": "Airport meeting points.",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0040",
+									"text": " Our team welcomes guests 24/7 at the international arrivals exits of Istanbul Airport (IST) and Sabiha Gökçen (SAW)."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0041",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0042",
+									"text": "Our service principles"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0043",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0044",
+									"text": "Our chauffeurs are suited protocol professionals with clean records, psychotechnical certification and advanced driver training."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0045",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0046",
+									"text": "Your flight is tracked live, with 60 minutes of free waiting even if it is delayed."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0047",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0048",
+									"text": "Vehicles with an electric privacy partition keep your calls and conversations completely private."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0049",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0050",
+									"text": "Bridges, motorways, tunnels and meet & greet are included. You never pay extra at the end of the journey."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						}
+					]
+				},
+				"translationOf": "page-about"
+			},
+			{
+				"id": "legal-kvkk",
+				"slug": "kvkk",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "KVKK Aydınlatma Metni",
+					"kind": "legal",
+					"content": [
+						{
+							"_type": "block",
+							"_key": "k0051",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0052",
+									"text": "1. Veri Sorumlusu"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0053",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0054",
+									"text": "SecureDrive VIP Transfer ve Taşımacılık Hizmetleri Ltd. Şti. (\"Şirket\") olarak, 6698 sayılı Kişisel Verilerin Korunması Kanunu (\"KVKK\") uyarınca, veri sorumlusu sıfatıyla, kişisel verilerinizi aşağıda açıklanan amaçlar ve hukuki sebepler kapsamında işlemekteyiz."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0055",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0056",
+									"text": "2. İşlenen Kişisel Verileriniz"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0057",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0058",
+									"text": "Kimlik Bilgileri:",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0059",
+									"text": " Ad, soyad, T.C. kimlik numarası veya pasaport numarası, uyruk."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0060",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0061",
+									"text": "İletişim Bilgileri:",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0062",
+									"text": " Telefon numarası, e-posta adresi, ikamet/fatura adresi."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0063",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0064",
+									"text": "Transfer & Konum Bilgileri:",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0065",
+									"text": " Alınış ve bırakılış adresi, transfer tarihi ve saati, uçuş numarası, canlı GPS lokasyon verileri."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0066",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0067",
+									"text": "Müşteri İşlem Bilgileri:",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0068",
+									"text": " Rezervasyon geçmişi, çağrı merkezi ve WhatsApp kayıtları, değerlendirme ve şikayet notları."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0069",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0070",
+									"text": "Finansal Bilgiler:",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0071",
+									"text": " Fatura bilgileri, ödeme tutarı ve yöntemi (Kredi kartı bilgileri PCI-DSS uyumlu güvenli ödeme sağlayıcılarında saklanmakta olup sistemlerimizde tutulmamaktadır)."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0072",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0073",
+									"text": "3. Kişisel Verilerin İşlenme Amaçları"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0074",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0075",
+									"text": "Kişisel verileriniz;"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0076",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0077",
+									"text": "VIP transfer ve yolcu karşılama hizmetlerinin ifası,"
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0078",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0079",
+									"text": "Sürücü ataması ve operasyonel canlı takibin sağlanması,"
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0080",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0081",
+									"text": "Karayolu Taşıma Kanunu ve Ulaştırma Bakanlığı U-ETDS bildirim yükümlülüklerinin yerine getirilmesi,"
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0082",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0083",
+									"text": "Fatura tanzimi ve yasal muhasebe süreçleri,"
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0084",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0085",
+									"text": "Rezervasyon teyidi, şoför kapıda bildirimi gibi SMS/WhatsApp bilgilendirmelerinin yapılması"
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0086",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0087",
+									"text": "amaçlarıyla işlenmektedir."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0088",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0089",
+									"text": "4. Kişisel Verilerin Aktarılması"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0090",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0091",
+									"text": "Kişisel verileriniz; transferinizi gerçekleştirecek atanan sürücüye (yalnızca transferi gerçekleştirmek için gerekli ad-soyad, telefon ve karşılama detayları), Ulaştırma ve Altyapı Bakanlığı U-ETDS sistemine (yasal zorunluluk) ve yasal mercilere mevzuat sınırları içinde aktarılabilmektedir."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0092",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0093",
+									"text": "5. KVKK Madde 11 Kapsamındaki Haklarınız"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0094",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0095",
+									"text": "Kişisel veri sahipleri olarak; verilerinizin işlenip işlenmediğini öğrenme, düzeltilmesini talep etme, silinmesini veya yok edilmesini isteme haklarına sahipsiniz. Başvurularınızı kvkk@securedrive.org adresine iletebilirsiniz."
+								}
+							]
+						}
+					]
+				}
+			},
+			{
+				"id": "legal-mesafeli-satis-sozlesmesi",
+				"slug": "mesafeli-satis-sozlesmesi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Mesafeli Satış Sözleşmesi",
+					"kind": "legal",
+					"content": [
+						{
+							"_type": "block",
+							"_key": "k0096",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0097",
+									"text": "Madde 1 - Taraflar"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0098",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0099",
+									"text": "Hizmet Sağlayıcı:",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0100",
+									"text": " SecureDrive VIP Transfer Ltd. Şti. (Bundan sonra \"SecureDrive\" olarak anılacaktır.)"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0101",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0102",
+									"text": "Alıcı (Müşteri):",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0103",
+									"text": " Web sitesi veya mobil uygulama üzerinden rezervasyon oluşturan gerçek veya tüzel kişi."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0104",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0105",
+									"text": "Madde 2 - Sözleşmenin Konusu"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0106",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0107",
+									"text": "İşbu sözleşmenin konusu, Alıcı'nın SecureDrive'a ait dijital platformlar üzerinden elektronik ortamda siparişini/rezervasyonunu yaptığı aşağıda nitelikleri ve satış fiyatı belirtilen VIP karayolu yolcu taşıma ve karşılama hizmetinin sunulması, 6502 sayılı Tüketicinin Korunması Hakkında Kanun ve Mesafeli Sözleşmeler Yönetmeliği hükümleri gereğince tarafların hak ve yükümlülüklerinin saptanmasıdır."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0108",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0109",
+									"text": "Madde 3 - Hizmetin İfası ve Karşılama Kuralları"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0110",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0111",
+									"text": "3.1. SecureDrive, rezervasyon formunda belirtilen tarih, saat ve kalkış noktasında onaylanan araç kategorisine (VIP Vito / VIP Sprinter vb.) uygun donanımlı araç ve protokol kaptanını hazır bulunduracaktır."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0112",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0113",
+									"text": "3.2. Havalimanı karşılamalarında, uçuş rötarları uçuş numarası üzerinden takip edilir. İç hatlarda uçak teker koymasından itibaren 45 dakika, dış hatlarda 60 dakika ücretsiz bekleme hakkı mevcuttur. Belirtilen süreyi aşan ve yolcu kaynaklı beklemelerde saatlik ek bekleme tarifesi uygulanır."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0114",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0115",
+									"text": "3.3. Yolcunun rezervasyon saatinde kalkış adresinde bulunmaması ve ulaşılamaması durumunda şoför 30 dakika bekler; bu sürenin sonunda transfer 'No-Show' statüsüne geçerek ücret iadesi yapılmaz."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0116",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0117",
+									"text": "Madde 4 - Fiyatlandırma ve Ödeme"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0118",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0119",
+									"text": "4.1. Rezervasyon anında sistemde görüntülenen ve Alıcı tarafından onaylanan fiyat nihai olup; KDV, köprü/otoyol geçiş ücretleri, karşılama ve yakıt giderleri fiyata dahildir (ekstra ara durak ve güzergah değişiklikleri hariçtir)."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0120",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0121",
+									"text": "4.2. Ödemeler; kredi kartı, kurumsal cari hesap veya banka havalesi ile şirketimiz resmi hesaplarına yapılır."
+								}
+							]
+						}
+					]
+				}
+			},
+			{
+				"id": "legal-iptal-ve-iade",
+				"slug": "iptal-ve-iade",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İptal, İade ve Değişiklik Koşulları",
+					"kind": "legal",
+					"content": [
+						{
+							"_type": "block",
+							"_key": "k0122",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0123",
+									"text": "1. Ücretsiz İptal Süresi"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0124",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0125",
+									"text": "Transfer saatine "
+								},
+								{
+									"_type": "span",
+									"_key": "k0126",
+									"text": "12 saat veya daha fazla süre kala",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0127",
+									"text": " yapılan iptallerde, ödenen tutarın "
+								},
+								{
+									"_type": "span",
+									"_key": "k0128",
+									"text": "%100'ü kesintisiz olarak",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0129",
+									"text": " iade edilir."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0130",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0131",
+									"text": "İptal talebi web/mobil panel üzerinden tek tıkla veya 7/24 operasyon hattına bildirilerek gerçekleştirilebilir."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0132",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0133",
+									"text": "2. Geç İptal ve Kesinti Oranları"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0134",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0135",
+									"text": "Transfer saatine "
+								},
+								{
+									"_type": "span",
+									"_key": "k0136",
+									"text": "12 saatten az, 4 saatten fazla",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0137",
+									"text": " süre kala yapılan iptallerde toplam tutarın "
+								},
+								{
+									"_type": "span",
+									"_key": "k0138",
+									"text": "%50'si",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0139",
+									"text": " iade edilir."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0140",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0141",
+									"text": "Transfer saatine "
+								},
+								{
+									"_type": "span",
+									"_key": "k0142",
+									"text": "4 saatten daha az süre kala",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0143",
+									"text": " yapılan iptallerde veya aracın kalkış noktasına ulaştığı durumlarda araç tahsisi ve yakıt maliyetleri nedeniyle "
+								},
+								{
+									"_type": "span",
+									"_key": "k0144",
+									"text": "iade yapılamaz",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0145",
+									"text": "."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0146",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0147",
+									"text": "3. Rezervasyon Değişiklikleri"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0148",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0149",
+									"text": "Transfer tarihi, saati, uçuş numarası veya güzergah değişiklikleri transfer saatine en az "
+								},
+								{
+									"_type": "span",
+									"_key": "k0150",
+									"text": "4 saat kala",
+									"marks": [
+										"strong"
+									]
+								},
+								{
+									"_type": "span",
+									"_key": "k0151",
+									"text": " ücretsiz olarak müşteri paneli veya operasyon temsilcisi üzerinden yapılabilir."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0152",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0153",
+									"text": "Güzergah uzaması durumunda oluşan fiyat farkı tahsil edilir; kısalması durumunda fark iade edilir."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0154",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0155",
+									"text": "4. İade Süreci"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0156",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0157",
+									"text": "İptal onaylandıktan sonra kredi kartı ile yapılan ödemelerin iadesi bankanıza anında iletilir; bankanızın prosedürüne bağlı olarak 2-7 iş günü içinde kart ekstrenize yansır."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						},
+						{
+							"_type": "block",
+							"_key": "k0158",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0159",
+									"text": "Havale/EFT ile yapılan ödemeler aynı gün içinde bildirdiğiniz IBAN hesabına aktarılır."
+								}
+							],
+							"listItem": "bullet",
+							"level": 1
+						}
+					]
+				}
+			},
+			{
+				"id": "legal-gizlilik-politikasi",
+				"slug": "gizlilik-politikasi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Gizlilik ve Çerez Politikası",
+					"kind": "legal",
+					"content": [
+						{
+							"_type": "block",
+							"_key": "k0160",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0161",
+									"text": "1. Kapsam"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0162",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0163",
+									"text": "Bu politika, securedrive.org web sitesini ziyaret ettiğinizde ve formlarımız aracılığıyla bize ulaştığınızda kişisel verilerinizin nasıl işlendiğini açıklar. Kişisel verilerin işlenmesine ilişkin ayrıntılı bilgi KVKK Aydınlatma Metni'nde yer alır."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0164",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0165",
+									"text": "2. Formlar"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0166",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0167",
+									"text": "Transfer talebi, iletişim ve kurumsal başvuru formlarında paylaştığınız ad, telefon, e-posta ve yolculuk bilgileri yalnızca talebinizi yanıtlamak ve hizmeti sunmak için kullanılır; üçüncü kişilerle pazarlama amacıyla paylaşılmaz."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0168",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0169",
+									"text": "3. Çerezler"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0170",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0171",
+									"text": "Sitemiz yalnızca dil tercihinizi hatırlamak ve güvenliği sağlamak için zorunlu çerezler kullanır. Reklam veya izleme çerezi kullanılmaz."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0172",
+							"style": "h3",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0173",
+									"text": "4. İletişim"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0174",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0175",
+									"text": "Sorularınız için kvkk@securedrive.org adresine yazabilirsiniz."
+								}
+							]
+						}
+					]
+				}
+			}
+		],
+		"services": [
+			{
+				"id": "service-havalimani-transferi",
+				"slug": "havalimani-transferi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Havalimanı VIP Karşılama ve Transfer",
+					"badge": "Havalimanı",
+					"icon": "plane",
+					"summary": "İstanbul (IST) ve Sabiha Gökçen (SAW) havalimanlarında isim tabelasıyla karşılama, bagaj desteği ve VIP araçla varış noktanıza konforlu ulaşım.",
+					"features": [
+						{
+							"text": "Uçuş takibi; rötarda ek ücret yok"
+						},
+						{
+							"text": "60 dakika ücretsiz bekleme"
+						},
+						{
+							"text": "İsim tabelalı kapı karşılama ve bagaj desteği"
+						},
+						{
+							"text": "Köprü ve otoyol dahil sabit fiyat"
+						}
+					],
+					"cta_label": "Havalimanı transferi planla",
+					"order": 1
+				}
+			},
+			{
+				"id": "service-havalimani-transferi-en",
+				"slug": "havalimani-transferi",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"title": "Airport VIP Meet & Greet and Transfer",
+					"badge": "Airport",
+					"icon": "plane",
+					"summary": "Meet & greet with a name sign at Istanbul (IST) and Sabiha Gökçen (SAW) airports, luggage assistance and a comfortable VIP ride to your destination.",
+					"features": [
+						{
+							"text": "Flight tracking; no extra charge for delays"
+						},
+						{
+							"text": "60 minutes free waiting"
+						},
+						{
+							"text": "Name-sign welcome and luggage assistance"
+						},
+						{
+							"text": "Fixed price including bridges and tolls"
+						}
+					],
+					"cta_label": "Plan an airport transfer",
+					"order": 1
+				},
+				"translationOf": "service-havalimani-transferi"
+			},
+			{
+				"id": "service-havalimani-transferi-ar",
+				"slug": "havalimani-transferi",
+				"status": "published",
+				"locale": "ar",
+				"data": {
+					"title": "استقبال VIP في المطار ونقل خاص",
+					"badge": "المطار",
+					"icon": "plane",
+					"summary": "استقبال بلوحة باسمك في مطاري إسطنبول (IST) وصبيحة كوكجن (SAW)، ومساعدة في الأمتعة، ورحلة مريحة بسيارة VIP إلى وجهتك.",
+					"features": [
+						{
+							"text": "تتبع الرحلة دون رسوم إضافية عند التأخير"
+						},
+						{
+							"text": "60 دقيقة انتظار مجاناً"
+						},
+						{
+							"text": "استقبال بلوحة باسمك ومساعدة في الأمتعة"
+						},
+						{
+							"text": "سعر ثابت يشمل الجسور والطرق"
+						}
+					],
+					"cta_label": "خطّط لنقل من المطار",
+					"order": 1
+				},
+				"translationOf": "service-havalimani-transferi"
+			},
+			{
+				"id": "service-havalimani-transferi-ru",
+				"slug": "havalimani-transferi",
+				"status": "published",
+				"locale": "ru",
+				"data": {
+					"title": "VIP-встреча в аэропорту и трансфер",
+					"badge": "Аэропорт",
+					"icon": "plane",
+					"summary": "Встреча с табличкой в аэропортах Стамбула (IST) и Сабиха Гёкчен (SAW), помощь с багажом и комфортная поездка на VIP-автомобиле.",
+					"features": [
+						{
+							"text": "Отслеживание рейса без доплат за задержку"
+						},
+						{
+							"text": "60 минут ожидания бесплатно"
+						},
+						{
+							"text": "Встреча с табличкой и помощь с багажом"
+						},
+						{
+							"text": "Фиксированная цена с мостами и платными дорогами"
+						}
+					],
+					"cta_label": "Заказать трансфер из аэропорта",
+					"order": 1
+				},
+				"translationOf": "service-havalimani-transferi"
+			},
+			{
+				"id": "service-saatlik-sofor-tahsisi",
+				"slug": "saatlik-sofor-tahsisi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Saatlik ve Günlük Şoförlü Araç Tahsisi",
+					"badge": "Tahsis",
+					"icon": "clock",
+					"summary": "İş toplantıları, protokol ziyaretleri, alışveriş veya özel davetler için gün boyu emrinizde protokol şoförü ve VIP araç.",
+					"features": [
+						{
+							"text": "Esnek rota ve bekleme"
+						},
+						{
+							"text": "Wi-Fi ve mobil ofis düzeni"
+						},
+						{
+							"text": "Şehir içinde dilediğiniz güzergâh"
+						},
+						{
+							"text": "4, 8 veya 12 saatlik paketler"
+						}
+					],
+					"cta_label": "Tahsis talebi gönder",
+					"order": 2
+				}
+			},
+			{
+				"id": "service-saatlik-sofor-tahsisi-en",
+				"slug": "saatlik-sofor-tahsisi",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"title": "Hourly and Full-Day Chauffeur Hire",
+					"badge": "Chauffeur hire",
+					"icon": "clock",
+					"summary": "A protocol chauffeur and VIP vehicle at your disposal all day for meetings, official visits, shopping or private events.",
+					"features": [
+						{
+							"text": "Flexible route and waiting"
+						},
+						{
+							"text": "Wi-Fi and mobile office set-up"
+						},
+						{
+							"text": "Any route within the city"
+						},
+						{
+							"text": "4, 8 or 12-hour packages"
+						}
+					],
+					"cta_label": "Request chauffeur hire",
+					"order": 2
+				},
+				"translationOf": "service-saatlik-sofor-tahsisi"
+			},
+			{
+				"id": "service-saatlik-sofor-tahsisi-ar",
+				"slug": "saatlik-sofor-tahsisi",
+				"status": "published",
+				"locale": "ar",
+				"data": {
+					"title": "سيارة مع سائق بالساعة أو باليوم",
+					"badge": "تأجير مع سائق",
+					"icon": "clock",
+					"summary": "سائق محترف وسيارة VIP تحت تصرفك طوال اليوم للاجتماعات والزيارات الرسمية والتسوق والمناسبات الخاصة.",
+					"features": [
+						{
+							"text": "مسار وانتظار مرنان"
+						},
+						{
+							"text": "واي فاي ومكتب متنقل"
+						},
+						{
+							"text": "أي مسار داخل المدينة"
+						},
+						{
+							"text": "باقات 4 أو 8 أو 12 ساعة"
+						}
+					],
+					"cta_label": "اطلب سيارة مع سائق",
+					"order": 2
+				},
+				"translationOf": "service-saatlik-sofor-tahsisi"
+			},
+			{
+				"id": "service-saatlik-sofor-tahsisi-ru",
+				"slug": "saatlik-sofor-tahsisi",
+				"status": "published",
+				"locale": "ru",
+				"data": {
+					"title": "Аренда автомобиля с водителем на час или день",
+					"badge": "С водителем",
+					"icon": "clock",
+					"summary": "Водитель и VIP-автомобиль в вашем распоряжении на весь день: встречи, официальные визиты, шопинг или мероприятия.",
+					"features": [
+						{
+							"text": "Гибкий маршрут и ожидание"
+						},
+						{
+							"text": "Wi-Fi и мобильный офис"
+						},
+						{
+							"text": "Любые поездки по городу"
+						},
+						{
+							"text": "Пакеты на 4, 8 или 12 часов"
+						}
+					],
+					"cta_label": "Заказать авто с водителем",
+					"order": 2
+				},
+				"translationOf": "service-saatlik-sofor-tahsisi"
+			},
+			{
+				"id": "service-kurumsal-transfer",
+				"slug": "kurumsal-transfer",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Kurumsal ve Heyet Transferleri",
+					"badge": "Kurumsal",
+					"icon": "building",
+					"summary": "Şirket yöneticileri, iş ortakları, kongre ve diplomatik heyetler için D2 belgeli, TÜRSAB güvenceli filo yönetimi ve cari faturalandırma.",
+					"features": [
+						{
+							"text": "Aylık cari hesap ve toplu e-fatura"
+						},
+						{
+							"text": "Size özel operasyon yöneticisi"
+						},
+						{
+							"text": "Yabancı dil bilen protokol şoförleri"
+						},
+						{
+							"text": "Sözleşmeli sabit fiyat garantisi"
+						}
+					],
+					"cta_label": "Kurumsal başvuru yap",
+					"order": 3
+				}
+			},
+			{
+				"id": "service-kurumsal-transfer-en",
+				"slug": "kurumsal-transfer",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"title": "Corporate and Delegation Transfers",
+					"badge": "Corporate",
+					"icon": "building",
+					"summary": "Licensed fleet management and monthly invoicing for executives, business partners, congresses and diplomatic delegations.",
+					"features": [
+						{
+							"text": "Monthly account and consolidated e-invoicing"
+						},
+						{
+							"text": "Dedicated operations manager"
+						},
+						{
+							"text": "Multilingual protocol chauffeurs"
+						},
+						{
+							"text": "Contracted fixed prices"
+						}
+					],
+					"cta_label": "Apply for a corporate account",
+					"order": 3
+				},
+				"translationOf": "service-kurumsal-transfer"
+			},
+			{
+				"id": "service-sehirlerarasi-transfer",
+				"slug": "sehirlerarasi-transfer",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Şehirlerarası VIP Transfer",
+					"badge": "Şehirlerarası",
+					"icon": "route",
+					"summary": "İstanbul'dan Bursa, Sapanca, Ankara, İzmir, Çeşme, Bodrum ve tüm şehirlere kapıdan kapıya, aktarmasız VIP minivan yolculuğu.",
+					"features": [
+						{
+							"text": "Tüm otoyol ve köprü geçişleri dahil"
+						},
+						{
+							"text": "Kapıdan kapıya, aktarmasız"
+						},
+						{
+							"text": "Yatar koltuklar ve geniş bagaj"
+						},
+						{
+							"text": "Güzergâhta istediğiniz mola"
+						}
+					],
+					"cta_label": "Şehirlerarası fiyat al",
+					"order": 4
+				}
+			},
+			{
+				"id": "service-sehirlerarasi-transfer-en",
+				"slug": "sehirlerarasi-transfer",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"title": "Intercity VIP Transfers",
+					"badge": "Intercity",
+					"icon": "route",
+					"summary": "Door-to-door VIP minivan journeys from Istanbul to Bursa, Sapanca, Ankara, Izmir, Çeşme, Bodrum and every other city.",
+					"features": [
+						{
+							"text": "All motorway and bridge fees included"
+						},
+						{
+							"text": "Door to door, no changes"
+						},
+						{
+							"text": "Reclining seats and generous luggage space"
+						},
+						{
+							"text": "Stops wherever you like"
+						}
+					],
+					"cta_label": "Get an intercity price",
+					"order": 4
+				},
+				"translationOf": "service-sehirlerarasi-transfer"
+			},
+			{
+				"id": "service-protokol-transferi",
+				"slug": "protokol-transferi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Protokol ve Gizlilik Odaklı VIP Transfer",
+					"badge": "Protokol",
+					"icon": "shield",
+					"summary": "Bürokratlar, sanatçılar, diplomatlar ve üst düzey yöneticiler için gizlilik taahhütlü, deneyimli protokol şoförleriyle premium tahsis.",
+					"features": [
+						{
+							"text": "Gizlilik ilkelerine bağlı şoförler"
+						},
+						{
+							"text": "Ara bölmeli, karartmalı Mercedes Vito VIP"
+						},
+						{
+							"text": "VIP terminal ve CIP karşılama seçeneği"
+						},
+						{
+							"text": "7/24 özel operasyon desteği"
+						}
+					],
+					"cta_label": "Protokol transferi planla",
+					"order": 5
+				}
+			},
+			{
+				"id": "service-protokol-transferi-en",
+				"slug": "protokol-transferi",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"title": "Protocol and Discreet VIP Transfers",
+					"badge": "Protocol",
+					"icon": "shield",
+					"summary": "Premium, confidentiality-bound service with experienced protocol chauffeurs for officials, artists, diplomats and senior executives.",
+					"features": [
+						{
+							"text": "Chauffeurs bound by confidentiality"
+						},
+						{
+							"text": "Mercedes Vito VIP with privacy partition"
+						},
+						{
+							"text": "VIP terminal and CIP meeting options"
+						},
+						{
+							"text": "24/7 dedicated operations support"
+						}
+					],
+					"cta_label": "Plan a protocol transfer",
+					"order": 5
+				},
+				"translationOf": "service-protokol-transferi"
+			}
+		],
+		"vehicles": [
+			{
+				"id": "vehicle-mercedes-vito-vip",
+				"slug": "mercedes-vito-vip",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"name": "Mercedes-Benz Vito VIP",
+					"class_label": "VIP minivan",
+					"seats": 6,
+					"luggage": 6,
+					"engine": "2.0 L BiTurbo, 190 HP",
+					"transmission": "9G-Tronic otomatik",
+					"model_year": "2025/2026",
+					"summary": "1-6 kişi için yatar hakiki deri koltuklar, ambiyans aydınlatma, ara bölme ve ikram konsolu.",
+					"features": [
+						{
+							"text": "Hakiki deri yatar VIP koltuklar"
+						},
+						{
+							"text": "Smart TV ve Apple TV"
+						},
+						{
+							"text": "Elektrikli ara bölme"
+						},
+						{
+							"text": "Yüksek hızlı Wi-Fi"
+						},
+						{
+							"text": "Kahve ve minibar"
+						}
+					],
+					"fallback_image": "/images/fleet/vito-vip-studio.webp",
+					"order": 1
+				}
+			},
+			{
+				"id": "vehicle-mercedes-vito-vip-en",
+				"slug": "mercedes-vito-vip",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"name": "Mercedes-Benz Vito VIP",
+					"class_label": "VIP minivan",
+					"seats": 6,
+					"luggage": 6,
+					"engine": "2.0 L BiTurbo, 190 HP",
+					"transmission": "9G-Tronic automatic",
+					"model_year": "2025/2026",
+					"summary": "Reclining genuine leather seats, ambient lighting, a privacy partition and refreshments for 1-6 passengers.",
+					"features": [
+						{
+							"text": "Reclining leather VIP seats"
+						},
+						{
+							"text": "Smart TV with Apple TV"
+						},
+						{
+							"text": "Electric privacy partition"
+						},
+						{
+							"text": "High-speed Wi-Fi"
+						},
+						{
+							"text": "Coffee and minibar"
+						}
+					],
+					"fallback_image": "/images/fleet/vito-vip-studio.webp",
+					"order": 1
+				},
+				"translationOf": "vehicle-mercedes-vito-vip"
+			},
+			{
+				"id": "vehicle-mercedes-sprinter-vip",
+				"slug": "mercedes-sprinter-vip",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"name": "Mercedes-Benz Sprinter VIP",
+					"class_label": "VIP minibüs",
+					"seats": 14,
+					"luggage": 14,
+					"engine": "2.0 L CDI, 170 HP",
+					"transmission": "7G-Tronic otomatik",
+					"model_year": "2025",
+					"summary": "6-14 kişilik aileler ve kurumsal heyetler için yüksek tavan, bağımsız deri koltuklar ve geniş bagaj hacmi.",
+					"features": [
+						{
+							"text": "14 bağımsız deri koltuk"
+						},
+						{
+							"text": "Çift Smart TV"
+						},
+						{
+							"text": "Toplantı masası"
+						},
+						{
+							"text": "Genişletilmiş bagaj bölmesi"
+						}
+					],
+					"fallback_image": "/images/fleet/sprinter-vip.webp",
+					"order": 2
+				}
+			},
+			{
+				"id": "vehicle-mercedes-sprinter-vip-en",
+				"slug": "mercedes-sprinter-vip",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"name": "Mercedes-Benz Sprinter VIP",
+					"class_label": "VIP minibus",
+					"seats": 14,
+					"luggage": 14,
+					"engine": "2.0 L CDI, 170 HP",
+					"transmission": "7G-Tronic automatic",
+					"model_year": "2025",
+					"summary": "High ceilings, individual leather seats and extra luggage space for families and delegations of 6-14.",
+					"features": [
+						{
+							"text": "14 individual leather seats"
+						},
+						{
+							"text": "Twin Smart TVs"
+						},
+						{
+							"text": "Meeting table"
+						},
+						{
+							"text": "Extended luggage compartment"
+						}
+					],
+					"fallback_image": "/images/fleet/sprinter-vip.webp",
+					"order": 2
+				},
+				"translationOf": "vehicle-mercedes-sprinter-vip"
+			}
+		],
+		"routes": [
+			{
+				"id": "route-ist_arnavutkoy",
+				"slug": "ist-arnavutkoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Arnavutköy",
+					"origin": "IST",
+					"destination": "Arnavutköy",
+					"side": "Avrupa",
+					"distance_km": 15,
+					"duration_min": 20,
+					"vito_price_try": 1400,
+					"sprinter_price_try": 1900,
+					"badge": "Havalimanı Komşu",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_avcilar",
+				"slug": "ist-avcilar",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Avcılar",
+					"origin": "IST",
+					"destination": "Avcılar",
+					"side": "Avrupa",
+					"distance_km": 45,
+					"duration_min": 45,
+					"vito_price_try": 1850,
+					"sprinter_price_try": 2450,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_bagcilar",
+				"slug": "ist-bagcilar",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Bağcılar",
+					"origin": "IST",
+					"destination": "Bağcılar",
+					"side": "Avrupa",
+					"distance_km": 32,
+					"duration_min": 35,
+					"vito_price_try": 1650,
+					"sprinter_price_try": 2200,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_bahcelievler",
+				"slug": "ist-bahcelievler",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Bahçelievler",
+					"origin": "IST",
+					"destination": "Bahçelievler",
+					"side": "Avrupa",
+					"distance_km": 38,
+					"duration_min": 40,
+					"vito_price_try": 1700,
+					"sprinter_price_try": 2250,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_bakirkoy",
+				"slug": "ist-bakirkoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Bakırköy",
+					"origin": "IST",
+					"destination": "Bakırköy",
+					"side": "Avrupa",
+					"distance_km": 42,
+					"duration_min": 40,
+					"vito_price_try": 1800,
+					"sprinter_price_try": 2400,
+					"badge": "Sahil & Marina VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_basaksehir",
+				"slug": "ist-basaksehir",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Başakşehir",
+					"origin": "IST",
+					"destination": "Başakşehir",
+					"side": "Avrupa",
+					"distance_km": 25,
+					"duration_min": 28,
+					"vito_price_try": 1500,
+					"sprinter_price_try": 2000,
+					"badge": "Hızlı Transfer",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_bayrampasa",
+				"slug": "ist-bayrampasa",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Bayrampaşa",
+					"origin": "IST",
+					"destination": "Bayrampaşa",
+					"side": "Avrupa",
+					"distance_km": 34,
+					"duration_min": 35,
+					"vito_price_try": 1650,
+					"sprinter_price_try": 2200,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_besiktas",
+				"slug": "ist-besiktas",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Beşiktaş",
+					"origin": "IST",
+					"destination": "Beşiktaş",
+					"side": "Avrupa",
+					"distance_km": 40,
+					"duration_min": 45,
+					"vito_price_try": 1950,
+					"sprinter_price_try": 2600,
+					"badge": "En Popüler VIP",
+					"featured": true
+				}
+			},
+			{
+				"id": "route-ist_beylikduzu",
+				"slug": "ist-beylikduzu",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Beylikdüzü",
+					"origin": "IST",
+					"destination": "Beylikdüzü",
+					"side": "Avrupa",
+					"distance_km": 48,
+					"duration_min": 50,
+					"vito_price_try": 1900,
+					"sprinter_price_try": 2500,
+					"badge": "Fuar & Kongre VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_beyoglu",
+				"slug": "ist-beyoglu-taksim",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Beyoğlu (Taksim)",
+					"origin": "IST",
+					"destination": "Beyoğlu (Taksim)",
+					"side": "Avrupa",
+					"distance_km": 39,
+					"duration_min": 42,
+					"vito_price_try": 1900,
+					"sprinter_price_try": 2550,
+					"badge": "En Popüler VIP",
+					"featured": true
+				}
+			},
+			{
+				"id": "route-ist_buyukcekmece",
+				"slug": "ist-buyukcekmece",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Büyükçekmece",
+					"origin": "IST",
+					"destination": "Büyükçekmece",
+					"side": "Avrupa",
+					"distance_km": 52,
+					"duration_min": 50,
+					"vito_price_try": 2100,
+					"sprinter_price_try": 2800,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_catalca",
+				"slug": "ist-catalca",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Çatalca",
+					"origin": "IST",
+					"destination": "Çatalca",
+					"side": "Avrupa",
+					"distance_km": 40,
+					"duration_min": 40,
+					"vito_price_try": 1900,
+					"sprinter_price_try": 2500,
+					"badge": "Özel Transfer",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_esenler",
+				"slug": "ist-esenler",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Esenler",
+					"origin": "IST",
+					"destination": "Esenler",
+					"side": "Avrupa",
+					"distance_km": 33,
+					"duration_min": 35,
+					"vito_price_try": 1650,
+					"sprinter_price_try": 2200,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_esenyurt",
+				"slug": "ist-esenyurt",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Esenyurt",
+					"origin": "IST",
+					"destination": "Esenyurt",
+					"side": "Avrupa",
+					"distance_km": 44,
+					"duration_min": 45,
+					"vito_price_try": 1800,
+					"sprinter_price_try": 2400,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_eyupsultan",
+				"slug": "ist-eyupsultan-gokturk",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Eyüpsultan (Göktürk)",
+					"origin": "IST",
+					"destination": "Eyüpsultan (Göktürk)",
+					"side": "Avrupa",
+					"distance_km": 22,
+					"duration_min": 25,
+					"vito_price_try": 1500,
+					"sprinter_price_try": 2000,
+					"badge": "Göktürk VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_fatih",
+				"slug": "ist-fatih-sultanahmet",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Fatih (Sultanahmet)",
+					"origin": "IST",
+					"destination": "Fatih (Sultanahmet)",
+					"side": "Avrupa",
+					"distance_km": 44,
+					"duration_min": 48,
+					"vito_price_try": 1950,
+					"sprinter_price_try": 2600,
+					"badge": "Tarihi Yarımada VIP",
+					"featured": true
+				}
+			},
+			{
+				"id": "route-ist_gaziosmanpasa",
+				"slug": "ist-gaziosmanpasa",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Gaziosmanpaşa",
+					"origin": "IST",
+					"destination": "Gaziosmanpaşa",
+					"side": "Avrupa",
+					"distance_km": 30,
+					"duration_min": 32,
+					"vito_price_try": 1600,
+					"sprinter_price_try": 2150,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_gungoren",
+				"slug": "ist-gungoren",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Güngören",
+					"origin": "IST",
+					"destination": "Güngören",
+					"side": "Avrupa",
+					"distance_km": 36,
+					"duration_min": 38,
+					"vito_price_try": 1650,
+					"sprinter_price_try": 2200,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_kagithane",
+				"slug": "ist-kagithane-vadistanbul",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Kâğıthane (Vadistanbul)",
+					"origin": "IST",
+					"destination": "Kâğıthane (Vadistanbul)",
+					"side": "Avrupa",
+					"distance_km": 32,
+					"duration_min": 35,
+					"vito_price_try": 1750,
+					"sprinter_price_try": 2350,
+					"badge": "Vadistanbul VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_kucukcekmece",
+				"slug": "ist-kucukcekmece",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Küçükçekmece",
+					"origin": "IST",
+					"destination": "Küçükçekmece",
+					"side": "Avrupa",
+					"distance_km": 40,
+					"duration_min": 42,
+					"vito_price_try": 1750,
+					"sprinter_price_try": 2350,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_sariyer",
+				"slug": "ist-sariyer-maslak-tarabya",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Sarıyer (Maslak / Tarabya)",
+					"origin": "IST",
+					"destination": "Sarıyer (Maslak / Tarabya)",
+					"side": "Avrupa",
+					"distance_km": 36,
+					"duration_min": 40,
+					"vito_price_try": 1950,
+					"sprinter_price_try": 2600,
+					"badge": "Boğaz Hattı VIP",
+					"featured": true
+				}
+			},
+			{
+				"id": "route-ist_silivri",
+				"slug": "ist-silivri",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Silivri",
+					"origin": "IST",
+					"destination": "Silivri",
+					"side": "Avrupa",
+					"distance_km": 68,
+					"duration_min": 60,
+					"vito_price_try": 2600,
+					"sprinter_price_try": 3400,
+					"badge": "Şehir Dışı VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_sultangazi",
+				"slug": "ist-sultangazi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Sultangazi",
+					"origin": "IST",
+					"destination": "Sultangazi",
+					"side": "Avrupa",
+					"distance_km": 26,
+					"duration_min": 28,
+					"vito_price_try": 1550,
+					"sprinter_price_try": 2050,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_sisli",
+				"slug": "ist-sisli-nisantasi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Şişli (Nişantaşı)",
+					"origin": "IST",
+					"destination": "Şişli (Nişantaşı)",
+					"side": "Avrupa",
+					"distance_km": 38,
+					"duration_min": 42,
+					"vito_price_try": 1900,
+					"sprinter_price_try": 2550,
+					"badge": "Nişantaşı VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_zeytinburnu",
+				"slug": "ist-zeytinburnu",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Zeytinburnu",
+					"origin": "IST",
+					"destination": "Zeytinburnu",
+					"side": "Avrupa",
+					"distance_km": 42,
+					"duration_min": 42,
+					"vito_price_try": 1750,
+					"sprinter_price_try": 2350,
+					"badge": "Sahil VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_atasehir",
+				"slug": "ist-atasehir",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Ataşehir",
+					"origin": "IST",
+					"destination": "Ataşehir",
+					"side": "Anadolu",
+					"distance_km": 55,
+					"duration_min": 55,
+					"vito_price_try": 2300,
+					"sprinter_price_try": 3050,
+					"badge": "Finans Merkezi VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_beykoz",
+				"slug": "ist-beykoz",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Beykoz",
+					"origin": "IST",
+					"destination": "Beykoz",
+					"side": "Anadolu",
+					"distance_km": 46,
+					"duration_min": 48,
+					"vito_price_try": 2200,
+					"sprinter_price_try": 2900,
+					"badge": "Boğaz VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_cekmekoy",
+				"slug": "ist-cekmekoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Çekmeköy",
+					"origin": "IST",
+					"destination": "Çekmeköy",
+					"side": "Anadolu",
+					"distance_km": 58,
+					"duration_min": 55,
+					"vito_price_try": 2400,
+					"sprinter_price_try": 3150,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_kadikoy",
+				"slug": "ist-kadikoy-moda-bagdat-cad",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Kadıköy (Moda / Bağdat Cad.)",
+					"origin": "IST",
+					"destination": "Kadıköy (Moda / Bağdat Cad.)",
+					"side": "Anadolu",
+					"distance_km": 52,
+					"duration_min": 55,
+					"vito_price_try": 2250,
+					"sprinter_price_try": 3000,
+					"badge": "En Popüler VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_kartal",
+				"slug": "ist-kartal",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Kartal",
+					"origin": "IST",
+					"destination": "Kartal",
+					"side": "Anadolu",
+					"distance_km": 65,
+					"duration_min": 65,
+					"vito_price_try": 2550,
+					"sprinter_price_try": 3350,
+					"badge": "Sahil VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_maltepe",
+				"slug": "ist-maltepe",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Maltepe",
+					"origin": "IST",
+					"destination": "Maltepe",
+					"side": "Anadolu",
+					"distance_km": 60,
+					"duration_min": 60,
+					"vito_price_try": 2450,
+					"sprinter_price_try": 3200,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_pendik",
+				"slug": "ist-pendik-marina-kurtkoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Pendik (Marina / Kurtköy)",
+					"origin": "IST",
+					"destination": "Pendik (Marina / Kurtköy)",
+					"side": "Anadolu",
+					"distance_km": 72,
+					"duration_min": 70,
+					"vito_price_try": 2700,
+					"sprinter_price_try": 3550,
+					"badge": "Marina VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_sancaktepe",
+				"slug": "ist-sancaktepe",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Sancaktepe",
+					"origin": "IST",
+					"destination": "Sancaktepe",
+					"side": "Anadolu",
+					"distance_km": 62,
+					"duration_min": 60,
+					"vito_price_try": 2500,
+					"sprinter_price_try": 3250,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_sultanbeyli",
+				"slug": "ist-sultanbeyli",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Sultanbeyli",
+					"origin": "IST",
+					"destination": "Sultanbeyli",
+					"side": "Anadolu",
+					"distance_km": 68,
+					"duration_min": 65,
+					"vito_price_try": 2650,
+					"sprinter_price_try": 3450,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_sile",
+				"slug": "ist-sile",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Şile",
+					"origin": "IST",
+					"destination": "Şile",
+					"side": "Anadolu",
+					"distance_km": 85,
+					"duration_min": 80,
+					"vito_price_try": 3200,
+					"sprinter_price_try": 4200,
+					"badge": "Tatil VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_tuzla",
+				"slug": "ist-tuzla-marina-viaport",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Tuzla (Marina / Viaport)",
+					"origin": "IST",
+					"destination": "Tuzla (Marina / Viaport)",
+					"side": "Anadolu",
+					"distance_km": 78,
+					"duration_min": 75,
+					"vito_price_try": 2850,
+					"sprinter_price_try": 3750,
+					"badge": "Viaport & Marina",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_umraniye",
+				"slug": "ist-umraniye",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Ümraniye",
+					"origin": "IST",
+					"destination": "Ümraniye",
+					"side": "Anadolu",
+					"distance_km": 52,
+					"duration_min": 50,
+					"vito_price_try": 2200,
+					"sprinter_price_try": 2900,
+					"badge": "İş Merkezi VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-ist_uskudar",
+				"slug": "ist-uskudar-camlica-kuzguncuk",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı → Üsküdar (Çamlıca / Kuzguncuk)",
+					"origin": "IST",
+					"destination": "Üsküdar (Çamlıca / Kuzguncuk)",
+					"side": "Anadolu",
+					"distance_km": 48,
+					"duration_min": 50,
+					"vito_price_try": 2150,
+					"sprinter_price_try": 2850,
+					"badge": "Boğaz VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_pendik",
+				"slug": "saw-pendik-marina-kurtkoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Pendik (Marina / Kurtköy)",
+					"origin": "SAW",
+					"destination": "Pendik (Marina / Kurtköy)",
+					"side": "Anadolu",
+					"distance_km": 10,
+					"duration_min": 15,
+					"vito_price_try": 1200,
+					"sprinter_price_try": 1650,
+					"badge": "Havalimanı Komşu",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_tuzla",
+				"slug": "saw-tuzla-marina-viaport",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Tuzla (Marina / Viaport)",
+					"origin": "SAW",
+					"destination": "Tuzla (Marina / Viaport)",
+					"side": "Anadolu",
+					"distance_km": 14,
+					"duration_min": 18,
+					"vito_price_try": 1250,
+					"sprinter_price_try": 1700,
+					"badge": "Marina & Viaport",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_kartal",
+				"slug": "saw-kartal",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Kartal",
+					"origin": "SAW",
+					"destination": "Kartal",
+					"side": "Anadolu",
+					"distance_km": 16,
+					"duration_min": 20,
+					"vito_price_try": 1300,
+					"sprinter_price_try": 1750,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_sultanbeyli",
+				"slug": "saw-sultanbeyli",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Sultanbeyli",
+					"origin": "SAW",
+					"destination": "Sultanbeyli",
+					"side": "Anadolu",
+					"distance_km": 14,
+					"duration_min": 18,
+					"vito_price_try": 1250,
+					"sprinter_price_try": 1700,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_sancaktepe",
+				"slug": "saw-sancaktepe",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Sancaktepe",
+					"origin": "SAW",
+					"destination": "Sancaktepe",
+					"side": "Anadolu",
+					"distance_km": 16,
+					"duration_min": 20,
+					"vito_price_try": 1300,
+					"sprinter_price_try": 1750,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_maltepe",
+				"slug": "saw-maltepe",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Maltepe",
+					"origin": "SAW",
+					"destination": "Maltepe",
+					"side": "Anadolu",
+					"distance_km": 22,
+					"duration_min": 25,
+					"vito_price_try": 1400,
+					"sprinter_price_try": 1900,
+					"badge": "Sahil Yolu",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_atasehir",
+				"slug": "saw-atasehir",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Ataşehir",
+					"origin": "SAW",
+					"destination": "Ataşehir",
+					"side": "Anadolu",
+					"distance_km": 25,
+					"duration_min": 28,
+					"vito_price_try": 1450,
+					"sprinter_price_try": 1950,
+					"badge": "Finans Merkezi",
+					"featured": true
+				}
+			},
+			{
+				"id": "route-saw_cekmekoy",
+				"slug": "saw-cekmekoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Çekmeköy",
+					"origin": "SAW",
+					"destination": "Çekmeköy",
+					"side": "Anadolu",
+					"distance_km": 26,
+					"duration_min": 30,
+					"vito_price_try": 1500,
+					"sprinter_price_try": 2000,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_umraniye",
+				"slug": "saw-umraniye",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Ümraniye",
+					"origin": "SAW",
+					"destination": "Ümraniye",
+					"side": "Anadolu",
+					"distance_km": 28,
+					"duration_min": 32,
+					"vito_price_try": 1550,
+					"sprinter_price_try": 2100,
+					"badge": "İş Merkezi VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_kadikoy",
+				"slug": "saw-kadikoy-moda-bagdat-cad",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Kadıköy (Moda / Bağdat Cad.)",
+					"origin": "SAW",
+					"destination": "Kadıköy (Moda / Bağdat Cad.)",
+					"side": "Anadolu",
+					"distance_km": 32,
+					"duration_min": 35,
+					"vito_price_try": 1600,
+					"sprinter_price_try": 2200,
+					"badge": "Moda & Sahil",
+					"featured": true
+				}
+			},
+			{
+				"id": "route-saw_uskudar",
+				"slug": "saw-uskudar-camlica-kuzguncuk",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Üsküdar (Çamlıca / Kuzguncuk)",
+					"origin": "SAW",
+					"destination": "Üsküdar (Çamlıca / Kuzguncuk)",
+					"side": "Anadolu",
+					"distance_km": 34,
+					"duration_min": 38,
+					"vito_price_try": 1650,
+					"sprinter_price_try": 2250,
+					"badge": "Boğaz VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_beykoz",
+				"slug": "saw-beykoz",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Beykoz",
+					"origin": "SAW",
+					"destination": "Beykoz",
+					"side": "Anadolu",
+					"distance_km": 40,
+					"duration_min": 42,
+					"vito_price_try": 1750,
+					"sprinter_price_try": 2350,
+					"badge": "Boğaz VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_sile",
+				"slug": "saw-sile",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Şile",
+					"origin": "SAW",
+					"destination": "Şile",
+					"side": "Anadolu",
+					"distance_km": 62,
+					"duration_min": 55,
+					"vito_price_try": 2150,
+					"sprinter_price_try": 2850,
+					"badge": "Tatil VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_adalar",
+				"slug": "saw-adalar-bostanci-iskele",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Adalar (Bostancı İskele)",
+					"origin": "SAW",
+					"destination": "Adalar (Bostancı İskele)",
+					"side": "Anadolu",
+					"distance_km": 28,
+					"duration_min": 30,
+					"vito_price_try": 1500,
+					"sprinter_price_try": 2050,
+					"badge": "İskele VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_besiktas",
+				"slug": "saw-besiktas",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Beşiktaş",
+					"origin": "SAW",
+					"destination": "Beşiktaş",
+					"side": "Avrupa",
+					"distance_km": 42,
+					"duration_min": 48,
+					"vito_price_try": 1900,
+					"sprinter_price_try": 2550,
+					"badge": "Boğaz & Lüks Oteller",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_beyoglu",
+				"slug": "saw-beyoglu-taksim-galata",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Beyoğlu (Taksim / Galata)",
+					"origin": "SAW",
+					"destination": "Beyoğlu (Taksim / Galata)",
+					"side": "Avrupa",
+					"distance_km": 44,
+					"duration_min": 50,
+					"vito_price_try": 1900,
+					"sprinter_price_try": 2550,
+					"badge": "Taksim VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_sisli",
+				"slug": "saw-sisli-nisantasi-bomonti",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Şişli (Nişantaşı / Bomonti)",
+					"origin": "SAW",
+					"destination": "Şişli (Nişantaşı / Bomonti)",
+					"side": "Avrupa",
+					"distance_km": 43,
+					"duration_min": 48,
+					"vito_price_try": 1900,
+					"sprinter_price_try": 2550,
+					"badge": "Nişantaşı VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_fatih",
+				"slug": "saw-fatih-sultanahmet",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Fatih (Sultanahmet)",
+					"origin": "SAW",
+					"destination": "Fatih (Sultanahmet)",
+					"side": "Avrupa",
+					"distance_km": 46,
+					"duration_min": 52,
+					"vito_price_try": 1950,
+					"sprinter_price_try": 2600,
+					"badge": "Tarihi Yarımada",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_sariyer",
+				"slug": "saw-sariyer-maslak-tarabya",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Sarıyer (Maslak / Tarabya)",
+					"origin": "SAW",
+					"destination": "Sarıyer (Maslak / Tarabya)",
+					"side": "Avrupa",
+					"distance_km": 50,
+					"duration_min": 52,
+					"vito_price_try": 2100,
+					"sprinter_price_try": 2800,
+					"badge": "Maslak VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_kagithane",
+				"slug": "saw-kagithane-vadi-istanbul",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Kağıthane (Vadi İstanbul)",
+					"origin": "SAW",
+					"destination": "Kağıthane (Vadi İstanbul)",
+					"side": "Avrupa",
+					"distance_km": 45,
+					"duration_min": 48,
+					"vito_price_try": 1950,
+					"sprinter_price_try": 2600,
+					"badge": "Vadi İstanbul",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_eyupsultan",
+				"slug": "saw-eyupsultan-gokturk-kemerburgaz",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Eyüpsultan (Göktürk / Kemerburgaz)",
+					"origin": "SAW",
+					"destination": "Eyüpsultan (Göktürk / Kemerburgaz)",
+					"side": "Avrupa",
+					"distance_km": 52,
+					"duration_min": 55,
+					"vito_price_try": 2100,
+					"sprinter_price_try": 2800,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_zeytinburnu",
+				"slug": "saw-zeytinburnu",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Zeytinburnu",
+					"origin": "SAW",
+					"destination": "Zeytinburnu",
+					"side": "Avrupa",
+					"distance_km": 50,
+					"duration_min": 54,
+					"vito_price_try": 2050,
+					"sprinter_price_try": 2750,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_bakirkoy",
+				"slug": "saw-bakirkoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Bakırköy",
+					"origin": "SAW",
+					"destination": "Bakırköy",
+					"side": "Avrupa",
+					"distance_km": 54,
+					"duration_min": 58,
+					"vito_price_try": 2150,
+					"sprinter_price_try": 2850,
+					"badge": "Marina & Sahil",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_gungoren",
+				"slug": "saw-gungoren",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Güngören",
+					"origin": "SAW",
+					"destination": "Güngören",
+					"side": "Avrupa",
+					"distance_km": 52,
+					"duration_min": 56,
+					"vito_price_try": 2100,
+					"sprinter_price_try": 2800,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_bahcelievler",
+				"slug": "saw-bahcelievler",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Bahçelievler",
+					"origin": "SAW",
+					"destination": "Bahçelievler",
+					"side": "Avrupa",
+					"distance_km": 54,
+					"duration_min": 58,
+					"vito_price_try": 2150,
+					"sprinter_price_try": 2850,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_bagcilar",
+				"slug": "saw-bagcilar",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Bağcılar",
+					"origin": "SAW",
+					"destination": "Bağcılar",
+					"side": "Avrupa",
+					"distance_km": 54,
+					"duration_min": 58,
+					"vito_price_try": 2150,
+					"sprinter_price_try": 2850,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_bayrampasa",
+				"slug": "saw-bayrampasa",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Bayrampaşa",
+					"origin": "SAW",
+					"destination": "Bayrampaşa",
+					"side": "Avrupa",
+					"distance_km": 50,
+					"duration_min": 54,
+					"vito_price_try": 2050,
+					"sprinter_price_try": 2750,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_gaziosmanpasa",
+				"slug": "saw-gaziosmanpasa",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Gaziosmanpaşa",
+					"origin": "SAW",
+					"destination": "Gaziosmanpaşa",
+					"side": "Avrupa",
+					"distance_km": 50,
+					"duration_min": 54,
+					"vito_price_try": 2050,
+					"sprinter_price_try": 2750,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_esenler",
+				"slug": "saw-esenler",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Esenler",
+					"origin": "SAW",
+					"destination": "Esenler",
+					"side": "Avrupa",
+					"distance_km": 52,
+					"duration_min": 56,
+					"vito_price_try": 2100,
+					"sprinter_price_try": 2800,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_sultangazi",
+				"slug": "saw-sultangazi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Sultangazi",
+					"origin": "SAW",
+					"destination": "Sultangazi",
+					"side": "Avrupa",
+					"distance_km": 55,
+					"duration_min": 58,
+					"vito_price_try": 2150,
+					"sprinter_price_try": 2850,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_kucukcekmece",
+				"slug": "saw-kucukcekmece",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Küçükçekmece",
+					"origin": "SAW",
+					"destination": "Küçükçekmece",
+					"side": "Avrupa",
+					"distance_km": 62,
+					"duration_min": 65,
+					"vito_price_try": 2300,
+					"sprinter_price_try": 3100,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_avcilar",
+				"slug": "saw-avcilar",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Avcılar",
+					"origin": "SAW",
+					"destination": "Avcılar",
+					"side": "Avrupa",
+					"distance_km": 66,
+					"duration_min": 70,
+					"vito_price_try": 2400,
+					"sprinter_price_try": 3250,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_basaksehir",
+				"slug": "saw-basaksehir",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Başakşehir",
+					"origin": "SAW",
+					"destination": "Başakşehir",
+					"side": "Avrupa",
+					"distance_km": 62,
+					"duration_min": 65,
+					"vito_price_try": 2300,
+					"sprinter_price_try": 3100,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_arnavutkoy",
+				"slug": "saw-arnavutkoy",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Arnavutköy",
+					"origin": "SAW",
+					"destination": "Arnavutköy",
+					"side": "Avrupa",
+					"distance_km": 76,
+					"duration_min": 78,
+					"vito_price_try": 2650,
+					"sprinter_price_try": 3550,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_beylikduzu",
+				"slug": "saw-beylikduzu",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Beylikdüzü",
+					"origin": "SAW",
+					"destination": "Beylikdüzü",
+					"side": "Avrupa",
+					"distance_km": 76,
+					"duration_min": 80,
+					"vito_price_try": 2650,
+					"sprinter_price_try": 3550,
+					"badge": "Tüyap VIP",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_esenyurt",
+				"slug": "saw-esenyurt",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Esenyurt",
+					"origin": "SAW",
+					"destination": "Esenyurt",
+					"side": "Avrupa",
+					"distance_km": 74,
+					"duration_min": 78,
+					"vito_price_try": 2600,
+					"sprinter_price_try": 3500,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_buyukcekmece",
+				"slug": "saw-buyukcekmece",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Büyükçekmece",
+					"origin": "SAW",
+					"destination": "Büyükçekmece",
+					"side": "Avrupa",
+					"distance_km": 84,
+					"duration_min": 85,
+					"vito_price_try": 2850,
+					"sprinter_price_try": 3800,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_catalca",
+				"slug": "saw-catalca",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Çatalca",
+					"origin": "SAW",
+					"destination": "Çatalca",
+					"side": "Avrupa",
+					"distance_km": 102,
+					"duration_min": 95,
+					"vito_price_try": 3250,
+					"sprinter_price_try": 4350,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			},
+			{
+				"id": "route-saw_silivri",
+				"slug": "saw-silivri",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "Sabiha Gökçen → Silivri",
+					"origin": "SAW",
+					"destination": "Silivri",
+					"side": "Avrupa",
+					"distance_km": 112,
+					"duration_min": 105,
+					"vito_price_try": 3450,
+					"sprinter_price_try": 4600,
+					"badge": "Sabit Fiyat",
+					"featured": false
+				}
+			}
+		],
+		"faqs": [
+			{
+				"id": "faq-ucak-rotar",
+				"slug": "ucak-rotar",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Uçağım rötar yaparsa şoförüm beni bekler mi?",
+					"answer": "Evet. Rezervasyonda verdiğiniz uçuş numarasını canlı takip ederiz. Uçağınız gecikse bile şoförünüz iniş saatinize göre kapıda olur ve dış hatlarda 60 dakikaya kadar ücretsiz bekler.",
+					"category": "airport",
+					"featured": true,
+					"order": 1
+				}
+			},
+			{
+				"id": "faq-ucak-rotar-en",
+				"slug": "ucak-rotar",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "Will my chauffeur wait if my flight is delayed?",
+					"answer": "Yes. We track the flight number you give us live. Even if your flight is late, your chauffeur is at the exit when you land and waits up to 60 minutes free of charge for international arrivals.",
+					"category": "airport",
+					"featured": true,
+					"order": 1
+				},
+				"translationOf": "faq-ucak-rotar"
+			},
+			{
+				"id": "faq-fiyata-dahil",
+				"slug": "fiyata-dahil",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Fiyatlara köprü, otoyol ve otopark ücretleri dahil mi?",
+					"answer": "Evet. Size ilettiğimiz fiyat her şey dahil sabit fiyattır. Köprü, Avrasya Tüneli, otoyol veya havalimanı otoparkı için yolculuk sonunda ek ücret talep edilmez.",
+					"category": "payment",
+					"featured": true,
+					"order": 2
+				}
+			},
+			{
+				"id": "faq-fiyata-dahil-en",
+				"slug": "fiyata-dahil",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "Are bridge, motorway and parking fees included?",
+					"answer": "Yes. The price we quote is an all-inclusive fixed price. You are never charged extra for bridges, the Eurasia Tunnel, motorways or airport parking.",
+					"category": "payment",
+					"featured": true,
+					"order": 2
+				},
+				"translationOf": "faq-fiyata-dahil"
+			},
+			{
+				"id": "faq-karsilama-nerede",
+				"slug": "karsilama-nerede",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Havalimanında şoförümü nerede bulacağım?",
+					"answer": "Şoförünüz dış hatlar gelen yolcu çıkışında adınızın yazılı olduğu tabelayla bekler. Ayrıca iniş öncesinde şoförünüzün adı ve telefonu size SMS veya WhatsApp ile iletilir.",
+					"category": "airport",
+					"featured": true,
+					"order": 3
+				}
+			},
+			{
+				"id": "faq-karsilama-nerede-en",
+				"slug": "karsilama-nerede",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "Where will I meet my chauffeur at the airport?",
+					"answer": "Your chauffeur waits at the international arrivals exit holding a sign with your name. Before you land we also send you the chauffeur's name and phone number by SMS or WhatsApp.",
+					"category": "airport",
+					"featured": true,
+					"order": 3
+				},
+				"translationOf": "faq-karsilama-nerede"
+			},
+			{
+				"id": "faq-iptal",
+				"slug": "iptal",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Rezervasyonumu iptal edebilir veya değiştirebilir miyim?",
+					"answer": "Transfer saatinden en az 12 saat önce yapılan iptallerde ödemenin tamamı iade edilir. Tarih, saat veya uçuş değişikliklerini en geç 4 saat öncesine kadar ücretsiz yapabilirsiniz. Ayrıntılar İptal ve İade Koşulları sayfasındadır.",
+					"category": "booking",
+					"featured": true,
+					"order": 4
+				}
+			},
+			{
+				"id": "faq-iptal-en",
+				"slug": "iptal",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "Can I cancel or change my booking?",
+					"answer": "Cancellations made at least 12 hours before pickup are refunded in full. You can change the date, time or flight free of charge up to 4 hours before pickup. See our Cancellation and Refund Policy for details.",
+					"category": "booking",
+					"featured": true,
+					"order": 4
+				},
+				"translationOf": "faq-iptal"
+			},
+			{
+				"id": "faq-bebek-koltugu",
+				"slug": "bebek-koltugu",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Bebek koltuğu ekleyebilir miyim?",
+					"answer": "Evet. Talep formundaki not alanına çocuğunuzun yaşını yazmanız yeterli; ECE R44 ve i-Size standartlarına uygun Isofix koltuk aracınıza takılı olarak gelir.",
+					"category": "booking",
+					"featured": false,
+					"order": 5
+				}
+			},
+			{
+				"id": "faq-bebek-koltugu-en",
+				"slug": "bebek-koltugu",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "Can I add a child seat?",
+					"answer": "Yes. Just add your child's age in the notes field. An ECE R44 / i-Size compliant Isofix seat will be fitted before pickup.",
+					"category": "booking",
+					"featured": false,
+					"order": 5
+				},
+				"translationOf": "faq-bebek-koltugu"
+			},
+			{
+				"id": "faq-odeme",
+				"slug": "odeme",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Ödemeyi nasıl yapabilirim?",
+					"answer": "Kredi kartı, banka havalesi veya kurumsal müşterilerimiz için aylık cari hesap ile ödeme yapabilirsiniz. Ödeme yöntemi rezervasyon onayında size iletilir.",
+					"category": "payment",
+					"featured": false,
+					"order": 6
+				}
+			},
+			{
+				"id": "faq-odeme-en",
+				"slug": "odeme",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "How can I pay?",
+					"answer": "You can pay by credit card, bank transfer or, for corporate clients, on a monthly account. Payment options are included in your booking confirmation.",
+					"category": "payment",
+					"featured": false,
+					"order": 6
+				},
+				"translationOf": "faq-odeme"
+			},
+			{
+				"id": "faq-kurumsal",
+				"slug": "kurumsal",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Şirketimiz için cari hesap açabilir miyiz?",
+					"answer": "Evet. Kurumsal başvuru formunu doldurduğunuzda müşteri temsilcimiz sizinle iletişime geçer; aylık toplu e-fatura ve sözleşmeli sabit fiyatlarla çalışabiliriz.",
+					"category": "corporate",
+					"featured": false,
+					"order": 7
+				}
+			},
+			{
+				"id": "faq-kurumsal-en",
+				"slug": "kurumsal",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "Can our company open a corporate account?",
+					"answer": "Yes. Fill in the corporate application form and our account manager will contact you. We work with monthly consolidated e-invoicing and contracted fixed prices.",
+					"category": "corporate",
+					"featured": false,
+					"order": 7
+				},
+				"translationOf": "faq-kurumsal"
+			},
+			{
+				"id": "faq-dil",
+				"slug": "dil",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"question": "Şoförler yabancı dil biliyor mu?",
+					"answer": "İngilizce, Arapça veya Rusça konuşan şoför talep edebilirsiniz. 7/24 operasyon masamız da bu dillerde destek verir.",
+					"category": "general",
+					"featured": false,
+					"order": 8
+				}
+			},
+			{
+				"id": "faq-dil-en",
+				"slug": "dil",
+				"status": "published",
+				"locale": "en",
+				"data": {
+					"question": "Do the chauffeurs speak foreign languages?",
+					"answer": "You can request an English, Arabic or Russian-speaking chauffeur. Our 24/7 operations desk also supports these languages.",
+					"category": "general",
+					"featured": false,
+					"order": 8
+				},
+				"translationOf": "faq-dil"
+			}
+		],
+		"posts": [
+			{
+				"id": "post-ist-saw",
+				"slug": "istanbul-havalimani-mi-sabiha-gokcen-mi",
+				"status": "published",
+				"locale": "tr",
+				"data": {
+					"title": "İstanbul Havalimanı mı, Sabiha Gökçen mi? Şehre ulaşım rehberi",
+					"excerpt": "İki havalimanından şehir merkezine süreler, mesafeler ve transfer seçenekleri.",
+					"content": [
+						{
+							"_type": "block",
+							"_key": "k0176",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0177",
+									"text": "İstanbul'a iki büyük havalimanından ulaşılır: Avrupa yakasındaki İstanbul Havalimanı (IST) ve Anadolu yakasındaki Sabiha Gökçen (SAW). Hangi havalimanına ineceğiniz, şehirdeki varış noktanıza göre yolculuk sürenizi önemli ölçüde değiştirir."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0178",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0179",
+									"text": "İstanbul Havalimanı (IST)"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0180",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0181",
+									"text": "Taksim, Beşiktaş ve Sultanahmet gibi Avrupa yakası merkezlerine trafiğe bağlı olarak 40-60 dakikada ulaşılır. Boğaz kıyısındaki oteller için en kısa seçenektir."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0182",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0183",
+									"text": "Sabiha Gökçen (SAW)"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0184",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0185",
+									"text": "Kadıköy, Ataşehir ve Üsküdar gibi Anadolu yakası semtlerine 30-45 dakikada ulaşılır. Avrupa yakasına geçişte köprü trafiği süreyi uzatabilir."
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0186",
+							"style": "h2",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0187",
+									"text": "Hangisini seçmeli?"
+								}
+							]
+						},
+						{
+							"_type": "block",
+							"_key": "k0188",
+							"style": "normal",
+							"markDefs": [],
+							"children": [
+								{
+									"_type": "span",
+									"_key": "k0189",
+									"text": "Konaklayacağınız yer Avrupa yakasındaysa IST, Anadolu yakasındaysa SAW genellikle daha pratiktir. Hangi havalimanını seçerseniz seçin, SecureDrive transferlerinde köprü ve otoyol ücretleri fiyata dahildir ve uçuşunuz canlı takip edilir."
+								}
+							]
+						}
+					]
+				},
+				"taxonomies": {
+					"category": [
+						"rehber"
+					]
+				}
+			}
+		]
+	}
+}

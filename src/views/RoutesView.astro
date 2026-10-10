@@ -1,0 +1,146 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import RouteCard from "../components/sections/RouteCard.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { getLocalized, slugOf } from "../lib/content";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const routes = await getLocalized(Astro, "routes", locale);
+const collator = new Intl.Collator(locale);
+const groups = (["IST", "SAW"] as const).map((code) => ({
+	code,
+	title: t(code === "IST" ? "routes.ist" : "routes.saw"),
+	routes: routes.filter((r) => r.data.origin === code).sort((a, b) => collator.compare(a.data.destination, b.data.destination)),
+}));
+---
+
+<Base locale={locale} path={PAGE_SLUGS.routes} title={t("nav.routes")} description={t("section.routesLead")}>
+	<PageHero locale={locale} title={t("nav.routes")} lead={t("section.routesLead")} eyebrow="IST · SAW">
+		<div class="route-search">
+			<Icon name="pin" size={20} />
+			<label class="visually-hidden" for="route-q">{t("routes.search")}</label>
+			<input id="route-q" type="search" placeholder={t("routes.search")} autocomplete="off" />
+		</div>
+	</PageHero>
+
+	<section class="section">
+		<div class="container">
+			<p class="price-note">{t("routes.priceNote")}</p>
+			{
+				groups.map((g) =>
+					g.routes.length > 0 && (
+						<section class="route-group" data-route-group>
+							<h2 class="group-title">
+								<Icon name="plane" size={22} />
+								{g.title}
+								<span class="badge">{g.routes.length}</span>
+							</h2>
+							<div class="grid grid--3">
+								{g.routes.map((r) => (
+									<div data-route={`${r.data.destination} ${r.data.side ?? ""}`.toLocaleLowerCase(locale)}>
+										<RouteCard
+											locale={locale}
+											href={pagePath(locale, "routes", slugOf(r))}
+											origin={r.data.origin}
+											destination={r.data.destination}
+											distanceKm={r.data.distance_km}
+											durationMin={r.data.duration_min}
+											price={r.data.vito_price_try}
+											badge={r.data.badge}
+										/>
+									</div>
+								))}
+							</div>
+						</section>
+					),
+				)
+			}
+			<p class="no-results" hidden>{t("routes.noResults")}</p>
+		</div>
+	</section>
+
+	<CtaBand locale={locale} />
+</Base>
+
+<script>
+	const input = document.querySelector<HTMLInputElement>("#route-q");
+	const lang = document.documentElement.lang;
+	input?.addEventListener("input", () => {
+		const q = input.value.trim().toLocaleLowerCase(lang);
+		let total = 0;
+		for (const group of document.querySelectorAll<HTMLElement>("[data-route-group]")) {
+			let shown = 0;
+			for (const item of group.querySelectorAll<HTMLElement>("[data-route]")) {
+				const match = !q || (item.dataset.route ?? "").includes(q);
+				item.hidden = !match;
+				if (match) shown++;
+			}
+			group.hidden = shown === 0;
+			total += shown;
+		}
+		document.querySelector<HTMLElement>(".no-results")!.hidden = total > 0;
+	});
+</script>
+
+<style>
+	.route-search {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		max-width: 480px;
+		margin-top: var(--space-8);
+		padding-inline: var(--space-4);
+		background: #fff;
+		color: var(--ink-900);
+		border-radius: var(--radius-full);
+	}
+
+	.route-search input {
+		flex: 1;
+		min-height: 52px;
+		border: 0;
+		background: transparent;
+		font: inherit;
+		outline: none;
+	}
+
+	.price-note {
+		color: var(--color-muted);
+		font-size: var(--text-sm);
+		max-width: 70ch;
+		margin-bottom: var(--space-10);
+	}
+
+	.route-group + .route-group {
+		margin-top: var(--space-16);
+	}
+
+	.group-title {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		font-size: var(--text-xl);
+		margin-bottom: var(--space-6);
+	}
+
+	.no-results {
+		color: var(--color-muted);
+	}
+
+	[data-route] {
+		display: grid;
+	}
+
+	[hidden] {
+		display: none !important;
+	}
+</style>

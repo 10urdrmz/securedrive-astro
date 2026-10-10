@@ -1,0 +1,61 @@
+---
+import Base from "../layouts/Base.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import HowSteps from "../components/sections/HowSteps.astro";
+import TrustStrip from "../components/sections/TrustStrip.astro";
+import FaqList from "../components/sections/FaqList.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { byOrder, getLocalized } from "../lib/content";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const faqs = (await getLocalized(Astro, "faqs", locale))
+	.filter((f) => f.data.featured)
+	.sort(byOrder)
+	.map((f) => ({ question: f.data.question, answer: f.data.answer }));
+---
+
+<Base locale={locale} path={PAGE_SLUGS.how} title={t("how.title")} description={t("how.lead")}>
+	<PageHero locale={locale} title={t("how.title")} lead={t("how.lead")} />
+
+	<section class="section section--dark">
+		<div class="container">
+			<HowSteps locale={locale} />
+		</div>
+	</section>
+
+	<section class="section">
+		<div class="container">
+			<TrustStrip locale={locale} />
+		</div>
+	</section>
+
+	{
+		faqs.length > 0 && (
+			<section class="section section--surface">
+				<div class="container narrow">
+					<h2 class="section-title">{t("section.faq")}</h2>
+					<FaqList items={faqs} />
+				</div>
+			</section>
+		)
+	}
+
+	<CtaBand locale={locale} />
+</Base>
+
+<style>
+	.narrow {
+		max-width: 860px;
+	}
+
+	.narrow h2 {
+		margin-bottom: var(--space-6);
+	}
+</style>

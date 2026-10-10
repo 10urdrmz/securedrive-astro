@@ -1,0 +1,97 @@
+---
+interface Props {
+	items: { question: string; answer: string }[];
+}
+
+const { items } = Astro.props;
+---
+
+<div class="faq">
+	{
+		items.map((item, i) => (
+			<details class="faq-item" open={i === 0}>
+				<summary>
+					<h3>{item.question}</h3>
+					<span class="faq-icon" aria-hidden="true" />
+				</summary>
+				<div class="faq-answer">
+					{item.answer.split(/\n{2,}/).map((p) => <p>{p}</p>)}
+				</div>
+			</details>
+		))
+	}
+</div>
+
+<style>
+	.faq {
+		display: grid;
+		gap: var(--space-3);
+	}
+
+	.faq-item {
+		background: #fff;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius);
+		transition: box-shadow 0.2s;
+	}
+
+	.faq-item[open] {
+		box-shadow: var(--shadow);
+	}
+
+	summary {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-4);
+		padding: var(--space-5) var(--space-6);
+		cursor: pointer;
+		list-style: none;
+	}
+
+	summary::-webkit-details-marker {
+		display: none;
+	}
+
+	h3 {
+		font-family: var(--font-sans);
+		font-size: var(--text-base);
+		font-weight: 600;
+		letter-spacing: 0;
+	}
+
+	.faq-icon {
+		position: relative;
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+	}
+
+	.faq-icon::before,
+	.faq-icon::after {
+		content: "";
+		position: absolute;
+		inset: 6px 0 auto;
+		height: 2px;
+		background: var(--navy-700);
+		border-radius: 2px;
+		transition: transform 0.2s var(--ease);
+	}
+
+	.faq-icon::after {
+		transform: rotate(90deg);
+	}
+
+	details[open] .faq-icon::after {
+		transform: rotate(0deg);
+	}
+
+	.faq-answer {
+		padding: 0 var(--space-6) var(--space-5);
+		color: var(--color-muted);
+	}
+
+	.faq-answer p + p {
+		margin-top: var(--space-3);
+	}
+</style>

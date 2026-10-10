@@ -1,0 +1,214 @@
+---
+import { PortableText } from "emdash/ui";
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import RouteCard from "../components/sections/RouteCard.astro";
+import TrustStrip from "../components/sections/TrustStrip.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { getLocalized, slugOf } from "../lib/content";
+import { formatApprox, formatTry } from "../lib/format";
+import { airportName, routeTitle } from "../lib/routes";
+import { breadcrumbJsonLd } from "../lib/schema";
+import { SITE } from "../lib/site";
+
+interface Props {
+	locale: Locale;
+	entry: any;
+}
+
+const { locale, entry } = Astro.props;
+const t = useTranslations(locale);
+const slug = slugOf(entry);
+const d = entry.data;
+const title = routeTitle(d, locale);
+const from = airportName(d.origin, locale);
+const sideLabel = d.side === "Avrupa" ? t("routes.side.avrupa") : d.side === "Anadolu" ? t("routes.side.anadolu") : null;
+
+const prices = [
+	{ vehicle: "Mercedes Vito VIP", seats: 6, price: d.vito_price_try },
+	{ vehicle: "Mercedes Sprinter VIP", seats: 16, price: d.sprinter_price_try },
+].filter((p) => p.price);
+
+const description = `${title}: ${formatTry(d.vito_price_try, locale)} · ${t("common.perTrip")}. ${t("trust.flightText")}`;
+const transferHref = (vehicle: string) =>
+	`${pagePath(locale, "transfer")}?${new URLSearchParams({ from, to: d.destination, vehicle })}`;
+
+const nearby = (await getLocalized(Astro, "routes", locale))
+	.filter((r) => r.data.origin === d.origin && slugOf(r) !== slug)
+	.sort((a, b) => Math.abs((a.data.distance_km ?? 0) - (d.distance_km ?? 0)) - Math.abs((b.data.distance_km ?? 0) - (d.distance_km ?? 0)))
+	.slice(0, 3);
+
+const jsonLd = [
+	{
+		"@context": "https://schema.org",
+		"@type": "Service",
+		name: title,
+		serviceType: "Airport transfer",
+		provider: { "@id": `${SITE.url}/#business` },
+		areaServed: { "@type": "Place", name: `${d.destination}, İstanbul` },
+		offers: prices.map((p) => ({
+			"@type": "Offer",
+			name: p.vehicle,
+			price: p.price,
+			priceCurrency: "TRY",
+			availability: "https://schema.org/InStock",
+		})),
+	},
+	breadcrumbJsonLd([
+		{ name: t("common.home"), path: pagePath(locale, "home") || "/" },
+		{ name: t("nav.routes"), path: pagePath(locale, "routes") },
+		{ name: title, path: pagePath(locale, "routes", slug) },
+	]),
+];
+---
+
+<Base
+	locale={locale}
+	path={`${PAGE_SLUGS.routes}/${slug}`}
+	title={title}
+	description={description}
+	content={{ collection: "routes", id: d.id, slug }}
+	jsonLd={jsonLd}
+>
+	<PageHero locale={locale} title={title} eyebrow={d.origin} crumbs={[{ href: pagePath(locale, "routes"), label: t("nav.routes") }]}>
+		<ul class="route-facts">
+			{d.duration_min && <li><Icon name="clock" size={18} />{t("common.minutes", { n: d.duration_min })}</li>}
+			{d.distance_km && <li><Icon name="route" size={18} />{t("common.km", { n: d.distance_km })}</li>}
+			{sideLabel && <li><Icon name="pin" size={18} />{sideLabel}</li>}
+		</ul>
+	</PageHero>
+
+	<section class="section">
+		<div class="container">
+			<div class="grid grid--2 prices">
+				{
+					prices.map((p) => (
+						<div class="card price-card">
+							<div class="card-body">
+								<p class="eyebrow">{t("routes.vehicle")}</p>
+								<h2 class="card-title">{p.vehicle}</h2>
+								<p class="muted">
+									<Icon name="users" size={16} /> {t("common.seats", { n: p.seats })}
+								</p>
+								<p class="price">
+									<strong>{formatTry(p.price, locale)}</strong>
+									<span>≈ {formatApprox(p.price, locale)}</span>
+								</p>
+								<p class="muted small">{t("common.perTrip")}</p>
+								<a href={transferHref(p.vehicle)} class="btn btn--primary btn--block">{t("common.book")}</a>
+							</div>
+						</div>
+					))
+				}
+			</div>
+			<p class="price-note">{t("routes.priceNote")}</p>
+			{d.content && <article class="prose route-content"><PortableText value={d.content} /></article>}
+		</div>
+	</section>
+
+	<section class="section section--surface">
+		<div class="container">
+			<TrustStrip locale={locale} />
+		</div>
+	</section>
+
+	{
+		nearby.length > 0 && (
+			<section class="section">
+				<div class="container">
+					<div class="section-head">
+						<h2 class="section-title">{t("routes.sameOrigin")}</h2>
+						<a href={pagePath(locale, "routes")} class="link-arrow">
+							{t("common.viewAll")} <Icon name="arrow" size={16} class="flip-rtl" />
+						</a>
+					</div>
+					<div class="grid grid--3">
+						{nearby.map((r) => (
+							<RouteCard
+								locale={locale}
+								href={pagePath(locale, "routes", slugOf(r))}
+								origin={r.data.origin}
+								destination={r.data.destination}
+								distanceKm={r.data.distance_km}
+								durationMin={r.data.duration_min}
+								price={r.data.vito_price_try}
+								badge={r.data.badge}
+							/>
+						))}
+					</div>
+				</div>
+			</section>
+		)
+	}
+
+	<CtaBand locale={locale} />
+</Base>
+
+<style>
+	.route-facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: var(--space-3) var(--space-6);
+		margin-top: var(--space-6);
+		padding: 0;
+		list-style: none;
+		color: #c9d1da;
+	}
+
+	.route-facts li {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.prices {
+		max-width: 880px;
+	}
+
+	.price-card .card-body {
+		display: grid;
+		gap: var(--space-3);
+	}
+
+	.muted {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		color: var(--color-muted);
+	}
+
+	.small {
+		font-size: var(--text-sm);
+	}
+
+	.price {
+		display: flex;
+		align-items: baseline;
+		gap: var(--space-3);
+		margin-top: var(--space-2);
+	}
+
+	.price strong {
+		font-family: var(--font-display);
+		font-size: var(--text-3xl);
+		color: var(--color-brand-strong);
+	}
+
+	.price span {
+		color: var(--color-muted);
+	}
+
+	.price-note {
+		margin-top: var(--space-8);
+		color: var(--color-muted);
+		font-size: var(--text-sm);
+		max-width: 70ch;
+	}
+
+	.route-content {
+		margin-top: var(--space-10);
+	}
+</style>

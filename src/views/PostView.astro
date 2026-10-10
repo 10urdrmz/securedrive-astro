@@ -1,0 +1,82 @@
+---
+import { PortableText } from "emdash/ui";
+import Base from "../layouts/Base.astro";
+import Photo from "../components/Photo.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import CtaBand from "../components/sections/CtaBand.astro";
+import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { imageUrl, slugOf } from "../lib/content";
+import { formatDate } from "../lib/format";
+import { breadcrumbJsonLd } from "../lib/schema";
+import { SITE } from "../lib/site";
+
+interface Props {
+	locale: Locale;
+	entry: any;
+}
+
+const { locale, entry } = Astro.props;
+const t = useTranslations(locale);
+const slug = slugOf(entry);
+const d = entry.data;
+const raw = d.publishedAt ?? d.published_at ?? d.createdAt;
+const date = raw ? new Date(raw) : null;
+const url = new URL(pagePath(locale, "blog", slug), SITE.url).href;
+---
+
+<Base
+	locale={locale}
+	path={`${PAGE_SLUGS.blog}/${slug}`}
+	title={d.title}
+	description={d.excerpt}
+	image={imageUrl(d.featured_image)}
+	content={{ collection: "posts", id: d.id, slug }}
+	jsonLd={[
+		{
+			"@context": "https://schema.org",
+			"@type": "BlogPosting",
+			headline: d.title,
+			description: d.excerpt,
+			url,
+			...(date ? { datePublished: date.toISOString() } : {}),
+			publisher: { "@id": `${SITE.url}/#business` },
+		},
+		breadcrumbJsonLd([
+			{ name: t("common.home"), path: pagePath(locale, "home") || "/" },
+			{ name: t("nav.blog"), path: pagePath(locale, "blog") },
+			{ name: d.title, path: pagePath(locale, "blog", slug) },
+		]),
+	]}
+>
+	<PageHero locale={locale} title={d.title} lead={d.excerpt} crumbs={[{ href: pagePath(locale, "blog"), label: t("nav.blog") }]}>
+		{date && <time class="post-date" datetime={date.toISOString()}>{formatDate(date, locale)}</time>}
+	</PageHero>
+
+	<section class="section">
+		<article class="container prose post">
+			{d.featured_image?.id && <Photo image={d.featured_image} alt={d.featured_image.alt ?? ""} loading="eager" class="post-image" />}
+			{d.content && <PortableText value={d.content} />}
+		</article>
+	</section>
+
+	<CtaBand locale={locale} />
+</Base>
+
+<style>
+	.post {
+		max-width: 760px;
+	}
+
+	.post-date {
+		display: block;
+		margin-top: var(--space-4);
+		color: #c9d1da;
+		font-size: var(--text-sm);
+	}
+
+	:global(.post-image) {
+		border-radius: var(--radius-lg);
+		margin-bottom: var(--space-8);
+	}
+</style>

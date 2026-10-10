@@ -1,0 +1,97 @@
+---
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import PageHero from "../components/sections/PageHero.astro";
+import InquiryForm from "../components/InquiryForm.astro";
+import { PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import { byOrder, getLocalized } from "../lib/content";
+import { SITE, telHref, whatsappHref } from "../lib/site";
+
+interface Props {
+	locale: Locale;
+}
+
+const { locale } = Astro.props;
+const t = useTranslations(locale);
+const vehicles = (await getLocalized(Astro, "vehicles", locale)).sort(byOrder).map((v) => v.data.name);
+
+// Values carried over from the quick form or a route page, trimmed to sane lengths.
+const params = Astro.url.searchParams;
+const pick = (key: string, max = 120) => params.get(key)?.slice(0, max) || undefined;
+const prefill = {
+	from: pick("from"),
+	to: pick("to"),
+	date: /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") ?? "") ? params.get("date")! : undefined,
+	time: /^\d{2}:\d{2}$/.test(params.get("time") ?? "") ? params.get("time")! : undefined,
+	passengers: /^\d{1,2}$/.test(params.get("passengers") ?? "") ? params.get("passengers")! : undefined,
+	vehicle: vehicles.find((v) => v === params.get("vehicle")),
+};
+const promises = ["trust.flight", "trust.price", "trust.license", "trust.support"] as const;
+---
+
+<Base locale={locale} path={PAGE_SLUGS.transfer} title={t("transfer.title")} description={t("transfer.lead")} noindex={params.size > 0}>
+	<PageHero locale={locale} title={t("transfer.title")} lead={t("transfer.lead")} />
+
+	<section class="section">
+		<div class="container transfer">
+			<div class="panel">
+				<InquiryForm locale={locale} kind="transfer" prefill={prefill} vehicles={vehicles} />
+			</div>
+			<aside>
+				<ul class="check-list">
+					{
+						promises.map((k) => (
+							<li>
+								<Icon name="check" size={18} />
+								{t(k)}
+							</li>
+						))
+					}
+				</ul>
+				<div class="direct">
+					<p>{t("common.callUs")}</p>
+					<a href={telHref} class="btn btn--ghost btn--block" dir="ltr"><Icon name="phone" size={18} />{SITE.phoneDisplay}</a>
+					<a href={whatsappHref()} class="btn btn--ghost btn--block" target="_blank" rel="noopener"><Icon name="whatsapp" size={18} />WhatsApp</a>
+				</div>
+			</aside>
+		</div>
+	</section>
+</Base>
+
+<style>
+	.transfer {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) 300px;
+		gap: clamp(2rem, 1rem + 3vw, 4rem);
+		align-items: start;
+	}
+
+	aside {
+		position: sticky;
+		top: calc(var(--header-h) + var(--space-6));
+		display: grid;
+		gap: var(--space-8);
+	}
+
+	.direct {
+		display: grid;
+		gap: var(--space-3);
+		padding-top: var(--space-6);
+		border-top: 1px solid var(--color-border);
+	}
+
+	.direct p {
+		font-weight: 600;
+	}
+
+	@media (max-width: 900px) {
+		.transfer {
+			grid-template-columns: 1fr;
+		}
+
+		aside {
+			position: static;
+		}
+	}
+</style>

@@ -1,0 +1,62 @@
+---
+import Icon from "../Icon.astro";
+import { texts } from "../../lib/content";
+
+interface Props {
+	href: string;
+	title: string;
+	summary: string;
+	badge?: string | null;
+	icon?: string | null;
+	features?: unknown;
+	cta?: string | null;
+}
+
+const { href, title, summary, badge, icon, features, cta } = Astro.props;
+const ICONS = ["plane", "clock", "building", "route", "shield", "star"] as const;
+const iconName = (ICONS as readonly string[]).includes(icon ?? "") ? (icon as (typeof ICONS)[number]) : "star";
+const list = texts(features).slice(0, 4);
+---
+
+<article class="card service reveal">
+	<div class="card-body">
+		<div class="service-top">
+			<span class="icon-box"><Icon name={iconName} size={24} /></span>
+			{badge && <span class="badge badge--gold">{badge}</span>}
+		</div>
+		<h3 class="card-title"><a href={href} class="card-link">{title}</a></h3>
+		<p class="card-text">{summary}</p>
+		{
+			list.length > 0 && (
+				<ul class="check-list">
+					{list.map((f) => (
+						<li>
+							<Icon name="check" size={18} />
+							<span>{f}</span>
+						</li>
+					))}
+				</ul>
+			)
+		}
+		{cta && <span class="link-arrow service-cta">{cta} <Icon name="arrow" size={16} class="flip-rtl" /></span>}
+	</div>
+</article>
+
+<style>
+	.service-top {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		margin-bottom: var(--space-2);
+	}
+
+	.check-list {
+		font-size: var(--text-sm);
+		margin-top: var(--space-2);
+	}
+
+	.service-cta {
+		margin-top: auto;
+		padding-top: var(--space-4);
+	}
+</style>

@@ -1,0 +1,175 @@
+---
+import { localizePath, type Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+
+interface Props {
+	locale: Locale;
+	kind: "transfer" | "contact" | "corporate";
+	/** Values carried over from the quick form on the home page. */
+	prefill?: Partial<Record<"from" | "to" | "date" | "time" | "passengers" | "vehicle", string>>;
+	vehicles?: string[];
+}
+
+const { locale, kind, prefill = {}, vehicles = [] } = Astro.props;
+const t = useTranslations(locale);
+const id = `form-${kind}`;
+const today = new Date().toISOString().slice(0, 10);
+const messages = {
+	sending: t("form.sending"),
+	success: t("form.success"),
+	error: t("form.error"),
+	rate: t("form.rateLimited"),
+};
+---
+
+<form class="form inquiry-form" id={id} data-inquiry={kind} data-locale={locale} data-messages={JSON.stringify(messages)} novalidate>
+	{
+		kind === "transfer" && (
+			<>
+				<p class="fieldset-title">{t("transfer.trip")}</p>
+				<div class="form-row">
+					<div class="field">
+						<label for={`${id}-from`}>{t("quick.from")}</label>
+						<input id={`${id}-from`} name="from" required autocomplete="off" placeholder={t("quick.fromPlaceholder")} value={prefill.from} />
+					</div>
+					<div class="field">
+						<label for={`${id}-to`}>{t("quick.to")}</label>
+						<input id={`${id}-to`} name="to" required autocomplete="off" placeholder={t("quick.toPlaceholder")} value={prefill.to} />
+					</div>
+				</div>
+				<div class="form-row">
+					<div class="field">
+						<label for={`${id}-date`}>{t("quick.date")}</label>
+						<input id={`${id}-date`} name="date" type="date" required min={today} value={prefill.date} />
+					</div>
+					<div class="field">
+						<label for={`${id}-time`}>{t("quick.time")}</label>
+						<input id={`${id}-time`} name="time" type="time" value={prefill.time} />
+					</div>
+					<div class="field">
+						<label for={`${id}-flight`}>{t("form.flight")}</label>
+						<input id={`${id}-flight`} name="flight" autocomplete="off" placeholder="TK 1984" />
+					</div>
+				</div>
+				<div class="form-row">
+					<div class="field">
+						<label for={`${id}-passengers`}>{t("quick.passengers")}</label>
+						<input id={`${id}-passengers`} name="passengers" type="number" min="1" max="60" inputmode="numeric" value={prefill.passengers || "2"} />
+					</div>
+					<div class="field">
+						<label for={`${id}-luggage`}>{t("form.luggage")}</label>
+						<input id={`${id}-luggage`} name="luggage" type="number" min="0" max="60" inputmode="numeric" value="2" />
+					</div>
+					<div class="field">
+						<label for={`${id}-vehicle`}>{t("form.vehicle")}</label>
+						<select id={`${id}-vehicle`} name="vehicle">
+							<option value="">{t("form.vehicleAny")}</option>
+							{vehicles.map((v) => <option value={v} selected={prefill.vehicle === v}>{v}</option>)}
+						</select>
+					</div>
+				</div>
+				<label class="checkbox">
+					<input type="checkbox" name="return_trip" />
+					<span>{t("form.returnTrip")}</span>
+				</label>
+				<p class="fieldset-title">{t("transfer.contact")}</p>
+			</>
+		)
+	}
+
+	<div class="form-row">
+		<div class="field">
+			<label for={`${id}-name`}>{t("form.name")}</label>
+			<input id={`${id}-name`} name="name" required autocomplete="name" />
+		</div>
+		<div class="field">
+			<label for={`${id}-phone`}>{t("form.phone")}</label>
+			<input id={`${id}-phone`} name="phone" type="tel" required autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" />
+		</div>
+	</div>
+	<div class="form-row">
+		<div class="field">
+			<label for={`${id}-email`}>{kind === "transfer" ? t("form.emailOptional") : t("form.email")}</label>
+			<input id={`${id}-email`} name="email" type="email" autocomplete="email" dir="ltr" required={kind !== "transfer"} />
+		</div>
+		{
+			kind === "corporate" && (
+				<div class="field">
+					<label for={`${id}-company`}>{t("form.company")}</label>
+					<input id={`${id}-company`} name="company" required autocomplete="organization" />
+				</div>
+			)
+		}
+	</div>
+	<div class="field">
+		<label for={`${id}-message`}>{kind === "contact" ? t("form.message") : t("form.notes")}</label>
+		<textarea id={`${id}-message`} name="message" rows="4" required={kind === "contact"}></textarea>
+	</div>
+
+	<div class="hp-field" aria-hidden="true">
+		<label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
+	</div>
+
+	<label class="checkbox">
+		<input type="checkbox" name="consent" required />
+		<span>{t("form.consent")} <a href={localizePath(locale, "kvkk")} target="_blank">{t("form.consentLink")}</a></span>
+	</label>
+
+	<p class="form-status" role="status" aria-live="polite"></p>
+	<button type="submit" class="btn btn--primary btn--block">{t("form.send")}</button>
+</form>
+
+<script>
+	type Messages = { sending: string; success: string; error: string; rate: string };
+
+	for (const form of document.querySelectorAll<HTMLFormElement>("form[data-inquiry]")) {
+		const status = form.querySelector<HTMLElement>(".form-status")!;
+		const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+		const messages = JSON.parse(form.dataset.messages ?? "{}") as Messages;
+
+		const say = (text: string, state?: "success" | "error") => {
+			status.textContent = text;
+			if (state) status.dataset.state = state;
+			else delete status.dataset.state;
+		};
+
+		form.addEventListener("submit", async (event) => {
+			event.preventDefault();
+			form.querySelectorAll("[aria-invalid]").forEach((el) => el.removeAttribute("aria-invalid"));
+			if (!form.checkValidity()) {
+				const invalid = form.querySelectorAll<HTMLInputElement>(":invalid");
+				invalid.forEach((el) => el.setAttribute("aria-invalid", "true"));
+				invalid[0]?.focus();
+				return;
+			}
+
+			const data = new FormData(form);
+			const payload: Record<string, unknown> = { kind: form.dataset.inquiry, locale: form.dataset.locale };
+			for (const [key, value] of data.entries()) payload[key] = value;
+			payload.consent = data.get("consent") === "on";
+			payload.return_trip = data.get("return_trip") === "on";
+
+			button.disabled = true;
+			say(messages.sending);
+			try {
+				const response = await fetch("/_emdash/api/plugins/inquiries/submit", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(payload),
+				});
+				const body = await response.json().catch(() => null);
+				const result = body?.data ?? body;
+				if (!response.ok || !result?.ok) {
+					throw new Error(result?.error === "RATE_LIMITED" ? messages.rate : messages.error);
+				}
+				form.reset();
+				say(messages.success, "success");
+				status.scrollIntoView({ block: "nearest", behavior: "smooth" });
+			} catch (error) {
+				say(error instanceof Error ? error.message : messages.error, "error");
+			} finally {
+				button.disabled = false;
+			}
+		});
+	}
+</script>

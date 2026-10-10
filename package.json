@@ -1,0 +1,37 @@
+{
+  "name": "securedrive-astro",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "emdash": {
+    "label": "SecureDrive",
+    "seed": "seed/seed.json"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "typecheck": "astro check",
+    "build:cf": "cross-env EMDASH_TARGET=cloudflare astro build",
+    "deploy": "npm run build:cf && wrangler deploy",
+    "cf-typegen": "wrangler types",
+    "seed": "emdash seed seed/seed.json"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.1",
+    "@astrojs/node": "^11.1.7",
+    "@astrojs/react": "^6.0.5",
+    "@emdash-cms/cloudflare": "^1.0.1",
+    "astro": "^7.3.2",
+    "cross-env": "^10.1.0",
+    "emdash": "^1.0.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "securedrive-inquiries": "file:plugins/inquiries"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@cloudflare/workers-types": "^5.20260820.1",
+    "wrangler": "^4.125.0"
+  }
+}
