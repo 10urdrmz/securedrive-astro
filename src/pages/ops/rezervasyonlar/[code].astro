@@ -98,6 +98,8 @@ const events = await db
 	.where("e.booking_id", "=", booking.id)
 	.orderBy("e.at", "desc")
 	.execute();
+const review = await db.selectFrom("sd_reviews").select(["rating", "comment", "created_at"]).where("booking_id", "=", booking.id).executeTakeFirst();
+const inquiryLink = await db.selectFrom("sd_inquiry_bookings").select("inquiry_id").where("booking_code", "=", booking.code).executeTakeFirst();
 const payments = await db.selectFrom("sd_payments").selectAll().where("booking_id", "=", booking.id).orderBy("created_at").execute();
 const nextStatuses = OPS_TRANSITIONS[booking.status].filter((s) => s !== "cancelled");
 const canCancel = OPS_TRANSITIONS[booking.status].includes("cancelled");
@@ -133,6 +135,7 @@ const EVENT_LABELS: Record<string, string> = {
 	payment: "Tahsilat",
 	refund: "İade",
 	note: "İç not güncellendi",
+	review: "Yolcu değerlendirdi",
 };
 const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", system: "Sistem" };
 ---
@@ -164,7 +167,8 @@ const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", s
 				{booking.sign_name && <tr><th>Tabela</th><td>{booking.sign_name}</td></tr>}
 				{booking.notes && <tr><th>Yolcu notu</th><td>{booking.notes}</td></tr>}
 				{booking.cancel_reason && <tr><th>İptal</th><td>{booking.cancel_reason} · iade %{booking.refund_pct ?? 0}</td></tr>}
-				<tr><th>Kaynak</th><td>{booking.source === "ops" ? "Telefon (operasyon)" : "Web sitesi"} · dil {booking.locale} · {booking.customer_member_id ? "üye" : "misafir"}</td></tr>
+				<tr><th>Kaynak</th><td>{booking.source === "ops" ? (inquiryLink ? "Fiyat talebinden (operasyon)" : "Telefon (operasyon)") : "Web sitesi"} · dil {booking.locale} · {booking.customer_member_id ? "üye" : "misafir"}</td></tr>
+				{review && <tr><th>Değerlendirme</th><td><strong>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</strong> {review.comment}</td></tr>}
 				<tr><th>Fiyat kırılımı</th><td>{info.lines.map((l) => <div>{l.label}{l.qty && l.qty > 1 ? ` × ${l.qty}` : ""}: {formatMoney(l.amount_minor)} ₺</div>)}</td></tr>
 				{booking.payout_minor != null && <tr><th>Sürücü payı</th><td>{formatMoney(booking.payout_minor)} ₺</td></tr>}
 			</tbody>

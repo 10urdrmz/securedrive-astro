@@ -1,0 +1,174 @@
+---
+/**
+ * Printable receipt of a booking (/rezervasyon/<code>?t=…&makbuz=1). A plain page with
+ * no site chrome, so the browser's print / "save as PDF" gives a clean A4 sheet.
+ * Not a tax invoice: e-invoicing comes with the finance phase.
+ */
+import { LOCALE_META, bookPath } from "../i18n/locales";
+import { useTranslations, type UiKey } from "../i18n/ui";
+import type { BookingDetail } from "../lib/booking-page";
+import { formatTry } from "../lib/format";
+import { SITE } from "../lib/site";
+import { isoToIstanbul } from "../server/pricing";
+
+type Props = BookingDetail;
+
+const page = Astro.props;
+const { locale, booking } = page;
+const t = useTranslations(locale);
+const meta = LOCALE_META[locale];
+const money = (minor: number) => formatTry(minor / 100, locale);
+const at = isoToIstanbul(booking.pickup_at);
+const issued = new Intl.DateTimeFormat(meta.intl, { dateStyle: "long", timeZone: "Europe/Istanbul" }).format(new Date());
+const label = (line: { kind: string; label: string; qty?: number }) =>
+	locale === "tr" || line.kind === "extra" ? (line.qty && line.qty > 1 ? `${line.label} × ${line.qty}` : line.label) : t(`book.line.${line.kind}` as UiKey);
+---
+
+<!doctype html>
+<html lang={locale} dir={meta.dir}>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex, nofollow" />
+		<title>{t("receipt.title")} {booking.code} · {SITE.name}</title>
+		<link rel="icon" href="/favicon.svg" />
+	</head>
+	<body>
+		<main>
+			<header>
+				<div>
+					<strong class="brand">{SITE.name}</strong>
+					<div class="muted">{SITE.legalName}</div>
+					<div class="muted" dir="ltr">{SITE.phoneDisplay} · {SITE.email}</div>
+					<div class="muted">D2: {SITE.licenses.d2} · TÜRSAB: {SITE.licenses.tursab}</div>
+				</div>
+				<div class="end">
+					<h1>{t("receipt.title")}</h1>
+					<div dir="ltr"><strong>{booking.code}</strong></div>
+					<div class="muted">{t("receipt.issued")}: {issued}</div>
+				</div>
+			</header>
+
+			<table class="facts">
+				<tbody>
+					<tr><th>{t("receipt.passenger")}</th><td>{booking.contact_name}</td></tr>
+					<tr><th>{t("receipt.route")}</th><td>{page.fromName} → {page.toName}</td></tr>
+					<tr><th>{t("book.pickupTime")}</th><td dir="ltr">{at.date} {at.time}</td></tr>
+					<tr><th>{t("form.vehicle")}</th><td>{page.className} · {booking.pax} / {booking.bags}</td></tr>
+					{booking.flight_no && <tr><th>{t("form.flight")}</th><td dir="ltr">{booking.flight_no}</td></tr>}
+					<tr><th>{t("book.payment")}</th><td>{t(`book.pay.${booking.payment_method}` as UiKey)} · {t(`book.paymentStatus.${booking.payment_status}` as UiKey)}</td></tr>
+				</tbody>
+			</table>
+
+			<table class="lines">
+				<tbody>
+					{page.lines.map((line) => (
+						<tr>
+							<td>{label(line)}</td>
+							<td class="num">{line.amount_minor ? money(line.amount_minor) : t("book.free")}</td>
+						</tr>
+					))}
+				</tbody>
+				<tfoot>
+					<tr>
+						<th>{t("book.total")} ({t("receipt.vatIncluded")})</th>
+						<th class="num">{money(booking.price_minor)}</th>
+					</tr>
+				</tfoot>
+			</table>
+
+			<p class="muted">{t("receipt.note")}</p>
+			<p class="screen-only muted">{t("receipt.print")}</p>
+			<p class="screen-only"><a href={bookPath(locale, booking.code, booking.tracking_token)}>← {t("receipt.back")}</a></p>
+		</main>
+	</body>
+</html>
+
+<style is:global>
+	body {
+		margin: 0;
+		background: #f2f4f7;
+		color: #101828;
+		font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+	}
+	main {
+		max-width: 760px;
+		margin: 32px auto;
+		padding: 40px;
+		background: #fff;
+		border: 1px solid #e4e7ec;
+		border-radius: 12px;
+	}
+	header {
+		display: flex;
+		justify-content: space-between;
+		gap: 24px;
+		flex-wrap: wrap;
+		padding-bottom: 20px;
+		border-bottom: 2px solid #0a2540;
+	}
+	.brand {
+		font-size: 22px;
+		color: #0a2540;
+	}
+	.end {
+		text-align: end;
+	}
+	h1 {
+		margin: 0 0 4px;
+		font-size: 24px;
+	}
+	.muted {
+		color: #667085;
+		font-size: 13px;
+	}
+	table {
+		width: 100%;
+		border-collapse: collapse;
+		margin-top: 24px;
+	}
+	th,
+	td {
+		padding: 8px 0;
+		text-align: start;
+		border-bottom: 1px solid #eaecf0;
+		vertical-align: top;
+	}
+	.facts th {
+		width: 34%;
+		color: #667085;
+		font-weight: 500;
+	}
+	.num {
+		text-align: end;
+		white-space: nowrap;
+	}
+	tfoot th {
+		font-size: 17px;
+		border-bottom: 0;
+		border-top: 2px solid #0a2540;
+	}
+	a {
+		color: #1d5f9b;
+	}
+	@media print {
+		body {
+			background: #fff;
+		}
+		main {
+			margin: 0;
+			border: 0;
+			padding: 0;
+		}
+		.screen-only {
+			display: none;
+		}
+	}
+	@media (max-width: 600px) {
+		main {
+			margin: 0;
+			padding: 20px 16px;
+			border-radius: 0;
+		}
+	}
+</style>

@@ -13,6 +13,7 @@ import { bookPath, type Locale } from "../i18n/locales";
 import type { UiKey } from "../i18n/ui";
 import { getDb, type Db } from "../server/db";
 import {
+	addEvent,
 	ConflictError,
 	createBooking,
 	getBookingByCode,
@@ -74,9 +75,14 @@ export interface BookingDetail {
 	/** Hours before pickup until which the passenger may cancel online, free of charge. */
 	freeCancelHours: number;
 	canCancel: boolean;
-	notice?: "created" | "cancelled" | "paid" | "paymentFailed";
+	notice?: "created" | "cancelled" | "paid" | "paymentFailed" | "reviewed";
 	/** Where "pay now" leads, while a booking waits for its online payment. */
 	payHref: string | null;
+	/** The passenger's review, once given; reviews open when the trip is completed. */
+	review: { rating: number; comment: string | null } | null;
+	canReview: boolean;
+	/** Render the printable receipt instead of the page. */
+	receipt: boolean;
 	error?: UiKey;
 }
 
@@ -243,13 +249,29 @@ async function bookingDetail(
 		freeCancelHours: Number.isFinite(freeCancelHours) ? freeCancelHours : 0,
 		canCancel,
 		payHref: booking.status === "pending_payment" && booking.payment_method === "online" && iyzicoEnabled() ? paymentStartPath(booking) : null,
+		review: null,
+		canReview: false,
+		receipt: Astro.url.searchParams.get("makbuz") === "1" && booking.status !== "cancelled",
 	};
+	page.review = (await db.selectFrom("sd_reviews").select(["rating", "comment"]).where("booking_id", "=", booking.id).executeTakeFirst()) ?? null;
+	page.canReview = booking.status === "completed" && !page.review;
 	const ok = Astro.url.searchParams.get("ok");
-	if (ok === "created" || ok === "cancelled" || ok === "paid" || ok === "paymentFailed") page.notice = ok;
+	if (ok === "created" || ok === "cancelled" || ok === "paid" || ok === "paymentFailed" || ok === "reviewed") page.notice = ok;
 
 	if (Astro.request.method === "POST") {
 		if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
 		const form = await Astro.request.formData();
+		if (form.get("intent") === "review") {
+			const rating = Number(form.get("rating"));
+			if (!page.canReview || !Number.isInteger(rating) || rating < 1 || rating > 5) return redirect(Astro, self);
+			await db
+				.insertInto("sd_reviews")
+				.values({ booking_id: booking.id, rating, comment: clean(form.get("comment"), 1000) || null, driver_id: booking.driver_id })
+				.onConflict((oc) => oc.column("booking_id").doNothing())
+				.execute();
+			await addEvent(db, booking.id, { kind: "passenger" }, "review", null, null, { rating });
+			return redirect(Astro, `${self}&ok=reviewed`);
+		}
 		if (form.get("intent") !== "cancel") return redirect(Astro, self);
 		if (!canCancel) {
 			Astro.response.status = 422;
