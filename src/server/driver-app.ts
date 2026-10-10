@@ -62,22 +62,70 @@ export async function driversWithAccess(db: Db): Promise<Set<string>> {
 
 export type SignInResult = { ok: true; driverId: string } | { ok: false; error: "invalid" | "locked" };
 
+/** Why a sign-in ended as it did. The driver only ever sees "wrong phone or PIN"; ops sees this. */
+export type LoginOutcome = "ok" | "bad_input" | "unknown_phone" | "inactive" | "no_pin" | "wrong_pin" | "locked";
+
+export const LOGIN_OUTCOME_LABELS: Record<LoginOutcome, string> = {
+	ok: "Giriş yaptı",
+	bad_input: "Telefon veya PIN biçimi hatalı",
+	unknown_phone: "Bu telefonla kayıtlı sürücü yok",
+	inactive: "Sürücü pasif",
+	no_pin: "Sürücüye PIN verilmemiş",
+	wrong_pin: "PIN yanlış",
+	locked: "Çok fazla yanlış PIN, kilitli",
+};
+
+async function logLogin(db: Db, phone: string, driverId: string | null, result: LoginOutcome) {
+	const now = new Date();
+	await db
+		.insertInto("sd_driver_login_log")
+		.values({ at: now.toISOString(), phone_tail: phone.replace(/\D/g, "").slice(-4), driver_id: driverId, result })
+		.execute();
+	await db
+		.deleteFrom("sd_driver_login_log")
+		.where("at", "<", new Date(now.getTime() - 30 * 86400_000).toISOString())
+		.execute();
+}
+
+/** Latest sign-in attempts, newest first, for the ops drivers page. */
+export async function recentLogins(db: Db, limit = 15) {
+	return db
+		.selectFrom("sd_driver_login_log as l")
+		.leftJoin("sd_drivers as d", "d.id", "l.driver_id")
+		.select(["l.at", "l.phone_tail", "l.result", "d.name"])
+		.orderBy("l.id", "desc")
+		.limit(limit)
+		.execute() as Promise<{ at: string; phone_tail: string; result: LoginOutcome; name: string | null }[]>;
+}
+
 export async function checkPin(db: Db, phone: string, pin: string): Promise<SignInResult> {
+	const outcome = await matchPin(db, phone, pin);
+	await logLogin(db, phone, outcome.driverId, outcome.result);
+	if (outcome.result === "ok") return { ok: true, driverId: outcome.driverId! };
+	return { ok: false, error: outcome.result === "locked" ? "locked" : "invalid" };
+}
+
+async function matchPin(db: Db, phone: string, pin: string): Promise<{ result: LoginOutcome; driverId: string | null }> {
 	const key = phoneKey(phone);
-	if (key.length < 10 || !/^\d{6}$/.test(pin)) return { ok: false, error: "invalid" };
+	if (key.length < 10 || !/^\d{6}$/.test(pin)) return { result: "bad_input", driverId: null };
 	const candidates = await db
 		.selectFrom("sd_drivers as d")
-		.innerJoin("sd_driver_access as a", "a.driver_id", "d.id")
-		.select(["d.id", "d.phone", "a.pin_hash", "a.failures", "a.locked_until"])
-		.where("d.status", "=", "active")
+		.leftJoin("sd_driver_access as a", "a.driver_id", "d.id")
+		.select(["d.id", "d.phone", "d.status", "a.pin_hash", "a.failures", "a.locked_until"])
 		.execute();
-	const row = candidates.find((c: { phone: string }) => phoneKey(c.phone) === key);
-	if (!row) return { ok: false, error: "invalid" };
+	const matches = candidates.filter((c: { phone: string }) => phoneKey(c.phone) === key);
+	// Several records can share a number (an old inactive one, say): prefer the one that can sign in.
+	const row = matches.find((c: { status: string; pin_hash: string | null }) => c.status === "active" && c.pin_hash) ?? matches[0];
+	if (!row) return { result: "unknown_phone", driverId: null };
+	if (row.status !== "active") return { result: "inactive", driverId: row.id };
+	if (!row.pin_hash) return { result: "no_pin", driverId: row.id };
 	const now = new Date();
-	if (row.locked_until && row.locked_until > now.toISOString()) return { ok: false, error: "locked" };
-	if (await verifyPassword(pin, row.pin_hash)) {
-		await db.updateTable("sd_driver_access").set({ failures: 0, locked_until: null }).where("driver_id", "=", row.id).execute();
-		return { ok: true, driverId: row.id };
+	if (row.locked_until && row.locked_until > now.toISOString()) return { result: "locked", driverId: row.id };
+	// Two active drivers on one number: the PIN tells them apart.
+	for (const c of matches.filter((m: { status: string; pin_hash: string | null }) => m.status === "active" && m.pin_hash)) {
+		if (!(await verifyPassword(pin, c.pin_hash))) continue;
+		await db.updateTable("sd_driver_access").set({ failures: 0, locked_until: null }).where("driver_id", "=", c.id).execute();
+		return { result: "ok", driverId: c.id };
 	}
 	const failures = Number(row.failures) + 1;
 	const locked = failures >= MAX_FAILURES;
@@ -86,7 +134,7 @@ export async function checkPin(db: Db, phone: string, pin: string): Promise<Sign
 		.set({ failures: locked ? 0 : failures, locked_until: locked ? new Date(now.getTime() + LOCK_MINUTES * 60_000).toISOString() : null })
 		.where("driver_id", "=", row.id)
 		.execute();
-	return { ok: false, error: locked ? "locked" : "invalid" };
+	return { result: locked ? "locked" : "wrong_pin", driverId: row.id };
 }
 
 // ---------------------------------------------------------------- sessions

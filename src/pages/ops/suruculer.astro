@@ -7,7 +7,7 @@ import OpsLayout from "../../layouts/OpsLayout.astro";
 import { can } from "../../server/auth/rbac";
 import { ulid } from "../../server/ids";
 import { audit, readForm, requireOps, text } from "../../server/ops";
-import { driversWithAccess, issuePin, revokeAccess } from "../../server/driver-app";
+import { LOGIN_OUTCOME_LABELS, driversWithAccess, issuePin, recentLogins, revokeAccess } from "../../server/driver-app";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -61,6 +61,13 @@ if (form && (intent === "pin" || intent === "revoke")) {
 
 const drivers = await db.selectFrom("sd_drivers").selectAll().orderBy("status").orderBy("name").execute();
 const withAccess = await driversWithAccess(db);
+const logins = await recentLogins(db);
+const lockedUntil = new Map(
+	(await db.selectFrom("sd_driver_access").select(["driver_id", "locked_until"]).where("locked_until", ">", new Date().toISOString()).execute()).map(
+		(r: { driver_id: string; locked_until: string }) => [r.driver_id, r.locked_until],
+	),
+);
+const clock = (iso: string) => new Date(Date.parse(iso) + 3 * 3600_000).toISOString().slice(0, 16).replace("T", " ");
 const appUrl = new URL("/surucu", Astro.url.origin).href;
 const pinMessage = issued
 	? `Merhaba ${issued.name.split(" ")[0]}, SecureDrive sürücü uygulaması: ${appUrl}\nGiriş: bu telefon numaranız ve PIN ${issued.pin}\nAçınca "Ana ekrana ekle" ile telefonunuza kurabilirsiniz.`
@@ -85,6 +92,27 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 					</a>
 				</div>
 			</div>
+		)
+	}
+	{
+		logins.length > 0 && (
+			<details class="card logins" open={logins.some((l) => l.result !== "ok")}>
+				<summary>Son sürücü giriş denemeleri</summary>
+				<table>
+					<tbody>
+						{logins.map((l) => (
+							<tr>
+								<td class="muted">{clock(l.at)}</td>
+								<td>{l.name ?? "—"}</td>
+								<td class="muted">…{l.phone_tail}</td>
+								<td>
+									<span class:list={["badge", l.result === "ok" && "ok"]}>{LOGIN_OUTCOME_LABELS[l.result] ?? l.result}</span>
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</details>
 		)
 	}
 	<p class="muted">
@@ -139,6 +167,7 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 				{d.id && (
 					<div class="access" style="grid-column:1/-1">
 						<span class:list={["badge", withAccess.has(d.id) && "ok"]}>{withAccess.has(d.id) ? "Uygulama erişimi var" : "Uygulama erişimi yok"}</span>
+						{lockedUntil.has(d.id) && <span class="badge">Kilitli, {clock(lockedUntil.get(d.id)!).slice(11)}'e kadar. PIN'i yenileyince açılır.</span>}
 						{canWrite && (
 							<button class="btn secondary" type="submit" name="intent" value="pin" formnovalidate>
 								{withAccess.has(d.id) ? "PIN'i yenile" : "PIN oluştur"}
@@ -157,6 +186,20 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 </OpsLayout>
 
 <style>
+	.logins summary {
+		cursor: pointer;
+		font-weight: 600;
+	}
+	.logins table {
+		width: 100%;
+		margin-top: 10px;
+		border-collapse: collapse;
+		font-size: 14px;
+	}
+	.logins td {
+		padding: 6px 8px 6px 0;
+		border-top: 1px solid var(--gray-200);
+	}
 	.access {
 		display: flex;
 		align-items: center;

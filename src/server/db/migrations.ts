@@ -316,4 +316,18 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		name: "0006_driver_login_log",
+		statements: [
+			// Why each driver sign-in failed, for ops. Only the last four phone digits are kept.
+			`CREATE TABLE IF NOT EXISTS sd_driver_login_log (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				at TEXT NOT NULL,
+				phone_tail TEXT NOT NULL,
+				driver_id TEXT,
+				result TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_driver_login_log_at ON sd_driver_login_log(at)`,
+		],
+	},
 ];
