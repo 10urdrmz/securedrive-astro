@@ -33,7 +33,7 @@ const label = (line: { kind: string; label: string; qty?: number }) =>
 		<title>{t("receipt.title")} {booking.code} · {SITE.name}</title>
 		<link rel="icon" href="/favicon.svg" />
 	</head>
-	<body>
+	<body class="receipt-page">
 		<main>
 			<header>
 				<div>
@@ -85,7 +85,7 @@ const label = (line: { kind: string; label: string; qty?: number }) =>
 </html>
 
 <style>
-	body {
+	:global(body.receipt-page) {
 		margin: 0;
 		background: #f2f4f7;
 		color: #101828;
@@ -152,7 +152,7 @@ const label = (line: { kind: string; label: string; qty?: number }) =>
 		color: #1d5f9b;
 	}
 	@media print {
-		body {
+		:global(body.receipt-page) {
 			background: #fff;
 		}
 		main {
