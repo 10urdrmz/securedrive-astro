@@ -84,8 +84,9 @@ const int = (value: string | null, fallback: number) => (value && /^\d{1,2}$/.te
 function noStore(Astro: AstroGlobal) {
 	Astro.cache?.set(false);
 	Astro.response.headers.set("Cache-Control", NO_STORE);
-	// The booking link carries a secret; never leak it to other sites.
-	Astro.response.headers.set("Referrer-Policy", "no-referrer");
+	// The booking link carries a secret; never leak it to other sites. ("no-referrer" would
+	// also make browsers send "Origin: null" on our own form posts, which we then refuse.)
+	Astro.response.headers.set("Referrer-Policy", "same-origin");
 }
 
 function redirect(Astro: AstroGlobal, to: string) {
