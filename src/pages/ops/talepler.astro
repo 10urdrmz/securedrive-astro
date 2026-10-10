@@ -7,91 +7,417 @@
 import OpsLayout from "../../layouts/OpsLayout.astro";
 import { can } from "../../server/auth/rbac";
 import { INQUIRY_STATUS_LABELS, listTransferInquiries } from "../../server/inquiries";
-import { requireOps } from "../../server/ops";
+import { audit, readForm, requireOps, text } from "../../server/ops";
 import { isoToIstanbul } from "../../server/pricing";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
 const { db, user } = ctx;
-
-const all = Astro.url.searchParams.get("hepsi") === "1";
-const rows = await listTransferInquiries(db, !all);
 const canBook = can(user, "bookings.write");
+
+// Quick status changes ops makes while working a request.
+const MANUAL_STATUSES = ["new", "contacted", "quoted", "closed"] as const;
+const form = canBook ? await readForm(Astro) : null;
+if (form && text(form, "intent") === "status") {
+	const id = text(form, "id", 40);
+	const status = text(form, "status", 20);
+	if (id && (MANUAL_STATUSES as readonly string[]).includes(status)) {
+		await db.updateTable("ec_inquiries").set({ status_label: status }).where("id", "=", id).where("kind", "=", "transfer").execute();
+		await audit(db, user, "inquiry.status", "inquiry", id, { status });
+	}
+	return Astro.redirect(`/ops/talepler${Astro.url.search}`, 303);
+}
+
+const all = await listTransferInquiries(db, false);
+const isOpen = (s: string) => ["new", "contacted", "quoted"].includes(s);
+const TABS = [
+	{ key: "acik", label: "Açık", match: (s: string) => isOpen(s) },
+	{ key: "yeni", label: "Yeni", match: (s: string) => s === "new" },
+	{ key: "tum", label: "Tümü", match: () => true },
+] as const;
+const tabKey = Astro.url.searchParams.get("filtre") ?? (Astro.url.searchParams.get("hepsi") === "1" ? "tum" : "acik");
+const tab = TABS.find((t) => t.key === tabKey) ?? TABS[0];
+const rows = all.filter((r) => tab.match(r.status));
+
+const TONES: Record<string, string> = { new: "warn", contacted: "info", quoted: "violet", booked: "ok", closed: "off" };
+const ago = (iso: string) => {
+	const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+	if (minutes < 1) return "şimdi";
+	if (minutes < 60) return `${minutes} dk önce`;
+	if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} sa önce`;
+	return `${Math.floor(minutes / 1440)} gün önce`;
+};
+const tel = (phone: string) => phone.replace(/[^\d+]/g, "");
+const NEXT: Record<string, { status: string; label: string }[]> = {
+	new: [
+		{ status: "contacted", label: "Arandı" },
+		{ status: "quoted", label: "Fiyat verildi" },
+	],
+	contacted: [{ status: "quoted", label: "Fiyat verildi" }],
+	quoted: [],
+};
 ---
 
 <OpsLayout title="Fiyat talepleri" user={user}>
-	<p class="muted">
-		Sitedeki fiyat talebi formundan gelen transfer talepleri. Müşteriyle fiyatta anlaşınca "Rezervasyona çevir" ile bilgiler
-		dolu gelir; rezervasyon oluşunca talep "Rezervasyon yapıldı" olur ve müşteri rezervasyon linkini alır.
-		{all ? <a href="/ops/talepler">Sadece açık talepler</a> : <a href="/ops/talepler?hepsi=1">Tümünü göster</a>}
+	<p class="muted lead">
+		Sitedeki fiyat talebi formundan gelen transfer talepleri. Müşteriyle fiyatta anlaşınca <strong>Rezervasyona çevir</strong> ile
+		bilgiler dolu gelir; rezervasyon oluşunca talep "Rezervasyon yapıldı" olur.
 	</p>
-	<div class="table-wrap">
-		<table class="data">
-			<thead>
-				<tr>
-					<th>No</th>
-					<th>Geldi</th>
-					<th>Güzergâh</th>
-					<th>Tarih</th>
-					<th>Kişi</th>
-					<th>Müşteri</th>
-					<th>Durum</th>
-					<th></th>
-				</tr>
-			</thead>
-			<tbody>
-				{
-					rows.map((r) => {
-						const at = r.createdAt ? isoToIstanbul(r.createdAt) : null;
-						return (
-							<tr>
-								<td>
-									<strong>{r.reference}</strong>
-								</td>
-								<td class="muted">{at ? `${at.date} ${at.time}` : ""}</td>
-								<td>
-									{r.from} → {r.to}
-									{r.returnTrip && <div class="muted">dönüş de istendi</div>}
-								</td>
-								<td>
-									{r.date} {r.time}
-									{r.flight && <div class="muted">{r.flight}</div>}
-								</td>
-								<td>
-									{r.passengers ?? "–"}
-									{r.vehicle && <div class="muted">{r.vehicle}</div>}
-								</td>
-								<td>
-									{r.name}
-									<div class="muted">{r.phone}</div>
-									{r.memberId && <span class="badge">üye</span>}
-								</td>
-								<td>
-									<span class:list={["badge", r.status === "booked" && "ok", r.status === "closed" && "off"]}>{INQUIRY_STATUS_LABELS[r.status] ?? r.status}</span>
-								</td>
-								<td>
-									{r.bookingCode ? (
-										<a href={`/ops/rezervasyonlar/${r.bookingCode}`}>{r.bookingCode}</a>
-									) : (
-										canBook && (
-											<a class="btn secondary" href={`/ops/rezervasyonlar/yeni?talep=${r.id}`}>
-												Rezervasyona çevir
-											</a>
-										)
-									)}
-								</td>
-							</tr>
-						);
-					})
-				}
-				{
-					rows.length === 0 && (
-						<tr>
-							<td colspan="8" class="muted">Açık talep yok.</td>
-						</tr>
-					)
-				}
-			</tbody>
-		</table>
+
+	<nav class="tabs" aria-label="Filtre">
+		{
+			TABS.map((t) => (
+				<a href={`/ops/talepler?filtre=${t.key}`} aria-current={t.key === tab.key ? "page" : undefined}>
+					{t.label}
+					<span class="tab-count">{all.filter((r) => t.match(r.status)).length}</span>
+				</a>
+			))
+		}
+	</nav>
+
+	<div class="requests">
+		{
+			rows.map((r) => {
+				const at = r.createdAt ? isoToIstanbul(r.createdAt) : null;
+				return (
+					<article class:list={["request", r.status === "new" && "is-new"]}>
+						<header class="request-head">
+							<div class="request-id">
+								<strong>{r.reference}</strong>
+								<span class:list={["pill", TONES[r.status] ?? "off"]}>{INQUIRY_STATUS_LABELS[r.status] ?? r.status}</span>
+								{r.memberId && <span class="pill info">Üye</span>}
+							</div>
+							{at && (
+								<time class="muted" datetime={r.createdAt} title={`${at.date} ${at.time}`}>
+									{ago(r.createdAt)}
+								</time>
+							)}
+						</header>
+
+						<div class="request-body">
+							<div class="route">
+								<span class="route-dot from" aria-hidden="true" />
+								<span>{r.from || "–"}</span>
+								<span class="route-arrow" aria-hidden="true">→</span>
+								<span class="route-dot to" aria-hidden="true" />
+								<span>{r.to || "–"}</span>
+							</div>
+							<dl class="facts">
+								<div>
+									<dt>Tarih</dt>
+									<dd>
+										{r.date || "–"} {r.time}
+									</dd>
+								</div>
+								<div>
+									<dt>Yolcu / bagaj</dt>
+									<dd>
+										{r.passengers ?? "–"} / {r.luggage ?? "–"}
+									</dd>
+								</div>
+								{r.flight && (
+									<div>
+										<dt>Uçuş</dt>
+										<dd>{r.flight}</dd>
+									</div>
+								)}
+								{r.vehicle && (
+									<div>
+										<dt>İstenen araç</dt>
+										<dd>{r.vehicle}</dd>
+									</div>
+								)}
+								{r.returnTrip && (
+									<div>
+										<dt>Dönüş</dt>
+										<dd>İstendi</dd>
+									</div>
+								)}
+							</dl>
+							{r.message && <p class="message">“{r.message}”</p>}
+						</div>
+
+						<footer class="request-foot">
+							<div class="customer">
+								<strong>{r.name}</strong>
+								<span class="muted">
+									{r.phone}
+									{r.email && <> · {r.email}</>}
+								</span>
+							</div>
+							<div class="request-actions">
+								{r.phone && (
+									<a class="btn ghost" href={`tel:${tel(r.phone)}`}>
+										Ara
+									</a>
+								)}
+								{r.phone && (
+									<a class="btn ghost" href={`https://wa.me/${tel(r.phone).replace(/^\+/, "")}`} target="_blank" rel="noopener">
+										WhatsApp
+									</a>
+								)}
+								{canBook &&
+									!r.bookingCode &&
+									(NEXT[r.status] ?? []).map((next) => (
+										<form method="post">
+											<input type="hidden" name="intent" value="status" />
+											<input type="hidden" name="id" value={r.id} />
+											<input type="hidden" name="status" value={next.status} />
+											<button class="btn ghost" type="submit">
+												{next.label}
+											</button>
+										</form>
+									))}
+								{canBook && isOpen(r.status) && !r.bookingCode && (
+									<form method="post">
+										<input type="hidden" name="intent" value="status" />
+										<input type="hidden" name="id" value={r.id} />
+										<input type="hidden" name="status" value="closed" />
+										<button class="btn ghost danger" type="submit">
+											Kapat
+										</button>
+									</form>
+								)}
+								{r.bookingCode ? (
+									<a class="btn secondary" href={`/ops/rezervasyonlar/${r.bookingCode}`}>
+										{r.bookingCode}
+									</a>
+								) : (
+									canBook &&
+									r.status !== "closed" && (
+										<a class="btn" href={`/ops/rezervasyonlar/yeni?talep=${r.id}`}>
+											Rezervasyona çevir
+										</a>
+									)
+								)}
+							</div>
+						</footer>
+					</article>
+				);
+			})
+		}
+		{
+			rows.length === 0 && (
+				<div class="empty">
+					<strong>Burada talep yok.</strong>
+					<span class="muted">Yeni bir talep geldiğinde menüde ve zilde sayı olarak görünür.</span>
+				</div>
+			)
+		}
 	</div>
 </OpsLayout>
+
+<style>
+	.lead {
+		max-width: 760px;
+		margin: -8px 0 20px;
+		line-height: 1.55;
+	}
+	.tabs {
+		display: flex;
+		gap: 6px;
+		margin-bottom: 18px;
+		border-bottom: 1px solid var(--gray-200);
+	}
+	.tabs a {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 14px;
+		margin-bottom: -1px;
+		color: var(--gray-600);
+		text-decoration: none;
+		font-weight: 600;
+		border-bottom: 2px solid transparent;
+	}
+	.tabs a[aria-current="page"] {
+		color: var(--navy-800);
+		border-bottom-color: var(--navy-700);
+	}
+	.tab-count {
+		min-width: 22px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		background: var(--gray-200);
+		color: var(--ink-800);
+		font-size: 12px;
+		text-align: center;
+	}
+	.tabs a[aria-current="page"] .tab-count {
+		background: var(--navy-100);
+		color: var(--navy-800);
+	}
+	.requests {
+		display: grid;
+		gap: 14px;
+	}
+	.request {
+		background: #fff;
+		border: 1px solid var(--gray-200);
+		border-radius: 12px;
+		box-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+		overflow: hidden;
+	}
+	.request.is-new {
+		border-left: 4px solid #f79009;
+	}
+	.request-head,
+	.request-foot {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
+		padding: 14px 18px;
+	}
+	.request-head {
+		border-bottom: 1px solid var(--gray-100);
+	}
+	.request-id {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.request-id strong {
+		font-size: 16px;
+		font-variant-numeric: tabular-nums;
+	}
+	.request-head time {
+		font-size: 13px;
+	}
+	.request-body {
+		display: grid;
+		gap: 12px;
+		padding: 16px 18px;
+	}
+	.route {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+		font-size: 16px;
+		font-weight: 600;
+	}
+	.route-dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 999px;
+		border: 2px solid var(--navy-700);
+	}
+	.route-dot.to {
+		background: var(--navy-700);
+	}
+	.route-arrow {
+		color: var(--gray-500, #737c88);
+		margin: 0 4px;
+	}
+	.facts {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px 28px;
+		margin: 0;
+	}
+	.facts dt {
+		font-size: 12px;
+		color: var(--gray-600);
+	}
+	.facts dd {
+		margin: 2px 0 0;
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	.message {
+		margin: 0;
+		padding: 10px 12px;
+		border-radius: 8px;
+		background: var(--gray-100);
+		color: var(--ink-800);
+		font-size: 14px;
+	}
+	.request-foot {
+		background: #fcfcfd;
+		border-top: 1px solid var(--gray-100);
+	}
+	.customer {
+		display: grid;
+		gap: 2px;
+		min-width: 0;
+	}
+	.customer .muted {
+		font-size: 13px;
+	}
+	.request-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+	.request-actions form {
+		margin: 0;
+	}
+	.request-actions .btn {
+		display: inline-flex;
+		align-items: center;
+		height: 38px;
+		padding: 0 14px;
+		font-size: 14px;
+		line-height: 1;
+		text-decoration: none;
+		box-sizing: border-box;
+	}
+	.btn.ghost {
+		background: #fff;
+		color: var(--ink-800);
+		border-color: var(--gray-300);
+	}
+	.btn.ghost:hover {
+		background: var(--gray-100);
+	}
+	.btn.ghost.danger {
+		color: #b42318;
+		border-color: #fecdca;
+	}
+	.pill {
+		display: inline-block;
+		padding: 2px 10px;
+		border-radius: 999px;
+		font-size: 12px;
+		font-weight: 600;
+		background: var(--gray-200);
+		color: var(--ink-800);
+	}
+	.pill.warn {
+		background: #fffaeb;
+		color: #b54708;
+		box-shadow: inset 0 0 0 1px #fedf89;
+	}
+	.pill.info {
+		background: #eff8ff;
+		color: #175cd3;
+		box-shadow: inset 0 0 0 1px #b2ddff;
+	}
+	.pill.violet {
+		background: #f4f3ff;
+		color: #5925dc;
+		box-shadow: inset 0 0 0 1px #d9d6fe;
+	}
+	.pill.ok {
+		background: #ecfdf3;
+		color: #067647;
+		box-shadow: inset 0 0 0 1px #abefc6;
+	}
+	.pill.off {
+		background: #f2f4f7;
+		color: #475467;
+	}
+	.empty {
+		display: grid;
+		gap: 4px;
+		padding: 40px 20px;
+		text-align: center;
+		background: #fff;
+		border: 1px dashed var(--gray-300);
+		border-radius: 12px;
+	}
+</style>
