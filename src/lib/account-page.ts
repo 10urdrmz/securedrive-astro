@@ -21,6 +21,7 @@ import {
 	type MemberRequest,
 } from "./members";
 import { safeNext } from "./track-page";
+import { memberBookingCards, type BookingCard } from "./booking-page";
 
 export type AccountNotice = "welcome" | "saved" | "passwordChanged";
 const NOTICES: readonly AccountNotice[] = ["welcome", "saved", "passwordChanged"];
@@ -37,6 +38,8 @@ export interface AccountPage {
 	notice?: AccountNotice;
 	/** The member's own transfer requests, newest first (account page only). */
 	requests: MemberRequest[];
+	/** The member's online bookings, newest pickup first (account page only). */
+	bookings: BookingCard[];
 	/** What the visitor typed, to refill the form after an error. Never holds a password. */
 	values: Record<string, string>;
 }
@@ -67,8 +70,10 @@ export async function runAccountPage(Astro: AstroGlobal, locale: Locale, action:
 	const errorKey = (name: string) => `account.error.${name}` as UiKey;
 
 	const member = await currentMember(Astro);
-	const page: AccountPage = { view, locale, member, requests: [], values: {} };
-	if (view === "account" && member) page.requests = await memberRequests(member);
+	const page: AccountPage = { view, locale, member, requests: [], bookings: [], values: {} };
+	if (view === "account" && member) {
+		[page.requests, page.bookings] = await Promise.all([memberRequests(member), memberBookingCards(Astro, member)]);
+	}
 
 	const guestView = view === "login" || view === "register";
 	if (Astro.request.method !== "POST") {

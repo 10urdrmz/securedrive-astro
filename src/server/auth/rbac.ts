@@ -23,14 +23,30 @@ export type Permission =
 	| "tariffs.write"
 	| "settings.write"
 	| "users.manage"
-	| "audit.read";
+	| "audit.read"
+	| "bookings.read"
+	| "bookings.write"
+	| "drivers.manage"
+	| "payments.write";
 
 const GRANTS: Record<Role, Permission[]> = {
-	super_admin: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "settings.write", "users.manage", "audit.read"],
-	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write"],
-	ops_agent: ["ops.access", "catalog.read"],
-	support_agent: ["ops.access", "catalog.read"],
-	finance: ["ops.access", "catalog.read"],
+	super_admin: [
+		"ops.access",
+		"catalog.read",
+		"catalog.write",
+		"tariffs.write",
+		"settings.write",
+		"users.manage",
+		"audit.read",
+		"bookings.read",
+		"bookings.write",
+		"drivers.manage",
+		"payments.write",
+	],
+	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write"],
+	ops_agent: ["ops.access", "catalog.read", "bookings.read", "bookings.write"],
+	support_agent: ["ops.access", "catalog.read", "bookings.read"],
+	finance: ["ops.access", "catalog.read", "bookings.read", "payments.write"],
 	passenger: [],
 };
 

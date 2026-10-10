@@ -19,6 +19,8 @@ const { title, user, active = Astro.url.pathname } = Astro.props;
 const NAV: { href: string; label: string; show: boolean }[] = user
 	? [
 			{ href: "/ops", label: "Pano", show: true },
+			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", show: can(user, "bookings.read") },
+			{ href: "/ops/suruculer", label: "Sürücüler", show: can(user, "bookings.read") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", show: can(user, "catalog.read") },
@@ -64,7 +66,7 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 				NAV.length > 0 && (
 					<nav class="ops-nav" aria-label="Operasyon menüsü">
 						{NAV.map((item) => (
-							<a href={item.href} aria-current={active === item.href ? "page" : undefined}>
+							<a href={item.href} aria-current={active === item.href || (item.href !== "/ops" && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
 								{item.label}
 							</a>
 						))}
@@ -245,6 +247,7 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 	.ops-main input[type="password"],
 	.ops-main input[type="number"],
 	.ops-main input[type="time"],
+	.ops-main input[type="date"],
 	.ops-main select {
 		font: inherit;
 		font-weight: 400;

@@ -1,0 +1,148 @@
+---
+/** Booking list: by pickup day, status or a search on number, name or phone. */
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { can } from "../../../server/auth/rbac";
+import { BOOKING_STATUSES, PAYMENT_STATUS_LABELS, STATUS_LABELS, type BookingStatus } from "../../../server/bookings";
+import { formatMoney, requireOps } from "../../../server/ops";
+import { isoToIstanbul, istanbulToIso } from "../../../server/pricing";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+
+const params = Astro.url.searchParams;
+const todayLocal = isoToIstanbul(new Date().toISOString()).date;
+const addDays = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00Z`) + days * 86400_000).toISOString().slice(0, 10);
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const from = DATE.test(params.get("from") ?? "") ? params.get("from")! : todayLocal;
+const to = DATE.test(params.get("to") ?? "") ? params.get("to")! : addDays(todayLocal, 7);
+const status = (BOOKING_STATUSES as readonly string[]).includes(params.get("status") ?? "") ? (params.get("status") as BookingStatus) : "";
+const q = (params.get("q") ?? "").trim().slice(0, 60);
+const unassigned = params.get("unassigned") === "1";
+
+let query = db
+	.selectFrom("sd_bookings as b")
+	.innerJoin("sd_zones as f", "f.id", "b.from_zone_id")
+	.innerJoin("sd_zones as t", "t.id", "b.to_zone_id")
+	.innerJoin("sd_vehicle_classes as c", "c.key", "b.class_key")
+	.leftJoin("sd_drivers as d", "d.id", "b.driver_id")
+	.select([
+		"b.code",
+		"b.status",
+		"b.pickup_at",
+		"b.pax",
+		"b.flight_no",
+		"b.contact_name",
+		"b.contact_phone",
+		"b.price_minor",
+		"b.payment_status",
+		"b.source",
+		"f.name as from_name",
+		"t.name as to_name",
+		"c.name as class_name",
+		"d.name as driver_name",
+	]);
+if (q) {
+	const like = `%${q}%`;
+	query = query.where((eb) => eb.or([eb("b.code", "like", like), eb("b.contact_name", "like", like), eb("b.contact_phone", "like", like)]));
+} else {
+	query = query.where("b.pickup_at", ">=", istanbulToIso(from, "00:00")!).where("b.pickup_at", "<", istanbulToIso(addDays(to, 1), "00:00")!);
+}
+if (status) query = query.where("b.status", "=", status);
+if (unassigned) query = query.where("b.driver_id", "is", null).where("b.status", "in", ["confirmed", "pending_payment"]);
+const rows = await query.orderBy("b.pickup_at").limit(300).execute();
+---
+
+<OpsLayout title="Rezervasyonlar" user={user}>
+	<form class="card form-grid" method="get">
+		<label>
+			Alış tarihi (başlangıç)
+			<input type="date" name="from" value={from} />
+		</label>
+		<label>
+			Bitiş
+			<input type="date" name="to" value={to} />
+		</label>
+		<label>
+			Durum
+			<select name="status">
+				<option value="">Hepsi</option>
+				{BOOKING_STATUSES.map((s) => <option value={s} selected={s === status}>{STATUS_LABELS[s]}</option>)}
+			</select>
+		</label>
+		<label>
+			Ara (no, ad, telefon)
+			<input type="text" name="q" value={q} />
+		</label>
+		<label class="inline">
+			<input type="checkbox" name="unassigned" value="1" checked={unassigned} /> Sadece atanmamış
+		</label>
+		<div class="actions" style="margin:0">
+			<button class="btn secondary" type="submit">Filtrele</button>
+			{can(user, "bookings.write") && <a class="btn" href="/ops/rezervasyonlar/yeni">Telefonla rezervasyon</a>}
+		</div>
+	</form>
+
+	<p class="muted">{rows.length} rezervasyon{q ? ` · "${q}" araması` : ` · ${from} – ${to}`}</p>
+	<div class="table-wrap">
+		<table class="data">
+			<thead>
+				<tr>
+					<th>No</th>
+					<th>Alış</th>
+					<th>Güzergâh</th>
+					<th>Araç</th>
+					<th>Yolcu</th>
+					<th>Sürücü</th>
+					<th>Durum</th>
+					<th class="num">Tutar</th>
+					<th>Ödeme</th>
+				</tr>
+			</thead>
+			<tbody>
+				{
+					rows.map((r) => {
+						const at = isoToIstanbul(r.pickup_at);
+						return (
+							<tr>
+								<td>
+									<a href={`/ops/rezervasyonlar/${r.code}`}>
+										<strong>{r.code}</strong>
+									</a>
+									{r.source === "ops" && <span class="muted"> · tel</span>}
+								</td>
+								<td>
+									{at.date} <strong>{at.time}</strong>
+									{r.flight_no && <div class="muted">{r.flight_no}</div>}
+								</td>
+								<td>
+									{r.from_name} → {r.to_name}
+								</td>
+								<td>
+									{r.class_name} · {r.pax} kişi
+								</td>
+								<td>
+									{r.contact_name}
+									<div class="muted">{r.contact_phone}</div>
+								</td>
+								<td>{r.driver_name ?? <span class="badge off">Atanmadı</span>}</td>
+								<td>
+									<span class:list={["badge", r.status === "completed" && "ok", r.status === "cancelled" && "off"]}>{STATUS_LABELS[r.status as BookingStatus] ?? r.status}</span>
+								</td>
+								<td class="num">{formatMoney(r.price_minor)} ₺</td>
+								<td>{PAYMENT_STATUS_LABELS[r.payment_status] ?? r.payment_status}</td>
+							</tr>
+						);
+					})
+				}
+				{
+					rows.length === 0 && (
+						<tr>
+							<td colspan="9" class="muted">Bu filtreyle rezervasyon yok.</td>
+						</tr>
+					)
+				}
+			</tbody>
+		</table>
+	</div>
+</OpsLayout>

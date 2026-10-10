@@ -3,15 +3,18 @@ import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import PageHero from "../components/sections/PageHero.astro";
 import StatusBadge from "../components/account/StatusBadge.astro";
-import { ACCOUNT_SLUG, LOCALE_META, accountPath, localizePath, pagePath, trackPath, type AccountAction } from "../i18n/locales";
+import { ACCOUNT_SLUG, LOCALE_META, accountPath, localizePath, bookPath, trackPath, type AccountAction } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import type { AccountPage } from "../lib/account-page";
 import { PASSWORD_MAX, PASSWORD_MIN } from "../lib/members";
 import { presentRequest } from "../lib/requests-view";
+import { formatTry } from "../lib/format";
+import { isoToIstanbul } from "../server/pricing";
+import type { UiKey } from "../i18n/ui";
 
 type Props = AccountPage;
 
-const { view, locale, member, requests, error, errorForm, notice, values } = Astro.props;
+const { view, locale, member, requests, bookings, error, errorForm, notice, values } = Astro.props;
 const t = useTranslations(locale);
 
 const ACTIONS: Record<AccountPage["view"], AccountAction> = {
@@ -154,7 +157,7 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 								<span dir="ltr">@{member.username}</span> · {t("account.memberSince")} {since}
 							</p>
 						</div>
-						<a href={pagePath(locale, "transfer")} class="btn btn--light">
+						<a href={bookPath(locale)} class="btn btn--light">
 							{t("nav.book")}
 							<Icon name="arrow" size={18} class="flip-rtl" />
 						</a>
@@ -212,6 +215,37 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 										</ul>
 
 										<div class="flex items-center justify-between gap-4">
+											<h2 class="font-display text-xl font-bold">{t("book.myBookings")}</h2>
+											<a href={bookPath(locale)} class="btn btn--ghost btn--sm">{t("book.new")}</a>
+										</div>
+										{
+											bookings.length === 0 ? (
+												<p class:list={[card, "px-6 py-5 text-gray-600"]}>{t("book.myBookingsEmpty")}</p>
+											) : (
+												<ul class="grid gap-3 list-none p-0">
+													{bookings.map((b) => {
+														const at = isoToIstanbul(b.pickupAt);
+														return (
+															<li class:list={[card, "flex flex-wrap items-center justify-between gap-4 px-5 py-4"]}>
+																<div class="grid gap-1">
+																	<span class="font-display font-bold text-navy-800 tabular-nums" dir="ltr">{b.code}</span>
+																	<span class="font-semibold">{b.fromName} → {b.toName}</span>
+																	<small class="text-sm text-gray-600">
+																		{at.date} · {at.time} · {formatTry(b.price_minor / 100, locale)} · {t(`book.status.${b.status}` as UiKey)}
+																	</small>
+																</div>
+																<a href={bookPath(locale, b.code, b.token)} class="btn btn--ghost btn--sm">
+																	{t("book.view")}
+																	<Icon name="arrow" size={16} class="flip-rtl" />
+																</a>
+															</li>
+														);
+													})}
+												</ul>
+											)
+										}
+
+										<div class="flex items-center justify-between gap-4">
 											<h2 class="font-display text-xl font-bold">{t("account.requests")}</h2>
 										</div>
 
@@ -222,7 +256,7 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 														<Icon name="route" size={26} />
 													</span>
 													<p class="max-w-md text-gray-600">{t("account.requestsEmpty")}</p>
-													<a href={pagePath(locale, "transfer")} class="btn btn--primary">{t("nav.book")}</a>
+													<a href={bookPath(locale)} class="btn btn--primary">{t("nav.book")}</a>
 												</div>
 											)
 										}
