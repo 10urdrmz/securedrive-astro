@@ -1,0 +1,97 @@
+---
+/**
+ * Transfer quote requests from the website's request form (routes without an online
+ * price, or visitors who preferred to ask). Ops calls back, agrees a price and turns
+ * the request into a booking in one step.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { can } from "../../server/auth/rbac";
+import { INQUIRY_STATUS_LABELS, listTransferInquiries } from "../../server/inquiries";
+import { requireOps } from "../../server/ops";
+import { isoToIstanbul } from "../../server/pricing";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+
+const all = Astro.url.searchParams.get("hepsi") === "1";
+const rows = await listTransferInquiries(db, !all);
+const canBook = can(user, "bookings.write");
+---
+
+<OpsLayout title="Fiyat talepleri" user={user}>
+	<p class="muted">
+		Sitedeki fiyat talebi formundan gelen transfer talepleri. Müşteriyle fiyatta anlaşınca "Rezervasyona çevir" ile bilgiler
+		dolu gelir; rezervasyon oluşunca talep "Rezervasyon yapıldı" olur ve müşteri rezervasyon linkini alır.
+		{all ? <a href="/ops/talepler">Sadece açık talepler</a> : <a href="/ops/talepler?hepsi=1">Tümünü göster</a>}
+	</p>
+	<div class="table-wrap">
+		<table class="data">
+			<thead>
+				<tr>
+					<th>No</th>
+					<th>Geldi</th>
+					<th>Güzergâh</th>
+					<th>Tarih</th>
+					<th>Kişi</th>
+					<th>Müşteri</th>
+					<th>Durum</th>
+					<th></th>
+				</tr>
+			</thead>
+			<tbody>
+				{
+					rows.map((r) => {
+						const at = r.createdAt ? isoToIstanbul(r.createdAt) : null;
+						return (
+							<tr>
+								<td>
+									<strong>{r.reference}</strong>
+								</td>
+								<td class="muted">{at ? `${at.date} ${at.time}` : ""}</td>
+								<td>
+									{r.from} → {r.to}
+									{r.returnTrip && <div class="muted">dönüş de istendi</div>}
+								</td>
+								<td>
+									{r.date} {r.time}
+									{r.flight && <div class="muted">{r.flight}</div>}
+								</td>
+								<td>
+									{r.passengers ?? "–"}
+									{r.vehicle && <div class="muted">{r.vehicle}</div>}
+								</td>
+								<td>
+									{r.name}
+									<div class="muted">{r.phone}</div>
+									{r.memberId && <span class="badge">üye</span>}
+								</td>
+								<td>
+									<span class:list={["badge", r.status === "booked" && "ok", r.status === "closed" && "off"]}>{INQUIRY_STATUS_LABELS[r.status] ?? r.status}</span>
+								</td>
+								<td>
+									{r.bookingCode ? (
+										<a href={`/ops/rezervasyonlar/${r.bookingCode}`}>{r.bookingCode}</a>
+									) : (
+										canBook && (
+											<a class="btn secondary" href={`/ops/rezervasyonlar/yeni?talep=${r.id}`}>
+												Rezervasyona çevir
+											</a>
+										)
+									)}
+								</td>
+							</tr>
+						);
+					})
+				}
+				{
+					rows.length === 0 && (
+						<tr>
+							<td colspan="8" class="muted">Açık talep yok.</td>
+						</tr>
+					)
+				}
+			</tbody>
+		</table>
+	</div>
+</OpsLayout>

@@ -3,6 +3,7 @@
 import { DEFAULT_LOCALE, isLocale } from "../../../i18n/locales";
 import { runBookPage } from "../../../lib/booking-page";
 import BookView from "../../../views/BookView.astro";
+import ReceiptView from "../../../views/ReceiptView.astro";
 import NotFoundView from "../../../views/NotFoundView.astro";
 
 const { lang } = Astro.params;
@@ -12,4 +13,4 @@ if (result instanceof Response) return result;
 if (!result) Astro.response.status = 404;
 ---
 
-{result ? <BookView {...result} /> : <NotFoundView locale={locale ?? DEFAULT_LOCALE} />}
+{result ? (result.view === "detail" && result.receipt ? <ReceiptView {...result} /> : <BookView {...result} />) : <NotFoundView locale={locale ?? DEFAULT_LOCALE} />}

@@ -20,6 +20,7 @@ const NAV: { href: string; label: string; show: boolean }[] = user
 	? [
 			{ href: "/ops", label: "Pano", show: true },
 			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", show: can(user, "bookings.read") },
+			{ href: "/ops/talepler", label: "Fiyat talepleri", show: can(user, "bookings.read") },
 			{ href: "/ops/suruculer", label: "Sürücüler", show: can(user, "bookings.read") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", show: can(user, "catalog.read") },

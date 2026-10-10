@@ -263,4 +263,30 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_payments_booking ON sd_payments(booking_id)`,
 		],
 	},
+	{
+		name: "0004_reviews_and_requests",
+		statements: [
+			// One review per booking, written by the passenger after the trip.
+			`CREATE TABLE IF NOT EXISTS sd_reviews (
+				booking_id TEXT PRIMARY KEY REFERENCES sd_bookings(id),
+				rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+				comment TEXT,
+				driver_id TEXT,
+				created_at TEXT NOT NULL DEFAULT (${NOW})
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_reviews_driver ON sd_reviews(driver_id, created_at)`,
+			// Which quote request (EmDash "inquiries" entry) a booking was made from.
+			`CREATE TABLE IF NOT EXISTS sd_inquiry_bookings (
+				inquiry_id TEXT PRIMARY KEY,
+				booking_code TEXT NOT NULL,
+				created_at TEXT NOT NULL
+			)`,
+			// Also created lazily by src/lib/members.ts; ops pages join it before any member page ran.
+			`CREATE TABLE IF NOT EXISTS sd_member_requests (
+				inquiry_id TEXT PRIMARY KEY,
+				member_id TEXT NOT NULL,
+				created_at TEXT NOT NULL
+			)`,
+		],
+	},
 ];

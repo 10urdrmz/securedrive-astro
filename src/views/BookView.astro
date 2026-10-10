@@ -287,7 +287,13 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 						<>
 							{page.notice && page.notice !== "paymentFailed" && (
 								<p class="form-status" data-state="success" role="status">
-									{page.notice === "created" ? t("book.created", { code: page.booking.code }) : page.notice === "paid" ? t("book.paid") : t("book.cancelled")}
+									{page.notice === "created"
+										? t("book.created", { code: page.booking.code })
+										: page.notice === "paid"
+											? t("book.paid")
+											: page.notice === "reviewed"
+												? t("book.reviewed")
+												: t("book.cancelled")}
 								</p>
 							)}
 							{page.notice === "paymentFailed" && <p class="form-status" data-state="error" role="alert">{t("book.paymentFailed")}</p>}
@@ -337,6 +343,36 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 								)}
 							</div>
 
+							{page.canReview && (
+								<form method="post" class:list={[card, "form grid gap-4 p-6 sm:p-8"]}>
+									<input type="hidden" name="intent" value="review" />
+									<h2 class="font-display text-lg font-bold">{t("book.reviewTitle")}</h2>
+									<fieldset class="grid gap-2 border-0 p-0 m-0">
+										<legend class="text-sm font-semibold mb-2">{t("book.reviewRating")}</legend>
+										<div class="flex flex-wrap gap-3">
+											{[5, 4, 3, 2, 1].map((n) => (
+												<label class="checkbox">
+													<input type="radio" name="rating" value={n} required checked={n === 5} />
+													<span>{"★".repeat(n)}</span>
+												</label>
+											))}
+										</div>
+									</fieldset>
+									<div class="field">
+										<label for="rv-comment">{t("book.reviewComment")}</label>
+										<textarea id="rv-comment" name="comment" rows="3" maxlength="1000"></textarea>
+									</div>
+									<button type="submit" class="btn btn--primary justify-self-start">{t("book.reviewSubmit")}</button>
+								</form>
+							)}
+							{page.review && (
+								<div class:list={[card, "grid gap-2 p-6 sm:p-8"]}>
+									<h2 class="font-display text-lg font-bold">{t("book.yourReview")}</h2>
+									<p class="text-gold-500 text-xl" aria-label={`${page.review.rating}/5`}>{"★".repeat(page.review.rating)}{"☆".repeat(5 - page.review.rating)}</p>
+									{page.review.comment && <p class="text-gray-700">{page.review.comment}</p>}
+								</div>
+							)}
+
 							{["pending_payment", "confirmed", "assigned"].includes(page.booking.status) && (
 								<div class:list={[card, "grid gap-3 p-6 sm:p-8"]}>
 									<h2 class="font-display text-lg font-bold">{t("book.cancel")}</h2>
@@ -384,6 +420,11 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 								<p class="text-sm text-gray-600">
 									{t(`book.pay.${page.booking.payment_method}` as UiKey)} · {t(`book.paymentStatus.${page.booking.payment_status}` as UiKey)}
 								</p>
+							)}
+							{page.view === "detail" && page.booking.status !== "cancelled" && (
+								<a class="btn btn--ghost btn--sm justify-self-start" href={`${bookPath(locale, page.booking.code, page.booking.tracking_token)}&makbuz=1`}>
+									{t("book.receipt")}
+								</a>
 							)}
 						</div>
 					)

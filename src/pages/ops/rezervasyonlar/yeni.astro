@@ -7,6 +7,7 @@ import OpsLayout from "../../../layouts/OpsLayout.astro";
 import { createBooking, PAYMENT_METHOD_LABELS, type PaymentMethod } from "../../../server/bookings";
 import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../../server/ops";
 import { isoToIstanbul, quote } from "../../../server/pricing";
+import { bookingPrefill, getTransferInquiry, markInquiryBooked } from "../../../server/inquiries";
 
 const ctx = await requireOps(Astro, "bookings.write");
 if (ctx instanceof Response) return ctx;
@@ -26,6 +27,11 @@ const now = isoToIstanbul(new Date(Date.now() + 3 * 3600_000).toISOString());
 let v: Record<string, string> = { date: now.date, time: now.time, pax: "2", bags: "2", payment: "cash", class_key: classes[0]?.key ?? "" };
 let error = "";
 let preview = "";
+
+// Turning a quote request into a booking: its details fill the form.
+const inquiryId = (Astro.url.searchParams.get("talep") ?? "").slice(0, 40);
+const inquiry = inquiryId ? await getTransferInquiry(db, inquiryId) : null;
+if (inquiry) v = { ...v, ...bookingPrefill(inquiry, zones) };
 
 const form = await readForm(Astro);
 if (form) {
@@ -77,13 +83,15 @@ if (form) {
 					bags: Number(v.bags),
 					paymentMethod: v.payment as PaymentMethod,
 					source: "ops",
-					locale: "tr",
-					memberId: null,
+					locale: inquiry && ["tr", "en", "ar", "ru"].includes(inquiry.locale) ? inquiry.locale : "tr",
+					// A request sent by a signed-in member shows up among their bookings.
+					memberId: inquiry?.memberId ?? null,
 					priceOverrideMinor: override,
 				},
 				{ kind: "ops", userId: user.id },
 			);
-			await audit(db, user, "booking.create", "booking", booking.id, { code: booking.code });
+			if (inquiry) await markInquiryBooked(db, inquiry.id, booking.code);
+			await audit(db, user, "booking.create", "booking", booking.id, { code: booking.code, inquiry: inquiry?.reference });
 			return Astro.redirect(`/ops/rezervasyonlar/${booking.code}`, 303);
 		}
 	}
@@ -92,7 +100,9 @@ const airports = zones.filter((z) => z.kind === "airport");
 const districts = zones.filter((z) => z.kind !== "airport");
 ---
 
-<OpsLayout title="Telefonla rezervasyon" user={user} active="/ops/rezervasyonlar">
+<OpsLayout title={inquiry ? `Talepten rezervasyon · ${inquiry.reference}` : "Telefonla rezervasyon"} user={user} active={inquiry ? "/ops/talepler" : "/ops/rezervasyonlar"}>
+	{inquiry && !v.from && <p class="notice error">Talepteki kalkış noktası bölgelerle eşleşmedi; lütfen seçin.</p>}
+	{inquiry?.bookingCode && <p class="notice error">Bu talepten zaten rezervasyon yapılmış: <a href={`/ops/rezervasyonlar/${inquiry.bookingCode}`}>{inquiry.bookingCode}</a></p>}
 	{error && <p class="notice error">{error}</p>}
 	{preview && <p class="notice">{preview}. Bilgileri kontrol edip "Rezervasyonu oluştur"a basın.</p>}
 	<form class="card" method="post">

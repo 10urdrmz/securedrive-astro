@@ -55,6 +55,26 @@ const [todayCount, unassigned, active] = showBookings
 				.then((r) => Number(r?.n ?? 0)),
 		])
 	: [0, 0, 0];
+const ratings = showBookings
+	? await db
+			.selectFrom("sd_reviews")
+			.select((eb) => [eb.fn.avg<number>("rating").as("avg"), eb.fn.countAll<number>().as("n")])
+			.where("created_at", ">=", new Date(Date.now() - 30 * 86400_000).toISOString())
+			.executeTakeFirst()
+	: null;
+const openRequests = showBookings
+	? Number(
+			(
+				await db
+					.selectFrom("ec_inquiries")
+					.select((eb) => eb.fn.countAll<number>().as("n"))
+					.where("kind", "=", "transfer")
+					.where("deleted_at", "is", null)
+					.where((eb) => eb.or([eb("status_label", "is", null), eb("status_label", "in", ["new", "contacted", "quoted"])]))
+					.executeTakeFirst()
+			)?.n ?? 0,
+		)
+	: 0;
 ---
 
 <OpsLayout title={`Merhaba, ${user.name.split(" ")[0]}`} user={user}>
@@ -72,6 +92,14 @@ const [todayCount, unassigned, active] = showBookings
 				<div class="stat">
 					<strong>{active}</strong>
 					<span class="muted">şu an yolda</span>
+				</div>
+				<a class="stat" href="/ops/talepler" style="color:inherit;text-decoration:none">
+					<strong>{openRequests}</strong>
+					<span class="muted">açık fiyat talebi</span>
+				</a>
+				<div class="stat">
+					<strong>{ratings && Number(ratings.n) > 0 ? Number(ratings.avg).toFixed(1) : "–"}</strong>
+					<span class="muted">son 30 gün puan ortalaması ({Number(ratings?.n ?? 0)} değerlendirme)</span>
 				</div>
 			</div>
 		)
