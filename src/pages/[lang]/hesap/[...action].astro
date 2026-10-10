@@ -1,0 +1,15 @@
+---
+/** Member pages behind a language prefix: /en/hesap, /ar/hesap/giris, /ru/hesap/uye-ol. */
+import { DEFAULT_LOCALE, isLocale } from "../../../i18n/locales";
+import { runAccountPage } from "../../../lib/account-page";
+import AccountView from "../../../views/AccountView.astro";
+import NotFoundView from "../../../views/NotFoundView.astro";
+
+const { lang } = Astro.params;
+const locale = isLocale(lang) && lang !== DEFAULT_LOCALE ? lang : null;
+const result = locale ? await runAccountPage(Astro, locale, Astro.params.action ?? "") : null;
+if (result instanceof Response) return result;
+if (!result) Astro.response.status = 404;
+---
+
+{result ? <AccountView {...result} /> : <NotFoundView locale={locale ?? DEFAULT_LOCALE} />}

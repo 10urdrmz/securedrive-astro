@@ -1,0 +1,15 @@
+---
+/** A request's tracking page behind a language prefix: /en/takip/<tracking id>. */
+import { DEFAULT_LOCALE, isLocale } from "../../../i18n/locales";
+import { runTrackPage } from "../../../lib/track-page";
+import NotFoundView from "../../../views/NotFoundView.astro";
+import TrackView from "../../../views/TrackView.astro";
+
+const { lang } = Astro.params;
+const locale = isLocale(lang) && lang !== DEFAULT_LOCALE ? lang : null;
+const result = locale ? await runTrackPage(Astro, locale, Astro.params.id ?? "") : null;
+if (result instanceof Response) return result;
+if (!locale) Astro.response.status = 404;
+---
+
+{locale ? <TrackView locale={locale} request={result} /> : <NotFoundView locale={DEFAULT_LOCALE} />}

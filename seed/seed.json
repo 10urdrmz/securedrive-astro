@@ -37,10 +37,12 @@
 					"slug": "kind",
 					"label": "Tür",
 					"type": "select",
-					"options": [
-						"page",
-						"legal"
-					],
+					"validation": {
+						"options": [
+							"page",
+							"legal"
+						]
+					},
 					"defaultValue": "page"
 				},
 				{
@@ -95,14 +97,16 @@
 					"slug": "icon",
 					"label": "Simge",
 					"type": "select",
-					"options": [
-						"plane",
-						"clock",
-						"building",
-						"route",
-						"shield",
-						"star"
-					],
+					"validation": {
+						"options": [
+							"plane",
+							"clock",
+							"building",
+							"route",
+							"shield",
+							"star"
+						]
+					},
 					"defaultValue": "star"
 				},
 				{
@@ -271,10 +275,12 @@
 					"label": "Kalkış",
 					"type": "select",
 					"required": true,
-					"options": [
-						"IST",
-						"SAW"
-					]
+					"validation": {
+						"options": [
+							"IST",
+							"SAW"
+						]
+					}
 				},
 				{
 					"slug": "destination",
@@ -287,10 +293,12 @@
 					"slug": "side",
 					"label": "Yaka",
 					"type": "select",
-					"options": [
-						"Avrupa",
-						"Anadolu"
-					]
+					"validation": {
+						"options": [
+							"Avrupa",
+							"Anadolu"
+						]
+					}
 				},
 				{
 					"slug": "distance_km",
@@ -358,13 +366,15 @@
 					"slug": "category",
 					"label": "Kategori",
 					"type": "select",
-					"options": [
-						"booking",
-						"airport",
-						"payment",
-						"corporate",
-						"general"
-					],
+					"validation": {
+						"options": [
+							"booking",
+							"airport",
+							"payment",
+							"corporate",
+							"general"
+						]
+					},
 					"defaultValue": "general"
 				},
 				{
@@ -441,23 +451,27 @@
 					"slug": "kind",
 					"label": "Form",
 					"type": "select",
-					"options": [
-						"transfer",
-						"contact",
-						"corporate"
-					]
+					"validation": {
+						"options": [
+							"transfer",
+							"contact",
+							"corporate"
+						]
+					}
 				},
 				{
 					"slug": "status_label",
 					"label": "Durum",
 					"type": "select",
-					"options": [
-						"new",
-						"contacted",
-						"quoted",
-						"booked",
-						"closed"
-					],
+					"validation": {
+						"options": [
+							"new",
+							"contacted",
+							"quoted",
+							"booked",
+							"closed"
+						]
+					},
 					"defaultValue": "new"
 				},
 				{
@@ -508,6 +522,11 @@
 					"slug": "internal_notes",
 					"label": "Operasyon notları",
 					"type": "text"
+				},
+				{
+					"slug": "reference",
+					"label": "Talep no",
+					"type": "string"
 				}
 			]
 		}

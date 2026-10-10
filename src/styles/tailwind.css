@@ -1,0 +1,51 @@
+/*
+  Tailwind entry point.
+
+  The site is moving from hand-written CSS (global.css + per-component styles) to
+  Tailwind utilities, one component at a time. Until that is done both live side
+  by side: the old stylesheet sits in its own cascade layer below the utilities,
+  so a utility always wins over a legacy rule on the same element.
+
+  Tailwind's preflight reset is left out on purpose: global.css already resets
+  what the site needs, and preflight would restyle the pages not yet migrated.
+  Without it, a `border` utility needs `border-solid` next to it.
+*/
+@layer theme, legacy, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "./global.css" layer(legacy);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* The legacy `.container` (max-width + gutters) must not be replaced by Tailwind's. */
+@source not inline("container");
+/* The admin plugin is styled by the EmDash admin's own stylesheet. */
+@source not "../../plugins";
+
+/* Design tokens, mirrored from global.css so utilities speak the same language. */
+@theme {
+	--color-navy-900: #0a2540;
+	--color-navy-800: #0e375e;
+	--color-navy-700: #144c7f;
+	--color-navy-600: #1d5f9b;
+	--color-navy-100: #e6eef6;
+	--color-navy-50: #f2f6fa;
+
+	--color-ink-950: #0b0d10;
+	--color-ink-900: #111316;
+	--color-ink-800: #1b1e23;
+	--color-ink-700: #2a2e35;
+
+	--color-gray-600: #5b6470;
+	--color-gray-500: #737c88;
+	--color-gray-300: #d5dae0;
+	--color-gray-200: #e6e9ed;
+	--color-gray-100: #f3f5f7;
+
+	--color-gold-500: #b8955a;
+	--color-gold-300: #dcc49a;
+
+	--font-display: var(--font-heading), var(--font-body), system-ui, sans-serif;
+
+	/* Where the full navigation replaces the menu button. */
+	--breakpoint-nav: 80rem;
+}

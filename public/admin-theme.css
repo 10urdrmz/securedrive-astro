@@ -1,0 +1,127 @@
+/*
+  SecureDrive look for the EmDash admin.
+
+  The admin ships its own stylesheet; this file is added after it (see
+  src/middleware.ts) and only re-points its colour variables and a few stable
+  hooks (`data-sidebar`, `data-mode`). It contains no layout rules, so an admin
+  update can at worst lose a tint, never break a screen.
+*/
+
+/* ---------- Brand colours ---------- */
+html[data-theme] {
+	--sd-navy-900: #0a2540;
+	--sd-navy-800: #0e375e;
+	--sd-navy-700: #144c7f;
+	--sd-navy-600: #1d5f9b;
+	--sd-gold: #b8955a;
+	--sd-gold-soft: #dcc49a;
+
+	--color-kumo-brand: var(--sd-navy-700);
+	--color-kumo-brand-hover: var(--sd-navy-800);
+	--text-color-kumo-brand: var(--sd-gold);
+	--text-color-kumo-link: var(--sd-navy-600);
+	--color-kumo-focus: var(--sd-navy-600);
+
+	/* A cool, slightly blue-grey workspace instead of flat white. */
+	--color-kumo-elevated: #f3f5f8;
+	--color-kumo-canvas: #eef1f5;
+	--color-kumo-tint: #e8eef5;
+	--color-kumo-line: #dde3ea;
+}
+
+html[data-theme][data-mode="dark"] {
+	--color-kumo-brand: #2b6fb0;
+	--color-kumo-brand-hover: #3a82c6;
+	--text-color-kumo-link: #8fbde8;
+	--color-kumo-focus: #6fa8dc;
+
+	--color-kumo-base: #111a26;
+	--color-kumo-elevated: #0b121b;
+	--color-kumo-canvas: #080d14;
+	--color-kumo-control: #16212f;
+	--color-kumo-tint: #1a2838;
+	--color-kumo-line: #223246;
+}
+
+/*
+  ---------- Main navigation: always the brand's deep navy ----------
+  Only the main menu is matched (the sidebar that collapses to icons). The admin
+  builds other panels from the same component, such as the editor's settings
+  panel on the right, and those must keep their normal light or dark colours.
+*/
+html[data-theme] [data-sidebar="sidebar"][data-collapsible="icon"] [data-sidebar="content-container"] {
+	--sidebar-bg: var(--sd-navy-900);
+	--text-color-kumo-default: #eef3f8;
+	--text-color-kumo-strong: #c6d3e0;
+	--text-color-kumo-subtle: #93a8bd;
+	--text-color-kumo-inactive: #6f859b;
+	--color-kumo-line: rgb(255 255 255 / 0.1);
+	--color-kumo-tint: rgb(255 255 255 / 0.08);
+	--color-kumo-fill: rgb(255 255 255 / 0.12);
+	--color-kumo-fill-hover: rgb(255 255 255 / 0.16);
+	--color-kumo-interact: rgb(255 255 255 / 0.14);
+	--color-kumo-control: rgb(255 255 255 / 0.06);
+	background-image: radial-gradient(600px 260px at 0% 0%, rgb(29 95 155 / 0.45), transparent 70%);
+	color: #eef3f8;
+}
+
+html[data-theme][data-mode="dark"] [data-sidebar="sidebar"][data-collapsible="icon"] [data-sidebar="content-container"] {
+	--sidebar-bg: #071a2e;
+}
+
+/* The page you are on: a lighter row with a gold marker on its leading edge. */
+html[data-theme] [data-sidebar="sidebar"][data-collapsible="icon"] [data-sidebar="menu-button"][data-active="true"] {
+	background: rgb(255 255 255 / 0.12);
+	color: #fff;
+	box-shadow: inset 3px 0 0 var(--sd-gold);
+}
+
+html[data-theme][dir="rtl"] [data-sidebar="sidebar"][data-collapsible="icon"] [data-sidebar="menu-button"][data-active="true"] {
+	box-shadow: inset -3px 0 0 var(--sd-gold);
+}
+
+html[data-theme] [data-sidebar="sidebar"][data-collapsible="icon"] [data-sidebar="menu-button"]:hover {
+	background: rgb(255 255 255 / 0.08);
+}
+
+/* Section labels (İçerik, Yönet, …) in the accent colour. */
+html[data-theme] [data-sidebar="sidebar"][data-collapsible="icon"] [data-sidebar="group-label"] {
+	color: var(--sd-gold-soft);
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	font-size: 0.6875rem;
+}
+
+/* The logo file is dark-on-light; on navy and in dark mode show its light twin. */
+html[data-theme] [data-sidebar="sidebar"][data-collapsible="icon"] img[src$="/logo.png"],
+html[data-theme][data-mode="dark"] img[src$="/logo.png"] {
+	content: url("/logo-light.png");
+}
+
+/* The sidebar shows the logo at icon size by default; give the wordmark room to be read. */
+html[data-theme] [data-sidebar="sidebar"][data-collapsible="icon"] [data-sidebar="header"] img[src$="/logo.png"] {
+	width: auto !important;
+	height: 20px !important;
+	max-width: none;
+	border-radius: 0;
+}
+
+/* ---------- Workspace ---------- */
+html[data-theme] main {
+	background-image: linear-gradient(180deg, rgb(20 76 127 / 0.05), transparent 220px);
+}
+
+html[data-theme] header.sticky {
+	background: var(--color-kumo-base);
+	box-shadow: 0 1px 0 var(--color-kumo-line), 0 6px 16px -14px rgb(10 37 64 / 0.5);
+}
+
+html[data-theme] main h1 {
+	letter-spacing: -0.01em;
+}
+
+/* Keyboard focus is easy to lose on a busy screen; make it unmistakable. */
+html[data-theme] :focus-visible {
+	outline: 2px solid var(--color-kumo-focus);
+	outline-offset: 2px;
+}

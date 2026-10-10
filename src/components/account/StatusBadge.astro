@@ -1,0 +1,27 @@
+---
+import type { Locale } from "../../i18n/locales";
+import { useTranslations, type UiKey } from "../../i18n/ui";
+import type { RequestStatus } from "../../lib/members";
+
+interface Props {
+	locale: Locale;
+	status: RequestStatus;
+}
+
+const { locale, status } = Astro.props;
+const t = useTranslations(locale);
+
+/** One colour per step, all from the brand palette; only "confirmed" turns green. */
+const TONES: Record<RequestStatus, string> = {
+	new: "bg-navy-50 text-navy-700",
+	contacted: "bg-gold-300/30 text-[#7a5b22]",
+	quoted: "bg-navy-100 text-navy-800",
+	booked: "bg-[#ecfdf3] text-[#05603a]",
+	closed: "bg-gray-100 text-gray-600",
+};
+---
+
+<span class:list={["inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap", TONES[status]]}>
+	<span class="size-1.5 rounded-full bg-current"></span>
+	{t(`account.status.${status}` as UiKey)}
+</span>

@@ -1,0 +1,186 @@
+---
+/**
+ * A request's own page: where it stands and what was asked for. It is reached by
+ * the member who sent the request, or by a visitor who proved the request is
+ * theirs on the lookup page (see lib/track-page.ts). It never shows the
+ * customer's name or contact details.
+ */
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import StatusBadge from "../components/account/StatusBadge.astro";
+import { TRACK_SLUG, accountPath, lookupPath, pagePath, type Locale } from "../i18n/locales";
+import { useTranslations, type UiKey } from "../i18n/ui";
+import type { MemberRequest } from "../lib/members";
+import { presentRequest } from "../lib/requests-view";
+import { SITE, telHref, whatsappHref } from "../lib/site";
+
+interface Props {
+	locale: Locale;
+	request: MemberRequest | null;
+	/** Site path of the page showing this view (the lookup page reuses it). */
+	path?: string;
+	/** Set when the request was found through the lookup form rather than an account. */
+	lookedUp?: boolean;
+}
+
+const { locale, request, path, lookedUp = false } = Astro.props;
+const t = useTranslations(locale);
+const trip = request && presentRequest(request, locale);
+
+// The steps a request normally passes through; "closed" ends it at any point.
+const STEPS = ["new", "contacted", "quoted", "booked"] as const;
+const reached = trip ? STEPS.indexOf(trip.status as (typeof STEPS)[number]) : -1;
+const closed = trip?.status === "closed";
+
+const facts = trip
+	? [
+			{ icon: "calendar", label: t("track.date"), value: [trip.day, trip.time].filter(Boolean).join(" · ") },
+			{ icon: "users", label: t("quick.passengers"), value: trip.passengers ? String(trip.passengers) : "" },
+			{ icon: "plane", label: t("track.flight"), value: trip.flight ?? "" },
+			{ icon: "shield", label: t("form.vehicle"), value: trip.vehicle ?? "" },
+			{ icon: "clock", label: t("track.sent"), value: trip.sent },
+		].filter((fact) => fact.value)
+	: [];
+
+const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0_6px_20px_-12px_rgb(16_24_40/0.18)]";
+const title = trip ? `${t("track.title")} · ${trip.reference}` : t("track.notFound");
+---
+
+<Base locale={locale} path={path ?? (request ? `${TRACK_SLUG}/${request.id.toLowerCase()}` : TRACK_SLUG)} title={title} noindex>
+	<section class="bg-[radial-gradient(900px_320px_at_85%_-20%,rgb(29_95_155/0.45),transparent_70%),linear-gradient(180deg,var(--color-ink-900),var(--color-ink-800))] text-white">
+		<div class="container py-10 sm:py-14">
+			<p class="text-sm font-semibold uppercase tracking-[0.14em] text-gold-300 rtl:tracking-normal">{t("track.title")}</p>
+			{
+				trip ? (
+					<div class="mt-3 flex flex-wrap items-center gap-4">
+						<h1 class="font-display text-3xl sm:text-4xl font-bold tabular-nums" dir="ltr">{trip.reference}</h1>
+						<StatusBadge locale={locale} status={trip.status} />
+					</div>
+				) : (
+					<h1 class="mt-3 font-display text-3xl sm:text-4xl font-bold">{t("track.notFound")}</h1>
+				)
+			}
+			<p class="mt-3 max-w-2xl text-white/70">{trip ? t(lookedUp ? "lookup.result" : "track.lead") : t("track.notFoundText")}</p>
+		</div>
+	</section>
+
+	<section class="bg-gray-100 py-8 sm:py-12 min-h-[40vh]">
+		{
+			!trip && (
+				<div class="container flex flex-wrap gap-3">
+					<a href={pagePath(locale, "transfer")} class="btn btn--primary">{t("nav.book")}</a>
+					<a href={accountPath(locale)} class="btn btn--ghost">{t("nav.account")}</a>
+				</div>
+			)
+		}
+		{
+			trip && (
+				<div class="container grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8 items-start">
+					<div class="grid gap-6 min-w-0">
+						<div class:list={[card, "p-6 sm:p-8"]}>
+							<h2 class="font-display text-lg font-bold mb-6">{t("track.status")}</h2>
+							{closed && <p class="form-status mb-6" data-state="error">{t("track.closed")}</p>}
+							<ol class="grid gap-0 list-none p-0 sm:grid-cols-4">
+								{
+									STEPS.map((step, index) => {
+										const done = !closed && index <= reached;
+										const current = !closed && index === reached;
+										return (
+											<li
+												aria-current={current ? "step" : undefined}
+												class="relative flex gap-4 pb-6 last:pb-0 sm:flex-col sm:gap-3 sm:pb-0 sm:pe-4"
+											>
+												{/* Connector to the next step: down the side on phones, across on wider screens. */}
+												{index < STEPS.length - 1 && (
+													<span
+														class:list={[
+															"absolute start-[15px] top-8 bottom-0 w-0.5 sm:start-8 sm:end-0 sm:top-[15px] sm:bottom-auto sm:h-0.5 sm:w-auto",
+															!closed && index < reached ? "bg-navy-700" : "bg-gray-300",
+														]}
+													/>
+												)}
+												<span
+													class:list={[
+														"relative grid place-items-center size-8 shrink-0 rounded-full text-sm font-bold",
+														done ? "bg-navy-700 text-white" : "bg-white text-gray-500 border-2 border-solid border-gray-300",
+														current && "ring-4 ring-navy-100",
+													]}
+												>
+													{done && !current ? <Icon name="check" size={18} /> : index + 1}
+												</span>
+												<span class:list={["pt-1 text-sm sm:pt-0", done ? "font-semibold text-ink-900" : "text-gray-500"]}>
+													{t(`account.status.${step}` as UiKey)}
+												</span>
+											</li>
+										);
+									})
+								}
+							</ol>
+						</div>
+
+						<div class:list={[card, "p-6 sm:p-8"]}>
+							<h2 class="font-display text-lg font-bold mb-6">{t("track.trip")}</h2>
+							<ol class="grid gap-3 list-none p-0 mb-6">
+								<li class="relative flex items-center gap-3 text-lg font-semibold after:absolute after:start-[5px] after:top-[calc(50%+8px)] after:h-[calc(100%-4px)] after:w-0.5 after:bg-gray-300">
+									<span class="size-3 shrink-0 rounded-full border-2 border-solid border-navy-700 bg-white" />
+									{trip.from}
+								</li>
+								<li class="flex items-center gap-3 text-lg font-semibold">
+									<span class="size-3 shrink-0 rounded-full bg-navy-700" />
+									{trip.to}
+								</li>
+							</ol>
+							<dl class="grid gap-x-6 gap-y-4 sm:grid-cols-2 m-0">
+								{
+									facts.map((fact) => (
+										<div class="flex items-start gap-3">
+											<span class="grid place-items-center size-9 shrink-0 rounded-lg bg-navy-50 text-navy-700">
+												<Icon name={fact.icon as "calendar"} size={18} />
+											</span>
+											<div>
+												<dt class="text-xs text-gray-500">{fact.label}</dt>
+												<dd class="m-0 font-semibold">{fact.value}</dd>
+											</div>
+										</div>
+									))
+								}
+							</dl>
+							{trip.returnTrip && <p class="mt-5 text-sm font-semibold text-navy-700">{t("account.requestReturn")}</p>}
+						</div>
+					</div>
+
+					<aside class:list={[card, "grid gap-3 p-6 lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]"]}>
+						<p class="text-sm text-gray-600 mb-1">{t("track.help")}</p>
+						<a href={whatsappHref(t("track.whatsapp", { ref: trip.reference }))} class="btn btn--primary btn--block" target="_blank" rel="noopener">
+							<Icon name="whatsapp" size={18} />
+							WhatsApp
+						</a>
+						<a href={telHref} class="btn btn--ghost btn--block">
+							<Icon name="phone" size={18} />
+							<span dir="ltr">{SITE.phoneDisplay}</span>
+						</a>
+						{lookedUp ? (
+							<a href={lookupPath(locale)} class="btn btn--ghost btn--block">{t("lookup.again")}</a>
+						) : (
+							<button type="button" class="btn btn--ghost btn--block" data-copy-link data-copied={t("track.copied")}>
+								{t("track.copy")}
+							</button>
+						)}
+					</aside>
+				</div>
+			)
+		}
+	</section>
+</Base>
+
+<script>
+	const button = document.querySelector<HTMLButtonElement>("[data-copy-link]");
+	button?.addEventListener("click", async () => {
+		try {
+			await navigator.clipboard.writeText(location.href);
+			button.textContent = button.dataset.copied ?? "";
+		} catch {
+			// Clipboard access can be refused; the address bar still has the link.
+		}
+	});
+</script>

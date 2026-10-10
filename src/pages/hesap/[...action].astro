@@ -1,0 +1,12 @@
+---
+/** Member pages in Turkish: /hesap, /hesap/giris, /hesap/uye-ol. Other languages: src/pages/[lang]/hesap. */
+import { runAccountPage } from "../../lib/account-page";
+import AccountView from "../../views/AccountView.astro";
+import NotFoundView from "../../views/NotFoundView.astro";
+
+const result = await runAccountPage(Astro, "tr", Astro.params.action ?? "");
+if (result instanceof Response) return result;
+if (!result) Astro.response.status = 404;
+---
+
+{result ? <AccountView {...result} /> : <NotFoundView locale="tr" />}

@@ -7,6 +7,7 @@ import { PAGE_SLUGS, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import { byOrder, getLocalized } from "../lib/content";
 import { SITE, telHref, whatsappHref } from "../lib/site";
+import { matchAirport, matchDistrict } from "securedrive-inquiries/places";
 
 interface Props {
 	locale: Locale;
@@ -20,8 +21,8 @@ const vehicles = (await getLocalized(Astro, "vehicles", locale)).sort(byOrder).m
 const params = Astro.url.searchParams;
 const pick = (key: string, max = 120) => params.get(key)?.slice(0, max) || undefined;
 const prefill = {
-	from: pick("from"),
-	to: pick("to"),
+	from: matchAirport(pick("from")),
+	to: matchDistrict(pick("to")),
 	date: /^\d{4}-\d{2}-\d{2}$/.test(params.get("date") ?? "") ? params.get("date")! : undefined,
 	time: /^\d{2}:\d{2}$/.test(params.get("time") ?? "") ? params.get("time")! : undefined,
 	passengers: /^\d{1,2}$/.test(params.get("passengers") ?? "") ? params.get("passengers")! : undefined,

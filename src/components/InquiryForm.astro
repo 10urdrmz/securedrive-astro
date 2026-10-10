@@ -1,11 +1,13 @@
 ---
-import { localizePath, type Locale } from "../i18n/locales";
+import { localizePath, lookupPath, trackPath, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
+import { airportName } from "../lib/routes";
+import { AIRPORT_CODES, DISTRICTS } from "securedrive-inquiries/places";
 
 interface Props {
 	locale: Locale;
 	kind: "transfer" | "contact" | "corporate";
-	/** Values carried over from the quick form on the home page. */
+	/** Values carried over from the quick form or a route page; `from` is an airport code, `to` a district. */
 	prefill?: Partial<Record<"from" | "to" | "date" | "time" | "passengers" | "vehicle", string>>;
 	vehicles?: string[];
 }
@@ -19,10 +21,15 @@ const messages = {
 	success: t("form.success"),
 	error: t("form.error"),
 	rate: t("form.rateLimited"),
+	reference: t("form.reference"),
+	track: t("form.track"),
+	lookup: t("lookup.nav"),
 };
+// Where a request's tracking page lives in this language; the script appends the id.
+const trackBase = trackPath(locale, "");
 ---
 
-<form class="form inquiry-form" id={id} data-inquiry={kind} data-locale={locale} data-messages={JSON.stringify(messages)} novalidate>
+<form class="form inquiry-form" id={id} data-inquiry={kind} data-locale={locale} data-messages={JSON.stringify(messages)} data-track={trackBase} data-lookup={lookupPath(locale)} novalidate>
 	{
 		kind === "transfer" && (
 			<>
@@ -30,11 +37,17 @@ const messages = {
 				<div class="form-row">
 					<div class="field">
 						<label for={`${id}-from`}>{t("quick.from")}</label>
-						<input id={`${id}-from`} name="from" required autocomplete="off" placeholder={t("quick.fromPlaceholder")} value={prefill.from} />
+						<select id={`${id}-from`} name="from" required>
+							<option value="" disabled selected={!prefill.from}>{t("form.choose")}</option>
+							{AIRPORT_CODES.map((code) => <option value={code} selected={prefill.from === code}>{airportName(code, locale)}</option>)}
+						</select>
 					</div>
 					<div class="field">
 						<label for={`${id}-to`}>{t("quick.to")}</label>
-						<input id={`${id}-to`} name="to" required autocomplete="off" placeholder={t("quick.toPlaceholder")} value={prefill.to} />
+						<select id={`${id}-to`} name="to" required>
+							<option value="" disabled selected={!prefill.to}>{t("form.choose")}</option>
+							{DISTRICTS.map((district) => <option value={district} selected={prefill.to === district}>{district}</option>)}
+						</select>
 					</div>
 				</div>
 				<div class="form-row">
@@ -120,7 +133,7 @@ const messages = {
 </form>
 
 <script>
-	type Messages = { sending: string; success: string; error: string; rate: string };
+	type Messages = { sending: string; success: string; error: string; rate: string; reference: string; track: string; lookup: string };
 
 	for (const form of document.querySelectorAll<HTMLFormElement>("form[data-inquiry]")) {
 		const status = form.querySelector<HTMLElement>(".form-status")!;
@@ -132,6 +145,26 @@ const messages = {
 			if (state) status.dataset.state = state;
 			else delete status.dataset.state;
 		};
+
+		// Decides which follow-up link the success message offers.
+		let signedIn = false;
+
+		// Signed-in members get their contact details filled in; anything already typed stays.
+		const fillFromAccount = async () => {
+			try {
+				const response = await fetch("/hesap/ben.json", { credentials: "same-origin" });
+				const member = ((await response.json()) as { member: Record<string, string | null> | null }).member;
+				if (!member) return;
+				signedIn = true;
+				for (const name of ["name", "phone", "email"]) {
+					const input = form.elements.namedItem(name);
+					if (input instanceof HTMLInputElement && !input.value && member[name]) input.value = member[name];
+				}
+			} catch {
+				// The form works the same without it.
+			}
+		};
+		void fillFromAccount();
 
 		form.addEventListener("submit", async (event) => {
 			event.preventDefault();
@@ -157,13 +190,27 @@ const messages = {
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(payload),
 				});
-				const body = await response.json().catch(() => null);
+				const body: any = await response.json().catch(() => null);
 				const result = body?.data ?? body;
 				if (!response.ok || !result?.ok) {
 					throw new Error(result?.error === "RATE_LIMITED" ? messages.rate : messages.error);
 				}
 				form.reset();
-				say(messages.success, "success");
+				void fillFromAccount();
+				// Give the visitor their request number to quote when they call.
+				const reference = typeof result.reference === "string" ? ` ${messages.reference.replace("{ref}", result.reference)}` : "";
+				say(messages.success + reference, "success");
+				if (form.dataset.inquiry === "transfer" && typeof result.trackingId === "string") {
+					// Members open the request directly; visitors look it up with its number.
+					const link = document.createElement("a");
+					link.href = signedIn
+						? `${form.dataset.track}/${result.trackingId.toLowerCase()}`
+						: `${form.dataset.lookup}?no=${encodeURIComponent(String(result.reference ?? ""))}`;
+					link.textContent = signedIn ? messages.track : messages.lookup;
+					link.className = "form-status-link";
+					status.appendChild(document.createElement("br"));
+					status.appendChild(link);
+				}
 				status.scrollIntoView({ block: "nearest", behavior: "smooth" });
 			} catch (error) {
 				say(error instanceof Error ? error.message : messages.error, "error");
