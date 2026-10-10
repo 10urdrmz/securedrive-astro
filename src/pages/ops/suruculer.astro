@@ -7,7 +7,7 @@ import OpsLayout from "../../layouts/OpsLayout.astro";
 import { can } from "../../server/auth/rbac";
 import { ulid } from "../../server/ids";
 import { audit, readForm, requireOps, text } from "../../server/ops";
-import { LOGIN_OUTCOME_LABELS, driversWithAccess, issuePin, recentLogins, revokeAccess } from "../../server/driver-app";
+import { LOGIN_OUTCOME_LABELS, driversWithAccess, issuePin, phoneKey, recentLogins, revokeAccess } from "../../server/driver-app";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -47,6 +47,9 @@ if (form && (intent === "pin" || intent === "revoke")) {
 	};
 	if (values.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(values.phone)) {
 		error = "Ad ve geçerli bir telefon gerekli.";
+	} else if (phoneKey(values.phone).length < 10) {
+		// The driver signs in with this number; the app compares its last ten digits.
+		error = "Telefonu alan koduyla tam yazın (05xx xxx xx xx), sürücü uygulamaya bu numarayla girer.";
 	} else if (id) {
 		await db.updateTable("sd_drivers").set(values).where("id", "=", id).execute();
 		await audit(db, user, "driver.update", "driver", id, values);
