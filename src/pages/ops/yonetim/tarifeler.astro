@@ -1,0 +1,176 @@
+---
+/**
+ * Tariff matrix: pick an origin zone (usually an airport) and a vehicle class, then
+ * enter the price to every destination in one form. "Both directions" also writes
+ * the return price (district → airport), which is what nearly every route needs.
+ */
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { can } from "../../../server/auth/rbac";
+import { ulid } from "../../../server/ids";
+import { audit, formatMoney, parseMoney, readForm, requireOps } from "../../../server/ops";
+
+const ctx = await requireOps(Astro, "catalog.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canWrite = can(user, "tariffs.write");
+
+const zones = await db.selectFrom("sd_zones").selectAll().orderBy("sort").execute();
+const classes = await db.selectFrom("sd_vehicle_classes").selectAll().where("active", "=", 1).orderBy("sort").execute();
+
+const fromId = Astro.url.searchParams.get("from") ?? zones.find((z) => z.kind === "airport")?.id ?? "";
+const classKey = Astro.url.searchParams.get("class") ?? classes[0]?.key ?? "";
+const origin = zones.find((z) => z.id === fromId);
+const vehicleClass = classes.find((c) => c.key === classKey);
+
+let notice = "";
+let error = "";
+const form = canWrite && origin && vehicleClass ? await readForm(Astro) : null;
+if (form) {
+	const both = form.get("both") === "on";
+	const changes: { to: string; price: number | null; payout: number | null }[] = [];
+	const invalid: string[] = [];
+	for (const zone of zones) {
+		if (zone.id === origin!.id || !zone.serviceable) continue;
+		const priceText = String(form.get(`price_${zone.id}`) ?? "");
+		const payoutText = String(form.get(`payout_${zone.id}`) ?? "");
+		const price = parseMoney(priceText);
+		const payout = parseMoney(payoutText);
+		if ((priceText.trim() && price === null) || (payoutText.trim() && payout === null)) invalid.push(zone.name);
+		else changes.push({ to: zone.id, price, payout });
+	}
+	if (invalid.length) {
+		error = `Tutar okunamadı: ${invalid.join(", ")}. Örnek biçim: 1.250 veya 1250,50`;
+	} else {
+		const updated_at = new Date().toISOString();
+		let saved = 0;
+		let removed = 0;
+		for (const change of changes) {
+			const pairs = both ? [[origin!.id, change.to], [change.to, origin!.id]] : [[origin!.id, change.to]];
+			for (const [from, to] of pairs) {
+				if (change.price === null) {
+					const result = await db
+						.deleteFrom("sd_tariffs")
+						.where("from_zone_id", "=", from)
+						.where("to_zone_id", "=", to)
+						.where("class_key", "=", vehicleClass!.key)
+						.where("org_id", "=", "")
+						.executeTakeFirst();
+					removed += Number(result.numDeletedRows ?? 0);
+					continue;
+				}
+				const values = { price_minor: change.price, driver_payout_minor: change.payout, updated_by: user.id, updated_at };
+				await db
+					.insertInto("sd_tariffs")
+					.values({ id: ulid(), from_zone_id: from, to_zone_id: to, class_key: vehicleClass!.key, org_id: "", ...values })
+					.onConflict((oc) => oc.columns(["from_zone_id", "to_zone_id", "class_key", "org_id"]).doUpdateSet(values))
+					.execute();
+				saved++;
+			}
+		}
+		await audit(db, user, "tariffs.save", "tariff", `${origin!.id}:${vehicleClass!.key}`, { both, saved, removed });
+		notice = `${saved} fiyat kaydedildi${removed ? `, ${removed} fiyat silindi` : ""}.`;
+	}
+}
+
+const rows = origin && vehicleClass
+	? await db
+			.selectFrom("sd_tariffs")
+			.select(["to_zone_id", "price_minor", "driver_payout_minor", "updated_at"])
+			.where("from_zone_id", "=", origin.id)
+			.where("class_key", "=", vehicleClass.key)
+			.where("org_id", "=", "")
+			.execute()
+	: [];
+const byZone = new Map(rows.map((r) => [r.to_zone_id, r]));
+const destinations = zones.filter((z) => origin && z.id !== origin.id && z.serviceable);
+const filled = destinations.filter((z) => byZone.has(z.id)).length;
+---
+
+<OpsLayout title="Tarifeler" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+
+	<form class="card form-grid" method="get">
+		<label>
+			Nereden
+			<select name="from">
+				{zones.filter((z) => z.serviceable).map((z) => <option value={z.id} selected={z.id === fromId}>{z.name}</option>)}
+			</select>
+		</label>
+		<label>
+			Araç sınıfı
+			<select name="class">
+				{classes.map((c) => <option value={c.key} selected={c.key === classKey}>{c.name}</option>)}
+			</select>
+		</label>
+		<div><button class="btn secondary" type="submit">Göster</button></div>
+	</form>
+
+	{
+		origin && vehicleClass ? (
+			<form method="post">
+				<p class="muted">
+					{origin.name} çıkışlı, {vehicleClass.name} · {filled} / {destinations.length} varış noktasının fiyatı var. Tutarlar
+					TL ve KDV dahil. Boş bırakılan satırın fiyatı silinir; o rota sitede "teklif al" olarak görünür.
+				</p>
+				<div class="table-wrap">
+					<table class="data">
+						<thead>
+							<tr>
+								<th>Varış</th>
+								<th class="num">Yolcu fiyatı (TL)</th>
+								<th class="num">Sürücü payı (TL)</th>
+								<th>Son değişiklik</th>
+							</tr>
+						</thead>
+						<tbody>
+							{destinations.map((zone) => {
+								const row = byZone.get(zone.id);
+								return (
+									<tr>
+										<td>{zone.name}</td>
+										<td class="num">
+											<input
+												class="money"
+												type="text"
+												inputmode="decimal"
+												name={`price_${zone.id}`}
+												value={formatMoney(row?.price_minor)}
+												disabled={!canWrite}
+												aria-label={`${zone.name} yolcu fiyatı`}
+											/>
+										</td>
+										<td class="num">
+											<input
+												class="money"
+												type="text"
+												inputmode="decimal"
+												name={`payout_${zone.id}`}
+												value={formatMoney(row?.driver_payout_minor)}
+												disabled={!canWrite}
+												aria-label={`${zone.name} sürücü payı`}
+											/>
+										</td>
+										<td class="muted">{row ? new Date(row.updated_at).toLocaleDateString("tr-TR") : "–"}</td>
+									</tr>
+								);
+							})}
+						</tbody>
+					</table>
+				</div>
+				{
+					canWrite && (
+						<div class="actions">
+							<label class="inline">
+								<input type="checkbox" name="both" checked /> Ters yönü de aynı fiyatla kaydet
+							</label>
+							<button class="btn" type="submit">Kaydet</button>
+						</div>
+					)
+				}
+			</form>
+		) : (
+			<p class="muted">Önce bir bölge ve araç sınıfı tanımlayın.</p>
+		)
+	}
+</OpsLayout>

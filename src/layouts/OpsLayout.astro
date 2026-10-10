@@ -1,0 +1,330 @@
+---
+/**
+ * Shell for the internal operations panel (/ops). Server-rendered, no framework JS.
+ * Never indexed, never cached.
+ */
+import type { SessionUser } from "../server/auth/rbac";
+import { can, ROLE_LABELS } from "../server/auth/rbac";
+import "../styles/global.css";
+
+interface Props {
+	title: string;
+	user?: SessionUser | null;
+	/** Current path, to highlight the menu entry. */
+	active?: string;
+}
+
+const { title, user, active = Astro.url.pathname } = Astro.props;
+
+const NAV: { href: string; label: string; show: boolean }[] = user
+	? [
+			{ href: "/ops", label: "Pano", show: true },
+			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/ekstralar", label: "Ekstralar", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/ayarlar", label: "Kurallar", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/kullanicilar", label: "Ekip", show: can(user, "users.manage") },
+			{ href: "/ops/yonetim/denetim", label: "Denetim kaydı", show: can(user, "audit.read") },
+		].filter((item) => item.show)
+	: [];
+
+Astro.response.headers.set("Cache-Control", "no-store");
+Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
+Astro.response.headers.set("Referrer-Policy", "same-origin");
+---
+
+<!doctype html>
+<html lang="tr">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex, nofollow" />
+		<title>{title} · SecureDrive Operasyon</title>
+		<link rel="icon" href="/favicon.svg" />
+	</head>
+	<body class="ops">
+		<header class="ops-top">
+			<a class="ops-brand" href="/ops">SecureDrive <span>Operasyon</span></a>
+			{
+				user && (
+					<div class="ops-user">
+						<span>
+							{user.name} · {user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}
+						</span>
+						<form method="post" action="/ops/cikis">
+							<button type="submit" class="ops-link">Çıkış</button>
+						</form>
+					</div>
+				)
+			}
+		</header>
+		<div class="ops-shell">
+			{
+				NAV.length > 0 && (
+					<nav class="ops-nav" aria-label="Operasyon menüsü">
+						{NAV.map((item) => (
+							<a href={item.href} aria-current={active === item.href ? "page" : undefined}>
+								{item.label}
+							</a>
+						))}
+					</nav>
+				)
+			}
+			<main class="ops-main">
+				<h1>{title}</h1>
+				<slot />
+			</main>
+		</div>
+	</body>
+</html>
+
+<style is:global>
+	body.ops {
+		margin: 0;
+		background: var(--gray-100);
+		color: var(--ink-900);
+		font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+		font-size: 15px;
+	}
+	.ops-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
+		padding: 12px 20px;
+		background: var(--navy-900);
+		color: #fff;
+	}
+	.ops-brand {
+		color: #fff;
+		font-weight: 700;
+		text-decoration: none;
+	}
+	.ops-brand span {
+		color: var(--gold-300);
+		font-weight: 500;
+	}
+	.ops-user {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		font-size: 14px;
+		opacity: 0.9;
+	}
+	.ops-user form {
+		margin: 0;
+	}
+	.ops-link {
+		background: none;
+		border: 0;
+		color: var(--gold-300);
+		cursor: pointer;
+		font: inherit;
+		padding: 0;
+		text-decoration: underline;
+	}
+	.ops-shell {
+		display: grid;
+		grid-template-columns: 200px 1fr;
+		min-height: calc(100vh - 48px);
+	}
+	.ops-nav {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 16px 8px;
+		background: #fff;
+		border-right: 1px solid var(--gray-200);
+	}
+	.ops-nav a {
+		padding: 8px 12px;
+		border-radius: 6px;
+		color: var(--ink-800);
+		text-decoration: none;
+	}
+	.ops-nav a:hover {
+		background: var(--gray-100);
+	}
+	.ops-nav a[aria-current="page"] {
+		background: var(--navy-100);
+		color: var(--navy-800);
+		font-weight: 600;
+	}
+	.ops-main {
+		padding: 24px 28px 48px;
+		min-width: 0;
+	}
+	.ops-main h1 {
+		margin: 0 0 20px;
+		font-size: 24px;
+	}
+	.ops-main h2 {
+		margin: 28px 0 12px;
+		font-size: 18px;
+	}
+	@media (max-width: 760px) {
+		.ops-shell {
+			grid-template-columns: 1fr;
+		}
+		.ops-nav {
+			flex-direction: row;
+			flex-wrap: wrap;
+			border-right: 0;
+			border-bottom: 1px solid var(--gray-200);
+		}
+		.ops-main {
+			padding: 16px;
+		}
+	}
+
+	.card {
+		background: #fff;
+		border: 1px solid var(--gray-200);
+		border-radius: 10px;
+		padding: 20px;
+		margin-bottom: 20px;
+	}
+	.muted {
+		color: var(--gray-600);
+	}
+	.notice {
+		padding: 10px 14px;
+		border-radius: 8px;
+		margin-bottom: 16px;
+		background: #ecfdf3;
+		color: var(--green-600);
+		border: 1px solid #abefc6;
+	}
+	.notice.error {
+		background: #fef3f2;
+		color: var(--red-600);
+		border-color: #fecdca;
+	}
+	.table-wrap {
+		overflow-x: auto;
+	}
+	table.data {
+		width: 100%;
+		border-collapse: collapse;
+		background: #fff;
+	}
+	table.data th,
+	table.data td {
+		text-align: left;
+		padding: 8px 10px;
+		border-bottom: 1px solid var(--gray-200);
+		vertical-align: middle;
+	}
+	table.data th {
+		font-size: 13px;
+		color: var(--gray-600);
+		font-weight: 600;
+		background: var(--gray-100);
+	}
+	table.data td.num,
+	table.data th.num {
+		text-align: right;
+	}
+	.ops-main label {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--ink-800);
+	}
+	.ops-main label.inline {
+		flex-direction: row;
+		align-items: center;
+		gap: 8px;
+		font-weight: 500;
+	}
+	.ops-main input[type="text"],
+	.ops-main input[type="email"],
+	.ops-main input[type="password"],
+	.ops-main input[type="number"],
+	.ops-main input[type="time"],
+	.ops-main select {
+		font: inherit;
+		font-weight: 400;
+		padding: 7px 10px;
+		border: 1px solid var(--gray-300);
+		border-radius: 6px;
+		background: #fff;
+		min-width: 0;
+	}
+	.ops-main input.money {
+		width: 110px;
+		text-align: right;
+	}
+	.form-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: 14px;
+		align-items: end;
+	}
+	.actions {
+		display: flex;
+		gap: 10px;
+		align-items: center;
+		margin-top: 16px;
+		flex-wrap: wrap;
+	}
+	.btn {
+		font: inherit;
+		font-weight: 600;
+		padding: 8px 16px;
+		border-radius: 6px;
+		border: 1px solid var(--navy-700);
+		background: var(--navy-700);
+		color: #fff;
+		cursor: pointer;
+	}
+	.btn.secondary {
+		background: #fff;
+		color: var(--navy-700);
+	}
+	.badge {
+		display: inline-block;
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: 12px;
+		font-weight: 600;
+		background: var(--gray-200);
+		color: var(--ink-800);
+	}
+	.badge.ok {
+		background: #ecfdf3;
+		color: var(--green-600);
+	}
+	.badge.off {
+		background: #fef3f2;
+		color: var(--red-600);
+	}
+	.stats {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+		gap: 14px;
+		margin-bottom: 20px;
+	}
+	.stat {
+		background: #fff;
+		border: 1px solid var(--gray-200);
+		border-radius: 10px;
+		padding: 16px;
+	}
+	.stat strong {
+		display: block;
+		font-size: 26px;
+	}
+	.auth-card {
+		max-width: 380px;
+		margin: 40px auto;
+	}
+	.auth-card form {
+		display: flex;
+		flex-direction: column;
+		gap: 14px;
+	}
+</style>

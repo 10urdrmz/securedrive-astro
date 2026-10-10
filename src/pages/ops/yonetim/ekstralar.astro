@@ -1,0 +1,108 @@
+---
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { can } from "../../../server/auth/rbac";
+import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../../server/ops";
+
+const ctx = await requireOps(Astro, "catalog.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canWrite = can(user, "catalog.write");
+
+let notice = "";
+let error = "";
+const form = canWrite ? await readForm(Astro) : null;
+if (form) {
+	const key = text(form, "key", 40)
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, "");
+	const name = text(form, "name", 80);
+	const priceText = text(form, "price", 20);
+	const price = priceText ? parseMoney(priceText) : 0;
+	const maxQty = Number(text(form, "max_qty", 2));
+	const sort = Number(text(form, "sort", 3)) || 0;
+	const active = form.get("active") === "on" ? 1 : 0;
+	if (!key || !name || price === null || !Number.isInteger(maxQty) || maxQty < 1 || maxQty > 10) {
+		error = "Anahtar, ad, geçerli bir fiyat ve 1–10 arası adet sınırı gerekli.";
+	} else {
+		const values = { name, price_minor: price, max_qty: maxQty, sort, active };
+		await db
+			.insertInto("sd_extras")
+			.values({ key, ...values })
+			.onConflict((oc) => oc.column("key").doUpdateSet(values))
+			.execute();
+		await audit(db, user, "extra.save", "extra", key, values);
+		notice = `${name} kaydedildi.`;
+	}
+}
+
+const extras = await db.selectFrom("sd_extras").selectAll().orderBy("sort").execute();
+---
+
+<OpsLayout title="Ekstralar" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	<p class="muted">Rezervasyonda yolcunun ekleyebileceği hizmetler. Fiyat 0 ise ücretsiz gösterilir.</p>
+	{
+		extras.map((x) => (
+			<form class="card form-grid" method="post">
+				<label>
+					Anahtar
+					<input type="text" name="key" value={x.key} readonly />
+				</label>
+				<label>
+					Ad
+					<input type="text" name="name" value={x.name} required disabled={!canWrite} />
+				</label>
+				<label>
+					Fiyat (TL)
+					<input class="money" type="text" inputmode="decimal" name="price" value={formatMoney(x.price_minor)} disabled={!canWrite} />
+				</label>
+				<label>
+					En çok adet
+					<input type="number" name="max_qty" value={x.max_qty} min="1" max="10" disabled={!canWrite} />
+				</label>
+				<label>
+					Sıra
+					<input type="number" name="sort" value={x.sort} disabled={!canWrite} />
+				</label>
+				<label class="inline">
+					<input type="checkbox" name="active" checked={!!x.active} disabled={!canWrite} /> Aktif
+				</label>
+				{canWrite && <div><button class="btn" type="submit">Kaydet</button></div>}
+			</form>
+		))
+	}
+	{
+		canWrite && (
+			<>
+				<h2>Yeni ekstra</h2>
+				<form class="card form-grid" method="post">
+					<label>
+						Anahtar
+						<input type="text" name="key" placeholder="extra-wait" pattern="[a-z0-9-]+" required />
+					</label>
+					<label>
+						Ad
+						<input type="text" name="name" required />
+					</label>
+					<label>
+						Fiyat (TL)
+						<input class="money" type="text" inputmode="decimal" name="price" />
+					</label>
+					<label>
+						En çok adet
+						<input type="number" name="max_qty" value="1" min="1" max="10" />
+					</label>
+					<label>
+						Sıra
+						<input type="number" name="sort" value="10" />
+					</label>
+					<label class="inline">
+						<input type="checkbox" name="active" checked /> Aktif
+					</label>
+					<div><button class="btn" type="submit">Ekle</button></div>
+				</form>
+			</>
+		)
+	}
+</OpsLayout>

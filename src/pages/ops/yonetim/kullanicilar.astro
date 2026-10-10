@@ -1,0 +1,132 @@
+---
+/**
+ * Internal team: create accounts with a role and a starting password, change roles,
+ * deactivate. Only super admins. Deactivation signs the person out everywhere.
+ */
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { hashPassword, MIN_PASSWORD_LENGTH } from "../../../server/auth/password";
+import { INTERNAL_ROLES, ROLE_LABELS, isInternalRole } from "../../../server/auth/rbac";
+import { destroyUserSessions } from "../../../server/auth/session";
+import { ulid } from "../../../server/ids";
+import { audit, readForm, requireOps, text } from "../../../server/ops";
+
+const ctx = await requireOps(Astro, "users.manage");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+
+let notice = "";
+let error = "";
+const form = await readForm(Astro);
+if (form) {
+	const action = text(form, "action", 20);
+	if (action === "create") {
+		const name = text(form, "name", 120);
+		const email = text(form, "email", 200).toLowerCase();
+		const role = text(form, "role", 30);
+		const password = String(form.get("password") ?? "");
+		if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !isInternalRole(role)) error = "Ad, geçerli e-posta ve rol gerekli.";
+		else if (password.length < MIN_PASSWORD_LENGTH) error = `Başlangıç şifresi en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`;
+		else {
+			const taken = await db.selectFrom("sd_users").select("id").where("email", "=", email).executeTakeFirst();
+			if (taken) error = "Bu e-postayla bir hesap zaten var.";
+			else {
+				const id = ulid();
+				await db.insertInto("sd_users").values({ id, name, email, password_hash: await hashPassword(password) }).execute();
+				await db.insertInto("sd_memberships").values({ id: ulid(), user_id: id, org_id: "internal", role }).execute();
+				await audit(db, user, "user.create", "user", id, { email, role });
+				notice = `${name} eklendi. Şifreyi kendisine güvenli bir kanaldan iletin.`;
+			}
+		}
+	} else if (action === "role" || action === "status") {
+		const id = text(form, "id", 40);
+		if (id === user.id) error = "Kendi rolünüzü veya durumunuzu buradan değiştiremezsiniz.";
+		else if (action === "role") {
+			const role = text(form, "role", 30);
+			if (isInternalRole(role)) {
+				await db.deleteFrom("sd_memberships").where("user_id", "=", id).where("org_id", "=", "internal").execute();
+				await db.insertInto("sd_memberships").values({ id: ulid(), user_id: id, org_id: "internal", role }).execute();
+				await destroyUserSessions(db, id);
+				await audit(db, user, "user.role", "user", id, { role });
+				notice = "Rol güncellendi; kişinin yeniden giriş yapması gerekecek.";
+			}
+		} else {
+			const target = await db.selectFrom("sd_users").select("status").where("id", "=", id).executeTakeFirst();
+			const status = target?.status === "active" ? "locked" : "active";
+			await db.updateTable("sd_users").set({ status, updated_at: new Date().toISOString() }).where("id", "=", id).execute();
+			if (status === "locked") await destroyUserSessions(db, id);
+			await audit(db, user, status === "locked" ? "user.lock" : "user.unlock", "user", id);
+			notice = status === "locked" ? "Hesap kapatıldı ve oturumları sonlandırıldı." : "Hesap yeniden açıldı.";
+		}
+	}
+}
+
+const team = await db
+	.selectFrom("sd_memberships as m")
+	.innerJoin("sd_users as u", "u.id", "m.user_id")
+	.select(["u.id", "u.name", "u.email", "u.status", "u.last_login_at", "m.role"])
+	.where("m.org_id", "=", "internal")
+	.orderBy("u.name")
+	.execute();
+---
+
+<OpsLayout title="Ekip" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	<div class="table-wrap">
+		<table class="data">
+			<thead><tr><th>Ad</th><th>E-posta</th><th>Rol</th><th>Durum</th><th>Son giriş</th><th></th></tr></thead>
+			<tbody>
+				{
+					team.map((member) => (
+						<tr>
+							<td>{member.name}</td>
+							<td>{member.email}</td>
+							<td>
+								{member.id === user.id ? (
+									ROLE_LABELS[member.role as keyof typeof ROLE_LABELS] ?? member.role
+								) : (
+									<form method="post" style="display:flex;gap:6px">
+										<input type="hidden" name="action" value="role" />
+										<input type="hidden" name="id" value={member.id} />
+										<select name="role" aria-label={`${member.name} rolü`}>
+											{INTERNAL_ROLES.map((r) => <option value={r} selected={r === member.role}>{ROLE_LABELS[r]}</option>)}
+										</select>
+										<button class="btn secondary" type="submit">Değiştir</button>
+									</form>
+								)}
+							</td>
+							<td>{member.status === "active" ? <span class="badge ok">Aktif</span> : <span class="badge off">Kapalı</span>}</td>
+							<td class="muted">{member.last_login_at ? new Date(member.last_login_at).toLocaleString("tr-TR") : "–"}</td>
+							<td>
+								{member.id !== user.id && (
+									<form method="post">
+										<input type="hidden" name="action" value="status" />
+										<input type="hidden" name="id" value={member.id} />
+										<button class="ops-link" style="color:var(--navy-700)" type="submit">
+											{member.status === "active" ? "Hesabı kapat" : "Yeniden aç"}
+										</button>
+									</form>
+								)}
+							</td>
+						</tr>
+					))
+				}
+			</tbody>
+		</table>
+	</div>
+
+	<h2>Ekip üyesi ekle</h2>
+	<form class="card form-grid" method="post">
+		<input type="hidden" name="action" value="create" />
+		<label>Ad soyad<input type="text" name="name" required /></label>
+		<label>E-posta<input type="email" name="email" required /></label>
+		<label>
+			Rol
+			<select name="role">
+				{INTERNAL_ROLES.map((r) => <option value={r} selected={r === "ops_agent"}>{ROLE_LABELS[r]}</option>)}
+			</select>
+		</label>
+		<label>Başlangıç şifresi<input type="text" name="password" minlength={MIN_PASSWORD_LENGTH} required autocomplete="off" /></label>
+		<div><button class="btn" type="submit">Ekle</button></div>
+	</form>
+</OpsLayout>

@@ -1,0 +1,92 @@
+---
+/**
+ * One-time creation of the first super admin.
+ *
+ * Open only while no super admin exists, and only with the setup token from the
+ * SD_SETUP_TOKEN secret (`wrangler secret put SD_SETUP_TOKEN`; locally in .env).
+ * Without that secret the page refuses, so a fresh public deploy cannot be claimed
+ * by whoever finds it first.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { getDb } from "../../server/db";
+import { hashPassword, MIN_PASSWORD_LENGTH } from "../../server/auth/password";
+import { createSession } from "../../server/auth/session";
+import { ulid, sha256Hex } from "../../server/ids";
+import { audit, readForm, text } from "../../server/ops";
+
+const db = await getDb(Astro.locals);
+const existing = await db.selectFrom("sd_memberships").select("id").where("role", "=", "super_admin").executeTakeFirst();
+if (existing) return Astro.redirect("/ops/giris");
+
+const setupToken = process.env.SD_SETUP_TOKEN ?? "";
+let error = "";
+const values = { name: "", email: "" };
+
+const form = await readForm(Astro);
+if (form && setupToken) {
+	values.name = text(form, "name", 120);
+	values.email = text(form, "email", 200).toLowerCase();
+	const password = String(form.get("password") ?? "");
+	const token = String(form.get("token") ?? "");
+	// Compare hashes so the check takes the same time whatever the input.
+	if ((await sha256Hex(token)) !== (await sha256Hex(setupToken))) {
+		error = "Kurulum anahtarı hatalı.";
+	} else if (!values.name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+		error = "Ad ve geçerli bir e-posta girin.";
+	} else if (password.length < MIN_PASSWORD_LENGTH) {
+		error = `Şifre en az ${MIN_PASSWORD_LENGTH} karakter olmalı.`;
+	} else {
+		const id = ulid();
+		await db
+			.insertInto("sd_users")
+			.values({ id, name: values.name, email: values.email, password_hash: await hashPassword(password) })
+			.onConflict((oc) => oc.column("email").doNothing())
+			.execute();
+		const user = await db.selectFrom("sd_users").select(["id", "name"]).where("email", "=", values.email).executeTakeFirstOrThrow();
+		await db
+			.insertInto("sd_memberships")
+			.values({ id: ulid(), user_id: user.id, org_id: "internal", role: "super_admin" })
+			.onConflict((oc) => oc.doNothing())
+			.execute();
+		await audit(db, { id: user.id, name: user.name, email: values.email, roles: [] }, "setup", "user", user.id);
+		await createSession(db, Astro.cookies, user.id, "ops", Astro.request.headers.get("user-agent"));
+		return Astro.redirect("/ops");
+	}
+}
+---
+
+<OpsLayout title="İlk kurulum">
+	<div class="card auth-card">
+		{
+			!setupToken ? (
+				<p class="notice error">
+					Kurulum kapalı: SD_SETUP_TOKEN gizli değeri tanımlı değil. Sunucuda bu değeri tanımlayıp sayfayı yenileyin.
+				</p>
+			) : (
+				<>
+					<p class="muted">İlk süper admin hesabını oluşturun. Bu sayfa hesap oluşunca kapanır.</p>
+					{error && <p class="notice error">{error}</p>}
+					<form method="post">
+						<label>
+							Kurulum anahtarı
+							<input type="password" name="token" required autocomplete="off" />
+						</label>
+						<label>
+							Ad soyad
+							<input type="text" name="name" value={values.name} required />
+						</label>
+						<label>
+							E-posta
+							<input type="email" name="email" value={values.email} required autocomplete="username" />
+						</label>
+						<label>
+							Şifre (en az {MIN_PASSWORD_LENGTH} karakter)
+							<input type="password" name="password" minlength={MIN_PASSWORD_LENGTH} required autocomplete="new-password" />
+						</label>
+						<button class="btn" type="submit">Hesabı oluştur</button>
+					</form>
+				</>
+			)
+		}
+	</div>
+</OpsLayout>
