@@ -249,13 +249,14 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 										</div>
 										<p class="fieldset-title">{t("book.payment")}</p>
 										<div class="grid gap-2">
-											{(["cash", "card_in_vehicle"] as const).map((method) => (
+											{(page.online ? (["online", "cash", "card_in_vehicle"] as const) : (["cash", "card_in_vehicle"] as const)).map((method) => (
 												<label class="checkbox">
 													<input type="radio" name="payment" value={method} checked={(page.values.payment || "cash") === method} />
 													<span>{t(`book.pay.${method}`)}</span>
 												</label>
 											))}
-											<small class="text-sm text-gray-600">{t("book.onlineSoon")}</small>
+											<small class="text-sm text-gray-600">{page.online ? t("book.onlineHint") : t("book.onlineSoon")}</small>
+											{page.sandbox && <small class="text-sm font-semibold text-[#b42318]">{t("book.sandbox")}</small>}
 										</div>
 										<div class="hp-field" aria-hidden="true">
 											<label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
@@ -284,10 +285,19 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 				{
 					page.view === "detail" && (
 						<>
-							{page.notice && (
+							{page.notice && page.notice !== "paymentFailed" && (
 								<p class="form-status" data-state="success" role="status">
-									{page.notice === "created" ? t("book.created", { code: page.booking.code }) : t("book.cancelled")}
+									{page.notice === "created" ? t("book.created", { code: page.booking.code }) : page.notice === "paid" ? t("book.paid") : t("book.cancelled")}
 								</p>
+							)}
+							{page.notice === "paymentFailed" && <p class="form-status" data-state="error" role="alert">{t("book.paymentFailed")}</p>}
+							{page.payHref && (
+								<div class:list={[card, "grid gap-3 p-6 sm:p-8"]}>
+									<p>{t("book.awaitingPayment")}</p>
+									<a class="btn btn--primary justify-self-start" href={page.payHref}>
+										{t("book.payNow")} · {money(page.booking.price_minor)}
+									</a>
+								</div>
 							)}
 							<div class:list={[card, "grid gap-5 p-6 sm:p-8"]}>
 								<ol class="grid gap-3 list-none p-0">
