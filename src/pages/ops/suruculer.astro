@@ -1,12 +1,13 @@
 ---
 /**
- * Drivers ops can assign. In phase 3 they are records only: the job reaches them by
- * WhatsApp from the booking page. From phase 4 each one gets a sign-in (user_id).
+ * Drivers ops can assign, and their access to the driver app (/surucu): ops issues a
+ * 6-digit PIN, shown once, and can send it to the driver by WhatsApp.
  */
 import OpsLayout from "../../layouts/OpsLayout.astro";
 import { can } from "../../server/auth/rbac";
 import { ulid } from "../../server/ids";
 import { audit, readForm, requireOps, text } from "../../server/ops";
+import { driversWithAccess, issuePin, revokeAccess } from "../../server/driver-app";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -18,7 +19,20 @@ const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name"]
 let notice = "";
 let error = "";
 const form = canWrite ? await readForm(Astro) : null;
-if (form) {
+let issued: { name: string; phone: string; pin: string } | null = null;
+const intent = form ? text(form, "intent", 20) : "";
+if (form && (intent === "pin" || intent === "revoke")) {
+	const id = text(form, "id", 40);
+	const driver = await db.selectFrom("sd_drivers").select(["id", "name", "phone"]).where("id", "=", id).executeTakeFirst();
+	if (driver && intent === "pin") {
+		issued = { name: driver.name, phone: driver.phone, pin: await issuePin(db, driver.id) };
+		await audit(db, user, "driver.pin", "driver", driver.id);
+	} else if (driver) {
+		await revokeAccess(db, driver.id);
+		await audit(db, user, "driver.revoke", "driver", driver.id);
+		notice = `${driver.name} artık uygulamaya giremez.`;
+	}
+} else if (form) {
 	const id = text(form, "id", 40);
 	const values = {
 		name: text(form, "name", 80),
@@ -46,6 +60,12 @@ if (form) {
 }
 
 const drivers = await db.selectFrom("sd_drivers").selectAll().orderBy("status").orderBy("name").execute();
+const withAccess = await driversWithAccess(db);
+const appUrl = new URL("/surucu", Astro.url.origin).href;
+const pinMessage = issued
+	? `Merhaba ${issued.name.split(" ")[0]}, SecureDrive sürücü uygulaması: ${appUrl}\nGiriş: bu telefon numaranız ve PIN ${issued.pin}\nAçınca "Ana ekrana ekle" ile telefonunuza kurabilirsiniz.`
+	: "";
+const waDigits = (phone: string) => phone.replace(/\D/g, "").replace(/^0/, "90");
 const KINDS: Record<string, string> = { staff: "Kendi filo", partner: "Partner", independent: "Bağımsız" };
 const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0]?.key ?? "", plate: "", vehicle: "", languages: "", status: "active", notes: "" };
 ---
@@ -53,9 +73,23 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 <OpsLayout title="Sürücüler" user={user}>
 	{notice && <p class="notice">{notice}</p>}
 	{error && <p class="notice error">{error}</p>}
+	{
+		issued && (
+			<div class="notice">
+				<strong>{issued.name}</strong> için yeni PIN: <strong style="font-size:20px;letter-spacing:0.15em">{issued.pin}</strong>
+				<br />
+				Bu PIN bir daha gösterilmez. Sürücü <a href={appUrl}>{appUrl}</a> adresinden telefon numarası ve bu PIN ile girer.
+				<div class="actions">
+					<a class="btn" href={`https://wa.me/${waDigits(issued.phone)}?text=${encodeURIComponent(pinMessage)}`} target="_blank" rel="noopener">
+						PIN'i sürücüye WhatsApp ile gönder
+					</a>
+				</div>
+			</div>
+		)
+	}
 	<p class="muted">
-		Atanabilir sürücüler. Şimdilik sürücüler panele girmez; rezervasyon sayfasından işi WhatsApp ile gönderirsiniz. Pasif sürücü
-		atama listesinde görünmez.
+		Atanabilir sürücüler. Sürücü uygulamasına (<a href="/surucu">/surucu</a>) girmesi için sürücüye PIN verin; işlerini görür,
+		kabul eder ve yolculuk adımlarını kendisi işaretler. Pasif sürücü atama listesinde görünmez ve uygulamaya giremez.
 	</p>
 	{
 		[...(canWrite ? [blank] : []), ...drivers].map((d) => (
@@ -102,7 +136,33 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 					<input type="checkbox" name="active" checked={d.status === "active"} disabled={!canWrite} /> Aktif
 				</label>
 				{canWrite && <div><button class="btn" type="submit">{d.id ? "Kaydet" : "Ekle"}</button></div>}
+				{d.id && (
+					<div class="access" style="grid-column:1/-1">
+						<span class:list={["badge", withAccess.has(d.id) && "ok"]}>{withAccess.has(d.id) ? "Uygulama erişimi var" : "Uygulama erişimi yok"}</span>
+						{canWrite && (
+							<button class="btn secondary" type="submit" name="intent" value="pin" formnovalidate>
+								{withAccess.has(d.id) ? "PIN'i yenile" : "PIN oluştur"}
+							</button>
+						)}
+						{canWrite && withAccess.has(d.id) && (
+							<button class="btn secondary" type="submit" name="intent" value="revoke" formnovalidate>
+								Erişimi kapat
+							</button>
+						)}
+					</div>
+				)}
 			</form>
 		))
 	}
 </OpsLayout>
+
+<style>
+	.access {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+		padding-top: 12px;
+		border-top: 1px solid var(--gray-200);
+	}
+</style>

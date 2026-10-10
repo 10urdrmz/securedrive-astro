@@ -1,0 +1,50 @@
+---
+/** Driver sign-in: the phone number ops has on file and the PIN ops gave out. */
+import DriverLayout from "../../layouts/DriverLayout.astro";
+import { getDb } from "../../server/db";
+import { checkPin, sessionDriver, startSession } from "../../server/driver-app";
+import { readForm, text } from "../../server/ops";
+import { allowVisitor } from "../../lib/members";
+
+const db = await getDb(Astro.locals);
+if (await sessionDriver(db, Astro.cookies)) return Astro.redirect("/surucu");
+
+let error = "";
+let phone = "";
+const form = await readForm(Astro);
+if (form) {
+	phone = text(form, "phone", 24);
+	const pin = text(form, "pin", 6);
+	if (!(await allowVisitor(Astro, "driver-login", 10, 15))) {
+		error = "Çok fazla deneme. 15 dakika sonra tekrar deneyin.";
+	} else {
+		const result = await checkPin(db, phone, pin);
+		if (result.ok) {
+			await startSession(db, Astro.cookies, result.driverId, Astro.request.headers.get("user-agent"));
+			return Astro.redirect("/surucu", 303);
+		}
+		error =
+			result.error === "locked"
+				? "Çok fazla hatalı PIN. 15 dakika sonra tekrar deneyin ya da operasyondan yeni PIN isteyin."
+				: "Telefon veya PIN hatalı.";
+	}
+}
+---
+
+<DriverLayout title="Giriş">
+	<h1>Sürücü girişi</h1>
+	<p class="drv-muted">Operasyonda kayıtlı telefon numaranız ve size verilen 6 haneli PIN ile girin.</p>
+	{error && <p class="drv-notice error" role="alert">{error}</p>}
+	<form method="post" class="drv-card">
+		<label class="drv-field">
+			Telefon
+			<input name="phone" type="tel" inputmode="tel" autocomplete="tel" required value={phone} placeholder="05xx xxx xx xx" />
+		</label>
+		<label class="drv-field">
+			PIN
+			<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required />
+		</label>
+		<button type="submit" class="drv-btn">Giriş yap</button>
+	</form>
+	<p class="drv-muted" style="font-size:14px">PIN'inizi unuttuysanız operasyonu arayın; size yenisini verirler.</p>
+</DriverLayout>

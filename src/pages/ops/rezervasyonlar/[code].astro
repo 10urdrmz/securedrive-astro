@@ -59,7 +59,7 @@ if (form) {
 		} else if (intent === "assign" && canWrite) {
 			const driverId = text(form, "driver_id", 40) || null;
 			await assignDriver(db, booking, driverId, actor);
-			notice = driverId ? "Sürücü atandı. İşi aşağıdaki WhatsApp düğmesiyle sürücüye gönderin." : "Atama kaldırıldı.";
+			notice = driverId ? "Sürücü atandı. İş sürücü uygulamasında görünür; isterseniz WhatsApp ile de gönderin." : "Atama kaldırıldı.";
 		} else if (intent === "payment" && canPay) {
 			const amount = parseMoney(text(form, "amount", 20));
 			const kind = text(form, "kind", 10) === "refund" ? "refund" : "charge";
@@ -122,6 +122,7 @@ const driverMessage = [
 	booking.payment_method === "cash" || booking.payment_method === "card_in_vehicle"
 		? `Tahsilat: ${formatMoney(booking.price_minor)} TL (${PAYMENT_METHOD_LABELS[booking.payment_method]})`
 		: "",
+	`Uygulamada aç: ${new URL(`/surucu/is/${booking.code}`, Astro.url.origin).href}`,
 ]
 	.filter(Boolean)
 	.join("\n");
@@ -136,8 +137,25 @@ const EVENT_LABELS: Record<string, string> = {
 	refund: "İade",
 	note: "İç not güncellendi",
 	review: "Yolcu değerlendirdi",
+	driver_accepted: "Sürücü işi kabul etti",
+	driver_declined: "Sürücü işi reddetti",
 };
-const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", system: "Sistem" };
+const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", system: "Sistem" };
+// The current driver's answer in the driver app (no row: not answered yet).
+const ack = booking.driver_id
+	? await db
+			.selectFrom("sd_assignments as a")
+			.leftJoin("sd_assignment_acks as k", "k.assignment_id", "a.id")
+			.select(["k.response", "k.at"])
+			.where("a.booking_id", "=", booking.id)
+			.where("a.driver_id", "=", booking.driver_id)
+			.where("a.status", "in", ["accepted", "done"])
+			.orderBy("a.created_at", "desc")
+			.executeTakeFirst()
+	: null;
+const driverHasApp = booking.driver_id
+	? !!(await db.selectFrom("sd_driver_access").select("driver_id").where("driver_id", "=", booking.driver_id).executeTakeFirst())
+	: false;
 ---
 
 <OpsLayout title={`Rezervasyon ${booking.code}`} user={user} active="/ops/rezervasyonlar">
@@ -184,6 +202,14 @@ const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", s
 		{assigned ? (
 			<p>
 				<strong>{assigned.name}</strong> · {assigned.phone}{assigned.plate && <> · {assigned.plate}</>}{assigned.vehicle && <> · {assigned.vehicle}</>}
+				{" "}
+				{!driverHasApp ? (
+					<span class="badge">Uygulama erişimi yok</span>
+				) : ack?.response === "accepted" ? (
+					<span class="badge ok">Uygulamada kabul etti</span>
+				) : (
+					<span class="badge" style="background:#fffaeb;color:#b54708">Sürücü onayı bekleniyor</span>
+				)}
 			</p>
 		) : (
 			<p class="muted">Henüz atanmadı.</p>
