@@ -25,6 +25,7 @@
     "astro": "^7.3.2",
     "cross-env": "^10.1.0",
     "emdash": "^1.0.1",
+    "kysely": "^0.29.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "securedrive-inquiries": "file:plugins/inquiries"

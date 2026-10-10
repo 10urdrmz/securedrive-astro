@@ -1,0 +1,46 @@
+---
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { requireOps } from "../../server/ops";
+
+const ctx = await requireOps(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+
+const count = async (table: string, where?: [string, string, unknown]) => {
+	let query = db.selectFrom(table).select((eb) => eb.fn.countAll<number>().as("n"));
+	if (where) query = query.where(where[0], where[1] as "=", where[2]);
+	return Number((await query.executeTakeFirst())?.n ?? 0);
+};
+
+const [zones, classes, tariffs, team] = await Promise.all([
+	count("sd_zones", ["serviceable", "=", 1]),
+	count("sd_vehicle_classes", ["active", "=", 1]),
+	count("sd_tariffs", ["org_id", "=", ""]),
+	count("sd_memberships", ["org_id", "=", "internal"]),
+]);
+// Every serviceable district needs a price from each airport, for each class, in both directions.
+const airports = await count("sd_zones", ["kind", "=", "airport"]);
+const expected = airports * (zones - airports) * classes * 2;
+---
+
+<OpsLayout title={`Merhaba, ${user.name.split(" ")[0]}`} user={user}>
+	<div class="stats">
+		<div class="stat"><strong>{zones}</strong><span class="muted">hizmet verilen bölge</span></div>
+		<div class="stat"><strong>{classes}</strong><span class="muted">aktif araç sınıfı</span></div>
+		<div class="stat">
+			<strong>{tariffs} / {expected}</strong><span class="muted">havalimanı tarifesi girildi</span>
+		</div>
+		<div class="stat"><strong>{team}</strong><span class="muted">iç ekip rolü</span></div>
+	</div>
+	<div class="card">
+		<h2 style="margin-top:0">Sırada ne var</h2>
+		<p class="muted">
+			Rezervasyonlar, canlı pano ve sürücü ataması sonraki fazlarda bu panele eklenecek. Şimdilik fiyatlandırmanın temelini
+			kuruyoruz: tarifeleri girin, kuralları ayarlayın, ekibi davet edin.
+		</p>
+		<div class="actions">
+			<a class="btn" href="/ops/yonetim/tarifeler">Tarifeleri gir</a>
+			<a class="btn secondary" href="/ops/yonetim/ayarlar">Kuralları ayarla</a>
+		</div>
+	</div>
+</OpsLayout>

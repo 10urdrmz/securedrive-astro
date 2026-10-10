@@ -1,0 +1,104 @@
+---
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { can } from "../../../server/auth/rbac";
+import { audit, readForm, requireOps, text } from "../../../server/ops";
+
+const ctx = await requireOps(Astro, "catalog.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canWrite = can(user, "catalog.write");
+
+const KIND_LABELS: Record<string, string> = { airport: "Havalimanı", district: "İlçe", poi: "Özel nokta" };
+
+let notice = "";
+let error = "";
+const form = canWrite ? await readForm(Astro) : null;
+if (form) {
+	const action = text(form, "action", 20);
+	if (action === "toggle") {
+		const id = text(form, "id", 60);
+		const zone = await db.selectFrom("sd_zones").select(["id", "name", "serviceable"]).where("id", "=", id).executeTakeFirst();
+		if (zone) {
+			const serviceable = zone.serviceable ? 0 : 1;
+			await db.updateTable("sd_zones").set({ serviceable }).where("id", "=", id).execute();
+			await audit(db, user, serviceable ? "zone.enable" : "zone.disable", "zone", id);
+			notice = `${zone.name} ${serviceable ? "hizmete açıldı" : "hizmete kapatıldı"}.`;
+		}
+	} else if (action === "add") {
+		const name = text(form, "name", 80);
+		const id = text(form, "key", 40)
+			.toLowerCase()
+			.replace(/[^a-z0-9-]/g, "");
+		if (!name || !id) error = "Ad ve kısa anahtar (ör. galataport) gerekli.";
+		else {
+			const result = await db
+				.insertInto("sd_zones")
+				.values({ id, kind: "poi", name, sort: 500 })
+				.onConflict((oc) => oc.column("id").doNothing())
+				.executeTakeFirst();
+			if (Number(result.numInsertedOrUpdatedRows ?? 0) === 0) error = `"${id}" anahtarı zaten kullanılıyor.`;
+			else {
+				await audit(db, user, "zone.create", "zone", id, { name });
+				notice = `${name} eklendi. Tarifelerden fiyatını girebilirsiniz.`;
+			}
+		}
+	}
+}
+
+const zones = await db.selectFrom("sd_zones").selectAll().orderBy("sort").execute();
+---
+
+<OpsLayout title="Bölgeler" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	<p class="muted">
+		Hizmete kapalı bölgeler sitede seçilemez ve tarifede görünmez. Adres → bölge eşleştirmesi (harita poligonu) rezervasyon
+		sihirbazıyla birlikte gelecek.
+	</p>
+	<div class="table-wrap">
+		<table class="data">
+			<thead><tr><th>Ad</th><th>Tür</th><th>Durum</th>{canWrite && <th></th>}</tr></thead>
+			<tbody>
+				{
+					zones.map((zone) => (
+						<tr>
+							<td>{zone.name}</td>
+							<td class="muted">{KIND_LABELS[zone.kind] ?? zone.kind}</td>
+							<td>{zone.serviceable ? <span class="badge ok">Hizmette</span> : <span class="badge off">Kapalı</span>}</td>
+							{canWrite && (
+								<td>
+									<form method="post">
+										<input type="hidden" name="action" value="toggle" />
+										<input type="hidden" name="id" value={zone.id} />
+										<button class="ops-link" type="submit" style="color:var(--navy-700)">
+											{zone.serviceable ? "Kapat" : "Aç"}
+										</button>
+									</form>
+								</td>
+							)}
+						</tr>
+					))
+				}
+			</tbody>
+		</table>
+	</div>
+	{
+		canWrite && (
+			<>
+				<h2>Özel nokta ekle</h2>
+				<form class="card form-grid" method="post">
+					<input type="hidden" name="action" value="add" />
+					<label>
+						Ad
+						<input type="text" name="name" placeholder="Galataport" required />
+					</label>
+					<label>
+						Kısa anahtar
+						<input type="text" name="key" placeholder="galataport" pattern="[a-z0-9-]+" required />
+					</label>
+					<div><button class="btn" type="submit">Ekle</button></div>
+				</form>
+			</>
+		)
+	}
+</OpsLayout>

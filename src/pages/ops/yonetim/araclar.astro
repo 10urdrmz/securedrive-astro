@@ -1,0 +1,115 @@
+---
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { can } from "../../../server/auth/rbac";
+import { audit, readForm, requireOps, text } from "../../../server/ops";
+
+const ctx = await requireOps(Astro, "catalog.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canWrite = can(user, "catalog.write");
+
+const int = (value: string, min: number, max: number) => {
+	const n = Number(value);
+	return Number.isInteger(n) && n >= min && n <= max ? n : null;
+};
+
+let notice = "";
+let error = "";
+const form = canWrite ? await readForm(Astro) : null;
+if (form) {
+	const key = text(form, "key", 60)
+		.toLowerCase()
+		.replace(/[^a-z0-9-]/g, "");
+	const name = text(form, "name", 80);
+	const pax = int(text(form, "pax_max", 3), 1, 60);
+	const bags = int(text(form, "bags_max", 3), 0, 60);
+	const sort = int(text(form, "sort", 3), 0, 999) ?? 0;
+	const active = form.get("active") === "on" ? 1 : 0;
+	if (!key || !name || pax === null || bags === null) {
+		error = "Anahtar, ad, kişi ve bagaj kapasitesi gerekli.";
+	} else {
+		const values = { name, pax_max: pax, bags_max: bags, sort, active };
+		await db
+			.insertInto("sd_vehicle_classes")
+			.values({ key, ...values })
+			.onConflict((oc) => oc.column("key").doUpdateSet(values))
+			.execute();
+		await audit(db, user, "vehicle_class.save", "vehicle_class", key, values);
+		notice = `${name} kaydedildi.`;
+	}
+}
+
+const classes = await db.selectFrom("sd_vehicle_classes").selectAll().orderBy("sort").execute();
+---
+
+<OpsLayout title="Araç sınıfları" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	<p class="muted">
+		Anahtar, içerik panelindeki araç kaydının adresiyle aynı olmalı (ör. mercedes-vito-vip); böylece filo sayfası fiyatı
+		tarifeden okuyabilir. Pasif sınıf tarifede ve rezervasyonda görünmez.
+	</p>
+	{
+		classes.map((c) => (
+			<form class="card form-grid" method="post">
+				<label>
+					Anahtar
+					<input type="text" name="key" value={c.key} readonly />
+				</label>
+				<label>
+					Ad
+					<input type="text" name="name" value={c.name} required disabled={!canWrite} />
+				</label>
+				<label>
+					En çok kişi
+					<input type="number" name="pax_max" value={c.pax_max} min="1" max="60" disabled={!canWrite} />
+				</label>
+				<label>
+					En çok bagaj
+					<input type="number" name="bags_max" value={c.bags_max} min="0" max="60" disabled={!canWrite} />
+				</label>
+				<label>
+					Sıra
+					<input type="number" name="sort" value={c.sort} min="0" max="999" disabled={!canWrite} />
+				</label>
+				<label class="inline">
+					<input type="checkbox" name="active" checked={!!c.active} disabled={!canWrite} /> Aktif
+				</label>
+				{canWrite && <div><button class="btn" type="submit">Kaydet</button></div>}
+			</form>
+		))
+	}
+	{
+		canWrite && (
+			<>
+				<h2>Yeni sınıf</h2>
+				<form class="card form-grid" method="post">
+					<label>
+						Anahtar
+						<input type="text" name="key" placeholder="mercedes-s-class" pattern="[a-z0-9-]+" required />
+					</label>
+					<label>
+						Ad
+						<input type="text" name="name" required />
+					</label>
+					<label>
+						En çok kişi
+						<input type="number" name="pax_max" min="1" max="60" required />
+					</label>
+					<label>
+						En çok bagaj
+						<input type="number" name="bags_max" min="0" max="60" required />
+					</label>
+					<label>
+						Sıra
+						<input type="number" name="sort" value="10" min="0" max="999" />
+					</label>
+					<label class="inline">
+						<input type="checkbox" name="active" checked /> Aktif
+					</label>
+					<div><button class="btn" type="submit">Ekle</button></div>
+				</form>
+			</>
+		)
+	}
+</OpsLayout>

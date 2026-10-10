@@ -1,0 +1,94 @@
+---
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { can } from "../../../server/auth/rbac";
+import { audit, readForm, requireOps } from "../../../server/ops";
+import { getSettings, saveSettings, type BusinessSettings } from "../../../server/settings";
+
+const ctx = await requireOps(Astro, "catalog.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canWrite = can(user, "settings.write");
+
+let settings = await getSettings(db);
+let notice = "";
+let error = "";
+
+const form = canWrite ? await readForm(Astro) : null;
+if (form) {
+	const num = (key: string, min: number, max: number) => {
+		const n = Number(String(form.get(key) ?? "").replace(",", "."));
+		if (!Number.isFinite(n) || n < min || n > max) throw new Error(key);
+		return n;
+	};
+	const time = (key: string) => {
+		const v = String(form.get(key) ?? "");
+		if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) throw new Error(key);
+		return v;
+	};
+	try {
+		const next: BusinessSettings = {
+			nightSurchargePct: num("nightSurchargePct", 0, 200),
+			nightStart: time("nightStart"),
+			nightEnd: time("nightEnd"),
+			lastMinutePct: num("lastMinutePct", 0, 200),
+			lastMinuteHours: num("lastMinuteHours", 0, 72),
+			roundTripDiscountPct: num("roundTripDiscountPct", 0, 50),
+			minLeadHours: num("minLeadHours", 0, 72),
+			freeWaitInternationalMin: num("freeWaitInternationalMin", 0, 240),
+			freeWaitDomesticMin: num("freeWaitDomesticMin", 0, 240),
+			freeWaitAddressMin: num("freeWaitAddressMin", 0, 120),
+			cancellation: [0, 1, 2]
+				.map((i) => ({ hoursBefore: num(`cancel_h_${i}`, 0, 720), refundPct: num(`cancel_p_${i}`, 0, 100) }))
+				.sort((a, b) => b.hoursBefore - a.hoursBefore),
+		};
+		await saveSettings(db, next, user.id);
+		await audit(db, user, "settings.save", "settings", "business", { before: settings, after: next });
+		settings = next;
+		notice = "Kurallar kaydedildi.";
+	} catch {
+		error = "Bir değer geçersiz; aralıkları kontrol edin.";
+	}
+}
+const dis = !canWrite;
+---
+
+<OpsLayout title="Fiyat ve iptal kuralları" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	{!canWrite && <p class="muted">Bu kuralları yalnızca süper admin değiştirebilir.</p>}
+	<form method="post">
+		<div class="card">
+			<h2 style="margin-top:0">Fiyat ekleri</h2>
+			<div class="form-grid">
+				<label>Gece eki (%)<input type="number" step="0.5" name="nightSurchargePct" value={settings.nightSurchargePct} disabled={dis} /></label>
+				<label>Gece başlangıcı<input type="time" name="nightStart" value={settings.nightStart} disabled={dis} /></label>
+				<label>Gece bitişi<input type="time" name="nightEnd" value={settings.nightEnd} disabled={dis} /></label>
+				<label>Son dakika eki (%)<input type="number" step="0.5" name="lastMinutePct" value={settings.lastMinutePct} disabled={dis} /></label>
+				<label>Son dakika: alışa kalan saat<input type="number" name="lastMinuteHours" value={settings.lastMinuteHours} disabled={dis} /></label>
+				<label>Gidiş-dönüş indirimi (%)<input type="number" step="0.5" name="roundTripDiscountPct" value={settings.roundTripDiscountPct} disabled={dis} /></label>
+				<label>Online rezervasyon için en az (saat)<input type="number" name="minLeadHours" value={settings.minLeadHours} disabled={dis} /></label>
+			</div>
+		</div>
+		<div class="card">
+			<h2 style="margin-top:0">Ücretsiz bekleme (dakika)</h2>
+			<div class="form-grid">
+				<label>Dış hat uçuş<input type="number" name="freeWaitInternationalMin" value={settings.freeWaitInternationalMin} disabled={dis} /></label>
+				<label>İç hat uçuş<input type="number" name="freeWaitDomesticMin" value={settings.freeWaitDomesticMin} disabled={dis} /></label>
+				<label>Adresten alış<input type="number" name="freeWaitAddressMin" value={settings.freeWaitAddressMin} disabled={dis} /></label>
+			</div>
+		</div>
+		<div class="card">
+			<h2 style="margin-top:0">İptal ve iade</h2>
+			<p class="muted">Alıştan en az şu kadar saat önce iptal edilirse şu kadar iade edilir. Yukarıdan aşağı ilk uyan satır geçerli.</p>
+			{
+				[0, 1, 2].map((i) => (
+					<div class="form-grid" style="margin-bottom:10px">
+						<label>En az (saat önce)<input type="number" name={`cancel_h_${i}`} value={settings.cancellation[i]?.hoursBefore ?? 0} disabled={dis} /></label>
+						<label>İade (%)<input type="number" name={`cancel_p_${i}`} value={settings.cancellation[i]?.refundPct ?? 0} disabled={dis} /></label>
+					</div>
+				))
+			}
+		</div>
+		{canWrite && <button class="btn" type="submit">Kaydet</button>}
+	</form>
+</OpsLayout>
