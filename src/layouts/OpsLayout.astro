@@ -1,10 +1,13 @@
 ---
 /**
- * Shell for the internal operations panel (/ops). Server-rendered, no framework JS.
- * Never indexed, never cached.
+ * Shell for the internal operations panel (/ops). Server-rendered, no framework JS;
+ * one small script polls /ops/bildirim.json to keep the menu counts and the bell
+ * current and to announce new requests and bookings. Never indexed, never cached.
  */
 import type { SessionUser } from "../server/auth/rbac";
 import { can, ROLE_LABELS } from "../server/auth/rbac";
+import { getDb } from "../server/db";
+import { opsCounts, opsFeed, type OpsCounts, type OpsFeedItem } from "../server/ops-alerts";
 import "../styles/global.css";
 
 interface Props {
@@ -16,11 +19,26 @@ interface Props {
 
 const { title, user, active = Astro.url.pathname } = Astro.props;
 
-const NAV: { href: string; label: string; show: boolean }[] = user
+const watch = !!user && can(user, "bookings.read");
+let counts: OpsCounts = { requests: 0, bookings: 0 };
+let feed: OpsFeedItem[] = [];
+if (user && watch) {
+	const db = await getDb(Astro.locals);
+	[counts, feed] = await Promise.all([opsCounts(db, user), opsFeed(db, user)]);
+}
+const ago = (iso: string) => {
+	const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
+	if (minutes < 1) return "şimdi";
+	if (minutes < 60) return `${minutes} dk önce`;
+	if (minutes < 24 * 60) return `${Math.floor(minutes / 60)} sa önce`;
+	return `${Math.floor(minutes / 1440)} gün önce`;
+};
+
+const NAV: { href: string; label: string; show: boolean; count?: keyof OpsCounts; hint?: string }[] = user
 	? [
 			{ href: "/ops", label: "Pano", show: true },
-			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", show: can(user, "bookings.read") },
-			{ href: "/ops/talepler", label: "Fiyat talepleri", show: can(user, "bookings.read") },
+			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", show: can(user, "bookings.read"), count: "bookings" as const, hint: "sürücü bekleyen" },
+			{ href: "/ops/talepler", label: "Fiyat talepleri", show: can(user, "bookings.read"), count: "requests" as const, hint: "yeni talep" },
 			{ href: "/ops/suruculer", label: "Sürücüler", show: can(user, "bookings.read") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", show: can(user, "catalog.read") },
@@ -52,6 +70,40 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 			{
 				user && (
 					<div class="ops-user">
+						{watch && (
+							<details class="ops-bell" data-ops-bell>
+								<summary aria-label="Bildirimler">
+									<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+										<path d="M10.27 21a2 2 0 0 0 3.46 0" />
+										<path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33" />
+									</svg>
+									<span class="ops-count" data-ops-total hidden={counts.requests + counts.bookings === 0}>
+										{counts.requests + counts.bookings}
+									</span>
+								</summary>
+								<div class="ops-bell-panel">
+									<div class="ops-bell-head">
+										<strong>Bildirimler</strong>
+										<button type="button" class="ops-link" data-ops-enable hidden>Masaüstü bildirimlerini aç</button>
+									</div>
+									<ul data-ops-feed>
+										{feed.map((item) => (
+											<li data-key={item.key} data-at={item.at}>
+												<a href={item.href}>
+													<span class:list={["ops-dot", item.kind]} aria-hidden="true" />
+													<span class="ops-feed-text">
+														<strong>{item.title}</strong>
+														<span>{item.detail}</span>
+													</span>
+													<time datetime={item.at}>{ago(item.at)}</time>
+												</a>
+											</li>
+										))}
+										{feed.length === 0 && <li class="ops-empty">Henüz bildirim yok.</li>}
+									</ul>
+								</div>
+							</details>
+						)}
 						<span>
 							{user.name} · {user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}
 						</span>
@@ -68,7 +120,12 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 					<nav class="ops-nav" aria-label="Operasyon menüsü">
 						{NAV.map((item) => (
 							<a href={item.href} aria-current={active === item.href || (item.href !== "/ops" && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
-								{item.label}
+								<span>{item.label}</span>
+								{item.count && (
+									<span class="ops-count" data-ops-count={item.count} title={item.hint} hidden={counts[item.count] === 0}>
+										{counts[item.count]}
+									</span>
+								)}
 							</a>
 						))}
 					</nav>
@@ -79,6 +136,8 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 				<slot />
 			</main>
 		</div>
+		{watch && <div class="ops-toasts" data-ops-toasts aria-live="polite" />}
+		{watch && <script src="/ops-alerts.js" defer is:inline />}
 	</body>
 </html>
 
@@ -91,6 +150,8 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		font-size: 15px;
 	}
 	.ops-top {
+		position: relative;
+		z-index: 40;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -113,6 +174,8 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		align-items: center;
 		gap: 12px;
 		font-size: 14px;
+	}
+	.ops-user > span {
 		opacity: 0.9;
 	}
 	.ops-user form {
@@ -141,6 +204,10 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		border-right: 1px solid var(--gray-200);
 	}
 	.ops-nav a {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
 		padding: 8px 12px;
 		border-radius: 6px;
 		color: var(--ink-800);
@@ -330,5 +397,173 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
+	}
+	.ops-count {
+		display: inline-grid;
+		place-items: center;
+		min-width: 20px;
+		height: 20px;
+		padding: 0 6px;
+		border-radius: 999px;
+		background: #d92d20;
+		color: #fff;
+		font-size: 12px;
+		font-weight: 700;
+		line-height: 1;
+		font-variant-numeric: tabular-nums;
+	}
+	.ops-count[hidden] {
+		display: none;
+	}
+	.ops-bell {
+		position: relative;
+	}
+	.ops-bell summary {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 36px;
+		height: 36px;
+		border-radius: 999px;
+		cursor: pointer;
+		list-style: none;
+		color: #fff;
+	}
+	.ops-bell summary::-webkit-details-marker {
+		display: none;
+	}
+	.ops-bell summary:hover,
+	.ops-bell[open] summary {
+		background: rgb(255 255 255 / 0.12);
+	}
+	.ops-bell summary .ops-count {
+		position: absolute;
+		top: -2px;
+		right: -4px;
+		box-shadow: 0 0 0 2px var(--navy-900);
+	}
+	.ops-bell.ring summary svg {
+		animation: ops-ring 0.9s ease-in-out 2;
+	}
+	@keyframes ops-ring {
+		0%, 100% { transform: rotate(0); }
+		20% { transform: rotate(14deg); }
+		40% { transform: rotate(-12deg); }
+		60% { transform: rotate(8deg); }
+		80% { transform: rotate(-4deg); }
+	}
+	.ops-bell-panel {
+		position: absolute;
+		right: 0;
+		top: calc(100% + 8px);
+		z-index: 50;
+		width: min(380px, calc(100vw - 24px));
+		background: #fff;
+		color: var(--ink-900);
+		border: 1px solid var(--gray-200);
+		border-radius: 12px;
+		box-shadow: 0 16px 40px -12px rgb(16 24 40 / 0.35);
+		overflow: hidden;
+	}
+	.ops-bell-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		padding: 12px 16px;
+		border-bottom: 1px solid var(--gray-200);
+	}
+	.ops-bell-head .ops-link {
+		color: var(--navy-700);
+		font-size: 13px;
+	}
+	.ops-bell ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		max-height: 420px;
+		overflow-y: auto;
+	}
+	.ops-bell li a {
+		display: grid;
+		grid-template-columns: 10px 1fr auto;
+		gap: 10px;
+		align-items: start;
+		padding: 12px 16px;
+		color: inherit;
+		text-decoration: none;
+		border-bottom: 1px solid var(--gray-100);
+	}
+	.ops-bell li a:hover {
+		background: var(--gray-100);
+	}
+	.ops-bell li.unread a {
+		background: #eff8ff;
+	}
+	.ops-feed-text {
+		display: grid;
+		gap: 2px;
+		min-width: 0;
+		font-size: 13px;
+	}
+	.ops-feed-text span {
+		color: var(--gray-600);
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ops-bell time {
+		font-size: 12px;
+		color: var(--gray-600);
+		white-space: nowrap;
+	}
+	.ops-dot {
+		width: 10px;
+		height: 10px;
+		margin-top: 4px;
+		border-radius: 999px;
+		background: #f79009;
+	}
+	.ops-dot.booking {
+		background: #12b76a;
+	}
+	.ops-empty {
+		padding: 20px 16px;
+		color: var(--gray-600);
+		font-size: 14px;
+	}
+	.ops-toasts {
+		position: fixed;
+		right: 20px;
+		bottom: 20px;
+		z-index: 60;
+		display: grid;
+		gap: 10px;
+		width: min(360px, calc(100vw - 40px));
+	}
+	.ops-toast {
+		display: grid;
+		grid-template-columns: 10px 1fr;
+		gap: 12px;
+		padding: 14px 16px;
+		background: #fff;
+		color: var(--ink-900);
+		border: 1px solid var(--gray-200);
+		border-left: 4px solid #f79009;
+		border-radius: 10px;
+		box-shadow: 0 16px 40px -12px rgb(16 24 40 / 0.35);
+		text-decoration: none;
+		font-size: 14px;
+		animation: ops-toast-in 0.25s ease-out;
+	}
+	.ops-toast.booking {
+		border-left-color: #12b76a;
+	}
+	.ops-toast span {
+		color: var(--gray-600);
+		font-size: 13px;
+	}
+	@keyframes ops-toast-in {
+		from { transform: translateY(12px); opacity: 0; }
 	}
 </style>
