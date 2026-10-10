@@ -1,6 +1,6 @@
 ---
 import Icon from "../Icon.astro";
-import { pagePath, type Locale } from "../../i18n/locales";
+import { bookPath, type Locale } from "../../i18n/locales";
 import { useTranslations } from "../../i18n/ui";
 import { SITE, telHref, whatsappHref } from "../../lib/site";
 
@@ -22,7 +22,7 @@ const title = Astro.props.title ?? t("routes.custom");
 			{Astro.props.lead && <p>{Astro.props.lead}</p>}
 		</div>
 		<div class="cta-actions">
-			<a href={pagePath(locale, "transfer")} class="btn btn--light">{t("hero.ctaPrimary")}</a>
+			<a href={bookPath(locale)} class="btn btn--light">{t("hero.ctaPrimary")}</a>
 			<a href={telHref} class="btn btn--ghost-light"><Icon name="phone" size={18} /><span dir="ltr">{SITE.phoneDisplay}</span></a>
 			<a href={whatsappHref()} target="_blank" rel="noopener" class="btn btn--ghost-light"><Icon name="whatsapp" size={18} />WhatsApp</a>
 		</div>

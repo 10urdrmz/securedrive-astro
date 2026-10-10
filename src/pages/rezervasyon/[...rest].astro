@@ -1,0 +1,12 @@
+---
+/** Online booking in Turkish: /rezervasyon and /rezervasyon/<code>. Other languages: src/pages/[lang]/rezervasyon. */
+import { runBookPage } from "../../lib/booking-page";
+import BookView from "../../views/BookView.astro";
+import NotFoundView from "../../views/NotFoundView.astro";
+
+const result = await runBookPage(Astro, "tr", Astro.params.rest ?? "");
+if (result instanceof Response) return result;
+if (!result) Astro.response.status = 404;
+---
+
+{result ? <BookView {...result} /> : <NotFoundView locale="tr" />}

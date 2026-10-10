@@ -77,6 +77,15 @@ export function lookupPath(locale: Locale): string {
 	return localizePath(locale, LOOKUP_SLUG);
 }
 
+/** Online booking: the wizard at /rezervasyon, each booking at /rezervasyon/<code>?t=<token>. */
+export const BOOK_SLUG = "rezervasyon";
+
+/** Address of the booking wizard, or of one booking (with its secret link token) in a language. */
+export function bookPath(locale: Locale, code?: string, token?: string): string {
+	const path = localizePath(locale, [BOOK_SLUG, code].filter(Boolean).join("/"));
+	return token ? `${path}?t=${encodeURIComponent(token)}` : path;
+}
+
 /** Find which hand-built page a slug belongs to. */
 export function pageKeyForSlug(slug: string): PageKey | undefined {
 	return (Object.keys(PAGE_SLUGS) as PageKey[]).find((key) => key !== "home" && PAGE_SLUGS[key] === slug);

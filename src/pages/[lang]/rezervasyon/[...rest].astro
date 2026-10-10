@@ -1,0 +1,15 @@
+---
+/** Online booking behind a language prefix: /en/rezervasyon, /ar/rezervasyon/<code>. */
+import { DEFAULT_LOCALE, isLocale } from "../../../i18n/locales";
+import { runBookPage } from "../../../lib/booking-page";
+import BookView from "../../../views/BookView.astro";
+import NotFoundView from "../../../views/NotFoundView.astro";
+
+const { lang } = Astro.params;
+const locale = isLocale(lang) && lang !== DEFAULT_LOCALE ? lang : null;
+const result = locale ? await runBookPage(Astro, locale, Astro.params.rest ?? "") : null;
+if (result instanceof Response) return result;
+if (!result) Astro.response.status = 404;
+---
+
+{result ? <BookView {...result} /> : <NotFoundView locale={locale ?? DEFAULT_LOCALE} />}

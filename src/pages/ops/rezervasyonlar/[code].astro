@@ -1,0 +1,329 @@
+---
+/**
+ * One booking for ops: details, status changes, manual driver assignment, payments,
+ * internal notes and the event history. Every change is version-checked, so two
+ * dispatchers editing the same booking get a "changed meanwhile" notice instead of
+ * silently overwriting each other.
+ */
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { bookPath, isLocale } from "../../../i18n/locales";
+import { describe } from "../../../lib/booking-page";
+import { can } from "../../../server/auth/rbac";
+import {
+	ConflictError,
+	FINAL_STATUSES,
+	OPS_TRANSITIONS,
+	PAYMENT_METHOD_LABELS,
+	PAYMENT_STATUS_LABELS,
+	STATUS_LABELS,
+	addEvent,
+	assignDriver,
+	getBookingByCode,
+	recordPayment,
+	transition,
+	type BookingStatus,
+} from "../../../server/bookings";
+import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../../server/ops";
+import { isoToIstanbul, refundPct } from "../../../server/pricing";
+import { getSettings } from "../../../server/settings";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canWrite = can(user, "bookings.write");
+const canPay = can(user, "payments.write");
+const actor = { kind: "ops" as const, userId: user.id };
+
+const code = (Astro.params.code ?? "").toUpperCase();
+let booking = await getBookingByCode(db, code);
+if (!booking) return new Response("Rezervasyon bulunamadı.", { status: 404 });
+
+let notice = "";
+let error = "";
+const form = canWrite || canPay ? await readForm(Astro) : null;
+if (form) {
+	const intent = text(form, "intent", 20);
+	try {
+		if (Number(text(form, "version", 10)) !== booking.version) throw new ConflictError();
+		if (intent === "status" && canWrite) {
+			const to = text(form, "to", 30) as BookingStatus;
+			if (to === "cancelled") {
+				const reason = text(form, "reason", 300);
+				const pct = Number(text(form, "refund_pct", 3));
+				if (!reason) throw new Error("İptal için gerekçe yazın.");
+				await transition(db, booking, to, actor, { reason, refundPct: Number.isInteger(pct) && pct >= 0 && pct <= 100 ? pct : 0 });
+			} else {
+				await transition(db, booking, to, actor);
+			}
+			notice = `Durum: ${STATUS_LABELS[to]}.`;
+		} else if (intent === "assign" && canWrite) {
+			const driverId = text(form, "driver_id", 40) || null;
+			await assignDriver(db, booking, driverId, actor);
+			notice = driverId ? "Sürücü atandı. İşi aşağıdaki WhatsApp düğmesiyle sürücüye gönderin." : "Atama kaldırıldı.";
+		} else if (intent === "payment" && canPay) {
+			const amount = parseMoney(text(form, "amount", 20));
+			const kind = text(form, "kind", 10) === "refund" ? "refund" : "charge";
+			if (!amount) throw new Error("Tutar okunamadı. Örnek: 1.250 veya 1250,50");
+			await recordPayment(db, booking, { kind, amountMinor: amount, method: text(form, "method", 30) || booking.payment_method, note: text(form, "note", 300) || null }, actor);
+			notice = kind === "refund" ? "İade kaydedildi." : "Tahsilat kaydedildi.";
+		} else if (intent === "note" && canWrite) {
+			const internal = text(form, "internal_notes", 2000);
+			const result = await db
+				.updateTable("sd_bookings")
+				.set({ internal_notes: internal || null, version: booking.version + 1, updated_at: new Date().toISOString() })
+				.where("id", "=", booking.id)
+				.where("version", "=", booking.version)
+				.executeTakeFirst();
+			if (Number(result.numUpdatedRows ?? 0) !== 1) throw new ConflictError();
+			await addEvent(db, booking.id, actor, "note", null, null, {});
+			notice = "Not kaydedildi.";
+		}
+		if (notice) await audit(db, user, `booking.${intent}`, "booking", booking.id, { code: booking.code });
+	} catch (e) {
+		error = e instanceof ConflictError ? "Bu rezervasyon siz bakarken değişti. Güncel hali aşağıda; işlemi tekrar yapın." : e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+	booking = (await getBookingByCode(db, code))!;
+}
+
+const info = await describe(db, booking);
+const settings = await getSettings(db);
+const at = isoToIstanbul(booking.pickup_at);
+const drivers = await db.selectFrom("sd_drivers").selectAll().where("status", "=", "active").orderBy("name").execute();
+const sameClass = drivers.filter((d) => d.class_key === booking!.class_key);
+const otherClass = drivers.filter((d) => d.class_key !== booking!.class_key);
+const events = await db
+	.selectFrom("sd_booking_events as e")
+	.leftJoin("sd_users as u", "u.id", "e.actor_user_id")
+	.select(["e.at", "e.actor", "e.type", "e.from_status", "e.to_status", "e.data", "u.name as user_name"])
+	.where("e.booking_id", "=", booking.id)
+	.orderBy("e.at", "desc")
+	.execute();
+const payments = await db.selectFrom("sd_payments").selectAll().where("booking_id", "=", booking.id).orderBy("created_at").execute();
+const nextStatuses = OPS_TRANSITIONS[booking.status].filter((s) => s !== "cancelled");
+const canCancel = OPS_TRANSITIONS[booking.status].includes("cancelled");
+const suggestedRefund = refundPct(settings, booking.pickup_at);
+const isFinal = FINAL_STATUSES.includes(booking.status);
+
+const digits = (phone: string) => phone.replace(/\D/g, "").replace(/^0/, "90");
+const locale = isLocale(booking.locale) ? booking.locale : "tr";
+const passengerLink = new URL(bookPath(locale, booking.code, booking.tracking_token), Astro.url.origin).href;
+const address = booking.pickup_address || booking.dropoff_address;
+const driverMessage = [
+	`SecureDrive iş: ${booking.code}`,
+	`${at.date} ${at.time}`,
+	`${info.fromName} → ${info.toName}${address ? ` (${address})` : ""}`,
+	booking.flight_no ? `Uçuş: ${booking.flight_no}` : "",
+	`${booking.pax} kişi, ${booking.bags} bavul · ${info.className}`,
+	`Yolcu: ${booking.contact_name} ${booking.contact_phone}`,
+	booking.sign_name ? `Tabela: ${booking.sign_name}` : "",
+	booking.notes ? `Not: ${booking.notes}` : "",
+	booking.payment_method === "cash" || booking.payment_method === "card_in_vehicle"
+		? `Tahsilat: ${formatMoney(booking.price_minor)} TL (${PAYMENT_METHOD_LABELS[booking.payment_method]})`
+		: "",
+]
+	.filter(Boolean)
+	.join("\n");
+const assigned = drivers.find((d) => d.id === booking!.driver_id) ?? (booking.driver_id ? await db.selectFrom("sd_drivers").selectAll().where("id", "=", booking.driver_id).executeTakeFirst() : null);
+const passengerMessage = `SecureDrive rezervasyonunuz ${booking.code}: ${at.date} ${at.time}, ${info.fromName} → ${info.toName}. Detaylar: ${passengerLink}`;
+const EVENT_LABELS: Record<string, string> = {
+	created: "Oluşturuldu",
+	status_change: "Durum değişti",
+	assigned: "Sürücü atandı",
+	unassigned: "Atama kaldırıldı",
+	payment: "Tahsilat",
+	refund: "İade",
+	note: "İç not güncellendi",
+};
+const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", system: "Sistem" };
+---
+
+<OpsLayout title={`Rezervasyon ${booking.code}`} user={user} active="/ops/rezervasyonlar">
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+
+	<div class="stats">
+		<div class="stat"><span class="muted">Durum</span><strong style="font-size:20px">{STATUS_LABELS[booking.status]}</strong></div>
+		<div class="stat"><span class="muted">Alış (İstanbul)</span><strong style="font-size:20px">{at.date} {at.time}</strong></div>
+		<div class="stat"><span class="muted">Tutar</span><strong style="font-size:20px">{formatMoney(booking.price_minor)} ₺</strong></div>
+		<div class="stat">
+			<span class="muted">Ödeme</span><strong style="font-size:20px">{PAYMENT_STATUS_LABELS[booking.payment_status] ?? booking.payment_status}</strong>
+			<span class="muted">{PAYMENT_METHOD_LABELS[booking.payment_method]}</span>
+		</div>
+	</div>
+
+	<div class="card">
+		<h2 style="margin-top:0">Yolculuk</h2>
+		<table class="data">
+			<tbody>
+				<tr><th>Güzergâh</th><td>{info.fromName} → {info.toName}</td></tr>
+				{booking.pickup_address && <tr><th>Alış adresi</th><td>{booking.pickup_address}</td></tr>}
+				{booking.dropoff_address && <tr><th>Varış adresi</th><td>{booking.dropoff_address}</td></tr>}
+				<tr><th>Araç</th><td>{info.className} · {booking.pax} kişi · {booking.bags} bavul</td></tr>
+				{booking.flight_no && <tr><th>Uçuş</th><td>{booking.flight_no}</td></tr>}
+				<tr><th>Yolcu</th><td>{booking.contact_name} · <a href={`tel:${booking.contact_phone}`}>{booking.contact_phone}</a>{booking.contact_email && <> · {booking.contact_email}</>}</td></tr>
+				{booking.sign_name && <tr><th>Tabela</th><td>{booking.sign_name}</td></tr>}
+				{booking.notes && <tr><th>Yolcu notu</th><td>{booking.notes}</td></tr>}
+				{booking.cancel_reason && <tr><th>İptal</th><td>{booking.cancel_reason} · iade %{booking.refund_pct ?? 0}</td></tr>}
+				<tr><th>Kaynak</th><td>{booking.source === "ops" ? "Telefon (operasyon)" : "Web sitesi"} · dil {booking.locale} · {booking.customer_member_id ? "üye" : "misafir"}</td></tr>
+				<tr><th>Fiyat kırılımı</th><td>{info.lines.map((l) => <div>{l.label}{l.qty && l.qty > 1 ? ` × ${l.qty}` : ""}: {formatMoney(l.amount_minor)} ₺</div>)}</td></tr>
+				{booking.payout_minor != null && <tr><th>Sürücü payı</th><td>{formatMoney(booking.payout_minor)} ₺</td></tr>}
+			</tbody>
+		</table>
+		<div class="actions">
+			<a class="btn secondary" href={`https://wa.me/${digits(booking.contact_phone)}?text=${encodeURIComponent(passengerMessage)}`} target="_blank" rel="noopener">Yolcuya WhatsApp ile link gönder</a>
+			<a class="btn secondary" href={passengerLink} target="_blank" rel="noopener noreferrer">Yolcu sayfasını aç</a>
+		</div>
+	</div>
+
+	<div class="card">
+		<h2 style="margin-top:0">Sürücü</h2>
+		{assigned ? (
+			<p>
+				<strong>{assigned.name}</strong> · {assigned.phone}{assigned.plate && <> · {assigned.plate}</>}{assigned.vehicle && <> · {assigned.vehicle}</>}
+			</p>
+		) : (
+			<p class="muted">Henüz atanmadı.</p>
+		)}
+		{assigned && (
+			<div class="actions" style="margin-top:0">
+				<a class="btn" href={`https://wa.me/${digits(assigned.phone)}?text=${encodeURIComponent(driverMessage)}`} target="_blank" rel="noopener">İşi sürücüye WhatsApp ile gönder</a>
+			</div>
+		)}
+		{canWrite && !isFinal && (
+			<form method="post" class="form-grid" style="margin-top:16px">
+				<input type="hidden" name="intent" value="assign" />
+				<input type="hidden" name="version" value={booking.version} />
+				<label>
+					{assigned ? "Sürücüyü değiştir" : "Sürücü ata"}
+					<select name="driver_id">
+						<option value="">— Atama yok —</option>
+						{sameClass.length > 0 && (
+							<optgroup label={`${info.className} sürücüleri`}>
+								{sameClass.map((d) => <option value={d.id} selected={d.id === booking!.driver_id}>{d.name}{d.plate ? ` · ${d.plate}` : ""}</option>)}
+							</optgroup>
+						)}
+						{otherClass.length > 0 && (
+							<optgroup label="Diğer sınıflar">
+								{otherClass.map((d) => <option value={d.id} selected={d.id === booking!.driver_id}>{d.name}{d.plate ? ` · ${d.plate}` : ""}</option>)}
+							</optgroup>
+						)}
+					</select>
+				</label>
+				<div><button class="btn" type="submit">Kaydet</button></div>
+				{drivers.length === 0 && <p class="muted">Kayıtlı sürücü yok. <a href="/ops/suruculer">Sürücü ekleyin.</a></p>}
+			</form>
+		)}
+	</div>
+
+	{canWrite && (nextStatuses.length > 0 || canCancel) && (
+		<div class="card">
+			<h2 style="margin-top:0">Durumu ilerlet</h2>
+			<div class="actions" style="margin-top:0">
+				{nextStatuses.map((s) => (
+					<form method="post" style="margin:0">
+						<input type="hidden" name="intent" value="status" />
+						<input type="hidden" name="version" value={booking!.version} />
+						<input type="hidden" name="to" value={s} />
+						<button class="btn secondary" type="submit">{STATUS_LABELS[s]}</button>
+					</form>
+				))}
+			</div>
+			{booking.status === "confirmed" && <p class="muted">Sürücü yolculuk adımları, sürücü atandıktan sonra açılır.</p>}
+			{canCancel && (
+				<form method="post" class="form-grid" style="margin-top:16px">
+					<input type="hidden" name="intent" value="status" />
+					<input type="hidden" name="version" value={booking.version} />
+					<input type="hidden" name="to" value="cancelled" />
+					<label>
+						İptal gerekçesi
+						<input type="text" name="reason" required />
+					</label>
+					<label>
+						İade oranı (%) · politikaya göre şu an %{suggestedRefund}
+						<input type="number" name="refund_pct" min="0" max="100" value={suggestedRefund} />
+					</label>
+					<div><button class="btn secondary" type="submit">Rezervasyonu iptal et</button></div>
+				</form>
+			)}
+		</div>
+	)}
+
+	<div class="card">
+		<h2 style="margin-top:0">Ödemeler</h2>
+		{payments.length === 0 ? (
+			<p class="muted">Kayıtlı tahsilat yok.</p>
+		) : (
+			<table class="data">
+				<thead><tr><th>Tarih</th><th>Tür</th><th>Yöntem</th><th class="num">Tutar</th><th>Not</th></tr></thead>
+				<tbody>
+					{payments.map((p) => (
+						<tr>
+							<td>{new Date(p.created_at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}</td>
+							<td>{p.kind === "refund" ? "İade" : "Tahsilat"}</td>
+							<td>{PAYMENT_METHOD_LABELS[p.method as keyof typeof PAYMENT_METHOD_LABELS] ?? p.method}</td>
+							<td class="num">{formatMoney(p.amount_minor)} ₺</td>
+							<td>{p.note}</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		)}
+		{canPay && (
+			<form method="post" class="form-grid" style="margin-top:16px">
+				<input type="hidden" name="intent" value="payment" />
+				<input type="hidden" name="version" value={booking.version} />
+				<label>
+					Tür
+					<select name="kind">
+						<option value="charge">Tahsilat</option>
+						<option value="refund">İade</option>
+					</select>
+				</label>
+				<label>
+					Yöntem
+					<select name="method">
+						{Object.entries(PAYMENT_METHOD_LABELS).map(([k, label]) => <option value={k} selected={k === booking!.payment_method}>{label}</option>)}
+					</select>
+				</label>
+				<label>
+					Tutar (TL)
+					<input type="text" class="money" name="amount" inputmode="decimal" value={booking.payment_status === "unpaid" ? formatMoney(booking.price_minor) : ""} />
+				</label>
+				<label>
+					Not
+					<input type="text" name="note" />
+				</label>
+				<div><button class="btn secondary" type="submit">Kaydet</button></div>
+			</form>
+		)}
+	</div>
+
+	{canWrite && (
+		<form class="card" method="post">
+			<h2 style="margin-top:0">İç not</h2>
+			<input type="hidden" name="intent" value="note" />
+			<input type="hidden" name="version" value={booking.version} />
+			<textarea name="internal_notes" rows="3" style="width:100%;font:inherit;padding:8px;border:1px solid var(--gray-300);border-radius:6px">{booking.internal_notes}</textarea>
+			<div class="actions"><button class="btn secondary" type="submit">Notu kaydet</button></div>
+		</form>
+	)}
+
+	<div class="card">
+		<h2 style="margin-top:0">Geçmiş</h2>
+		<table class="data">
+			<tbody>
+				{events.map((e) => (
+					<tr>
+						<td style="white-space:nowrap">{new Date(e.at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}</td>
+						<td>
+							{EVENT_LABELS[e.type] ?? e.type}
+							{e.to_status && e.type === "status_change" && <> → {STATUS_LABELS[e.to_status as BookingStatus] ?? e.to_status}</>}
+						</td>
+						<td class="muted">{e.user_name ?? ACTORS[e.actor] ?? e.actor}</td>
+					</tr>
+				))}
+			</tbody>
+		</table>
+	</div>
+	<p><a href="/ops/rezervasyonlar">← Rezervasyonlar</a></p>
+</OpsLayout>

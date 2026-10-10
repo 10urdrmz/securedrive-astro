@@ -550,3 +550,9 @@ export async function lookupRequest(
 	if (!phoneMatches && !emailMatches) return { ok: false, error: "notFound" };
 	return { ok: true, request: toRequest(row) };
 }
+
+/** Count one action by this visitor (by hashed address) and report whether it is within the limit. */
+export async function allowVisitor(Astro: AstroGlobal, scope: string, max: number, windowMinutes: number): Promise<boolean> {
+	const db = await membersDb();
+	return allowAttempt(db, `${scope}:${await visitorKey(Astro)}`, max, windowMinutes);
+}

@@ -1,0 +1,149 @@
+---
+/**
+ * Booking taken on the phone. Same price engine as the website; ops may agree a
+ * different price (recorded as an adjustment line) and may book at short notice.
+ */
+import OpsLayout from "../../../layouts/OpsLayout.astro";
+import { createBooking, PAYMENT_METHOD_LABELS, type PaymentMethod } from "../../../server/bookings";
+import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../../server/ops";
+import { isoToIstanbul, quote } from "../../../server/pricing";
+
+const ctx = await requireOps(Astro, "bookings.write");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+
+const zones = await db.selectFrom("sd_zones").select(["id", "name", "kind"]).where("serviceable", "=", 1).orderBy("sort").execute();
+const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name"]).where("active", "=", 1).orderBy("sort").execute();
+const METHODS: PaymentMethod[] = ["cash", "card_in_vehicle", "account"];
+const QUOTE_ERRORS: Record<string, string> = {
+	invalidInput: "Güzergâh, tarih, saat, kişi ve bagaj bilgilerini kontrol edin.",
+	notServiceable: "Bu bölgeye hizmet verilmiyor.",
+	tooSoon: "Çok yakın saat.",
+	past: "Seçilen saat geçmişte.",
+};
+
+const now = isoToIstanbul(new Date(Date.now() + 3 * 3600_000).toISOString());
+let v: Record<string, string> = { date: now.date, time: now.time, pax: "2", bags: "2", payment: "cash", class_key: classes[0]?.key ?? "" };
+let error = "";
+let preview = "";
+
+const form = await readForm(Astro);
+if (form) {
+	const keys = ["from", "to", "date", "time", "pax", "bags", "class_key", "name", "phone", "email", "flight", "address", "sign", "notes", "internal", "price", "payment", "intent"];
+	v = Object.fromEntries(keys.map((k) => [k, text(form, k, k === "notes" || k === "internal" ? 1000 : 200)]));
+	const result = await quote(
+		db,
+		{ fromZoneId: v.from, toZoneId: v.to, date: v.date, time: v.time, pax: Number(v.pax) || 0, bags: Number(v.bags) || 0 },
+		{ ignoreLeadTime: true },
+	);
+	if (!result.ok) {
+		error = QUOTE_ERRORS[result.error] ?? "Fiyat hesaplanamadı.";
+	} else {
+		const option = result.quote.options.find((o) => o.classKey === v.class_key);
+		const override = v.price ? parseMoney(v.price) : null;
+		if (v.price && override === null) error = "Fiyat okunamadı. Örnek: 2.400 veya 2400,50";
+		else if (!option && override === null) error = "Bu güzergâh ve araç için tarife yok. Fiyatı elle yazın.";
+		else if (v.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(v.phone)) error = "Yolcu adı ve geçerli telefon gerekli.";
+		else if (!METHODS.includes(v.payment as PaymentMethod)) error = "Ödeme yöntemi seçin.";
+		else if (v.intent !== "save") {
+			preview = option ? `Tarife fiyatı: ${formatMoney(option.total_minor)} TL` : "Tarife yok; yazdığınız fiyat kullanılacak.";
+		} else {
+			const cls = classes.find((c) => c.key === v.class_key)!;
+			// No tariff: a single line with the agreed price.
+			const chosen = option ?? {
+				classKey: cls.key,
+				name: cls.name,
+				paxMax: 0,
+				bagsMax: 0,
+				fits: true,
+				lines: [{ kind: "base" as const, label: `${result.quote.from.name} → ${result.quote.to.name}, ${cls.name} (özel fiyat)`, amount_minor: override! }],
+				total_minor: override!,
+				payout_minor: null,
+			};
+			const addressOnPickup = result.quote.from.kind !== "airport";
+			const booking = await createBooking(
+				db,
+				{
+					quote: result.quote,
+					option: chosen,
+					contact: { name: v.name, phone: v.phone, email: v.email.toLowerCase() || null },
+					flightNo: v.flight.toUpperCase() || null,
+					signName: v.sign || v.name,
+					pickupAddress: addressOnPickup ? v.address || null : null,
+					dropoffAddress: addressOnPickup ? null : v.address || null,
+					notes: v.notes || null,
+					internalNotes: v.internal || null,
+					pax: Number(v.pax),
+					bags: Number(v.bags),
+					paymentMethod: v.payment as PaymentMethod,
+					source: "ops",
+					locale: "tr",
+					memberId: null,
+					priceOverrideMinor: override,
+				},
+				{ kind: "ops", userId: user.id },
+			);
+			await audit(db, user, "booking.create", "booking", booking.id, { code: booking.code });
+			return Astro.redirect(`/ops/rezervasyonlar/${booking.code}`, 303);
+		}
+	}
+}
+const airports = zones.filter((z) => z.kind === "airport");
+const districts = zones.filter((z) => z.kind !== "airport");
+---
+
+<OpsLayout title="Telefonla rezervasyon" user={user} active="/ops/rezervasyonlar">
+	{error && <p class="notice error">{error}</p>}
+	{preview && <p class="notice">{preview}. Bilgileri kontrol edip "Rezervasyonu oluştur"a basın.</p>}
+	<form class="card" method="post">
+		<div class="form-grid">
+			<label>
+				Nereden
+				<select name="from" required>
+					<option value="">Seçin</option>
+					<optgroup label="Havalimanları">{airports.map((z) => <option value={z.id} selected={v.from === z.id}>{z.name}</option>)}</optgroup>
+					<optgroup label="İlçeler">{districts.map((z) => <option value={z.id} selected={v.from === z.id}>{z.name}</option>)}</optgroup>
+				</select>
+			</label>
+			<label>
+				Nereye
+				<select name="to" required>
+					<option value="">Seçin</option>
+					<optgroup label="İlçeler">{districts.map((z) => <option value={z.id} selected={v.to === z.id}>{z.name}</option>)}</optgroup>
+					<optgroup label="Havalimanları">{airports.map((z) => <option value={z.id} selected={v.to === z.id}>{z.name}</option>)}</optgroup>
+				</select>
+			</label>
+			<label>Tarih <input type="date" name="date" value={v.date} required /></label>
+			<label>Saat (İstanbul) <input type="time" name="time" value={v.time} required /></label>
+			<label>Kişi <input type="number" name="pax" min="1" max="60" value={v.pax} required /></label>
+			<label>Bavul <input type="number" name="bags" min="0" max="60" value={v.bags} required /></label>
+			<label>
+				Araç sınıfı
+				<select name="class_key">{classes.map((c) => <option value={c.key} selected={v.class_key === c.key}>{c.name}</option>)}</select>
+			</label>
+			<label>Uçuş no <input type="text" name="flight" value={v.flight} /></label>
+		</div>
+		<h2>Yolcu</h2>
+		<div class="form-grid">
+			<label>Ad soyad <input type="text" name="name" value={v.name} required /></label>
+			<label>Telefon <input type="text" name="phone" value={v.phone} required /></label>
+			<label>E-posta <input type="email" name="email" value={v.email} /></label>
+			<label>Adres (otel / ev) <input type="text" name="address" value={v.address} /></label>
+			<label>Tabela ismi <input type="text" name="sign" value={v.sign} /></label>
+			<label>Yolcu notu <input type="text" name="notes" value={v.notes} /></label>
+			<label>İç not <input type="text" name="internal" value={v.internal} /></label>
+		</div>
+		<h2>Ödeme</h2>
+		<div class="form-grid">
+			<label>
+				Yöntem
+				<select name="payment">{METHODS.map((m) => <option value={m} selected={v.payment === m}>{PAYMENT_METHOD_LABELS[m]}</option>)}</select>
+			</label>
+			<label>Anlaşılan fiyat (TL, boşsa tarife) <input type="text" class="money" name="price" value={v.price} inputmode="decimal" /></label>
+		</div>
+		<div class="actions">
+			<button class="btn secondary" type="submit" name="intent" value="preview">Fiyatı hesapla</button>
+			<button class="btn" type="submit" name="intent" value="save">Rezervasyonu oluştur</button>
+		</div>
+	</form>
+</OpsLayout>

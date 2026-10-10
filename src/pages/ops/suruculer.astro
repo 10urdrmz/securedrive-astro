@@ -1,0 +1,108 @@
+---
+/**
+ * Drivers ops can assign. In phase 3 they are records only: the job reaches them by
+ * WhatsApp from the booking page. From phase 4 each one gets a sign-in (user_id).
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { can } from "../../server/auth/rbac";
+import { ulid } from "../../server/ids";
+import { audit, readForm, requireOps, text } from "../../server/ops";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canWrite = can(user, "drivers.manage");
+
+const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name"]).orderBy("sort").execute();
+
+let notice = "";
+let error = "";
+const form = canWrite ? await readForm(Astro) : null;
+if (form) {
+	const id = text(form, "id", 40);
+	const values = {
+		name: text(form, "name", 80),
+		phone: text(form, "phone", 24),
+		kind: ["staff", "partner", "independent"].includes(text(form, "kind", 20)) ? text(form, "kind", 20) : "staff",
+		class_key: classes.some((c) => c.key === text(form, "class_key", 60)) ? text(form, "class_key", 60) : null,
+		plate: text(form, "plate", 16).toUpperCase() || null,
+		vehicle: text(form, "vehicle", 80) || null,
+		languages: text(form, "languages", 80),
+		status: form.get("active") === "on" ? "active" : "inactive",
+		notes: text(form, "notes", 500) || null,
+	};
+	if (values.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(values.phone)) {
+		error = "Ad ve geçerli bir telefon gerekli.";
+	} else if (id) {
+		await db.updateTable("sd_drivers").set(values).where("id", "=", id).execute();
+		await audit(db, user, "driver.update", "driver", id, values);
+		notice = `${values.name} güncellendi.`;
+	} else {
+		const newId = ulid();
+		await db.insertInto("sd_drivers").values({ id: newId, ...values }).execute();
+		await audit(db, user, "driver.create", "driver", newId, values);
+		notice = `${values.name} eklendi.`;
+	}
+}
+
+const drivers = await db.selectFrom("sd_drivers").selectAll().orderBy("status").orderBy("name").execute();
+const KINDS: Record<string, string> = { staff: "Kendi filo", partner: "Partner", independent: "Bağımsız" };
+const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0]?.key ?? "", plate: "", vehicle: "", languages: "", status: "active", notes: "" };
+---
+
+<OpsLayout title="Sürücüler" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	<p class="muted">
+		Atanabilir sürücüler. Şimdilik sürücüler panele girmez; rezervasyon sayfasından işi WhatsApp ile gönderirsiniz. Pasif sürücü
+		atama listesinde görünmez.
+	</p>
+	{
+		[...(canWrite ? [blank] : []), ...drivers].map((d) => (
+			<form class="card form-grid" method="post">
+				<input type="hidden" name="id" value={d.id} />
+				{!d.id && <strong style="grid-column:1/-1">Yeni sürücü</strong>}
+				<label>
+					Ad soyad
+					<input type="text" name="name" value={d.name} required disabled={!canWrite} />
+				</label>
+				<label>
+					Telefon
+					<input type="text" name="phone" value={d.phone} required disabled={!canWrite} placeholder="+90 5xx xxx xx xx" />
+				</label>
+				<label>
+					Tür
+					<select name="kind" disabled={!canWrite}>
+						{Object.entries(KINDS).map(([k, label]) => <option value={k} selected={d.kind === k}>{label}</option>)}
+					</select>
+				</label>
+				<label>
+					Araç sınıfı
+					<select name="class_key" disabled={!canWrite}>
+						{classes.map((c) => <option value={c.key} selected={d.class_key === c.key}>{c.name}</option>)}
+					</select>
+				</label>
+				<label>
+					Plaka
+					<input type="text" name="plate" value={d.plate ?? ""} disabled={!canWrite} />
+				</label>
+				<label>
+					Araç (marka, model, renk)
+					<input type="text" name="vehicle" value={d.vehicle ?? ""} disabled={!canWrite} />
+				</label>
+				<label>
+					Diller
+					<input type="text" name="languages" value={d.languages} disabled={!canWrite} placeholder="TR, EN, AR" />
+				</label>
+				<label>
+					Not
+					<input type="text" name="notes" value={d.notes ?? ""} disabled={!canWrite} />
+				</label>
+				<label class="inline">
+					<input type="checkbox" name="active" checked={d.status === "active"} disabled={!canWrite} /> Aktif
+				</label>
+				{canWrite && <div><button class="btn" type="submit">{d.id ? "Kaydet" : "Ekle"}</button></div>}
+			</form>
+		))
+	}
+</OpsLayout>

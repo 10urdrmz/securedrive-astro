@@ -1,6 +1,8 @@
 ---
 import OpsLayout from "../../layouts/OpsLayout.astro";
+import { can } from "../../server/auth/rbac";
 import { requireOps } from "../../server/ops";
+import { isoToIstanbul, istanbulToIso } from "../../server/pricing";
 
 const ctx = await requireOps(Astro);
 if (ctx instanceof Response) return ctx;
@@ -21,9 +23,59 @@ const [zones, classes, tariffs, team] = await Promise.all([
 // Every serviceable district needs a price from each airport, for each class, in both directions.
 const airports = await count("sd_zones", ["kind", "=", "airport"]);
 const expected = airports * (zones - airports) * classes * 2;
+
+// Today's and the coming day's work, Istanbul time.
+const today = isoToIstanbul(new Date().toISOString()).date;
+const dayStart = istanbulToIso(today, "00:00")!;
+const in48h = new Date(Date.now() + 48 * 3600_000).toISOString();
+const showBookings = can(user, "bookings.read");
+const [todayCount, unassigned, active] = showBookings
+	? await Promise.all([
+			db
+				.selectFrom("sd_bookings")
+				.select((eb) => eb.fn.countAll<number>().as("n"))
+				.where("pickup_at", ">=", dayStart)
+				.where("pickup_at", "<", new Date(Date.parse(dayStart) + 86400_000).toISOString())
+				.where("status", "!=", "cancelled")
+				.executeTakeFirst()
+				.then((r) => Number(r?.n ?? 0)),
+			db
+				.selectFrom("sd_bookings")
+				.select((eb) => eb.fn.countAll<number>().as("n"))
+				.where("driver_id", "is", null)
+				.where("status", "in", ["confirmed", "pending_payment"])
+				.where("pickup_at", "<", in48h)
+				.executeTakeFirst()
+				.then((r) => Number(r?.n ?? 0)),
+			db
+				.selectFrom("sd_bookings")
+				.select((eb) => eb.fn.countAll<number>().as("n"))
+				.where("status", "in", ["driver_en_route", "driver_arrived", "on_board"])
+				.executeTakeFirst()
+				.then((r) => Number(r?.n ?? 0)),
+		])
+	: [0, 0, 0];
 ---
 
 <OpsLayout title={`Merhaba, ${user.name.split(" ")[0]}`} user={user}>
+	{
+		showBookings && (
+			<div class="stats">
+				<a class="stat" href={`/ops/rezervasyonlar?from=${today}&to=${today}`} style="color:inherit;text-decoration:none">
+					<strong>{todayCount}</strong>
+					<span class="muted">bugünkü transfer</span>
+				</a>
+				<a class="stat" href="/ops/rezervasyonlar?unassigned=1" style="color:inherit;text-decoration:none">
+					<strong style={unassigned ? "color:var(--red-600)" : undefined}>{unassigned}</strong>
+					<span class="muted">48 saat içinde, sürücüsü atanmamış</span>
+				</a>
+				<div class="stat">
+					<strong>{active}</strong>
+					<span class="muted">şu an yolda</span>
+				</div>
+			</div>
+		)
+	}
 	<div class="stats">
 		<div class="stat"><strong>{zones}</strong><span class="muted">hizmet verilen bölge</span></div>
 		<div class="stat"><strong>{classes}</strong><span class="muted">aktif araç sınıfı</span></div>
@@ -35,12 +87,13 @@ const expected = airports * (zones - airports) * classes * 2;
 	<div class="card">
 		<h2 style="margin-top:0">Sırada ne var</h2>
 		<p class="muted">
-			Rezervasyonlar, canlı pano ve sürücü ataması sonraki fazlarda bu panele eklenecek. Şimdilik fiyatlandırmanın temelini
-			kuruyoruz: tarifeleri girin, kuralları ayarlayın, ekibi davet edin.
+			Online rezervasyon yalnızca tarifesi girilmiş güzergâhlarda fiyat gösterir; tarifesi olmayan güzergâhta site "fiyat talebi"
+			formuna yönlendirir. Sürücüleri ekleyin, rezervasyonlara elle atayın ve işi WhatsApp ile gönderin.
 		</p>
 		<div class="actions">
 			<a class="btn" href="/ops/yonetim/tarifeler">Tarifeleri gir</a>
 			<a class="btn secondary" href="/ops/yonetim/ayarlar">Kuralları ayarla</a>
+			<a class="btn secondary" href="/ops/suruculer">Sürücü ekle</a>
 		</div>
 	</div>
 </OpsLayout>
