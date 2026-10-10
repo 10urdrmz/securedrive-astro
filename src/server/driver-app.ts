@@ -30,8 +30,18 @@ export interface Driver {
 
 const DRIVER_FIELDS = ["d.id", "d.name", "d.phone", "d.plate", "d.vehicle", "d.class_key", "d.status"] as const;
 
+/** Arabic-Indic, Persian and full-width digits as ASCII, so a phone keyboard in any language works. */
+export const asciiDigits = (value: string) =>
+	value.replace(/[\u0660-\u0669\u06f0-\u06f9\uff10-\uff19]/g, (ch) => {
+		const code = ch.charCodeAt(0);
+		return String(code - (code >= 0xff10 ? 0xff10 : code >= 0x06f0 ? 0x06f0 : 0x0660));
+	});
+
 /** Last ten digits: "+90 532 111 22 33", "0532 111 2233" and "5321112233" all match. */
-export const phoneKey = (phone: string) => phone.replace(/\D/g, "").slice(-10);
+export const phoneKey = (phone: string) => asciiDigits(phone).replace(/\D/g, "").slice(-10);
+
+/** The PIN as typed or pasted ("401 450", "401-450", "٤٠١٤٥٠"): its digits only. */
+export const pinDigits = (pin: string) => asciiDigits(pin).replace(/\D/g, "");
 
 // ---------------------------------------------------------------- access
 
@@ -60,13 +70,15 @@ export async function driversWithAccess(db: Db): Promise<Set<string>> {
 	return new Set(rows.map((r: { driver_id: string }) => r.driver_id));
 }
 
-export type SignInResult = { ok: true; driverId: string } | { ok: false; error: "invalid" | "locked" };
+export type SignInResult = { ok: true; driverId: string } | { ok: false; error: "invalid" | "locked" | "bad_phone" | "bad_pin" };
 
 /** Why a sign-in ended as it did. The driver only ever sees "wrong phone or PIN"; ops sees this. */
-export type LoginOutcome = "ok" | "bad_input" | "unknown_phone" | "inactive" | "no_pin" | "wrong_pin" | "locked";
+export type LoginOutcome = "ok" | "bad_phone" | "bad_pin" | "bad_input" | "unknown_phone" | "inactive" | "no_pin" | "wrong_pin" | "locked";
 
 export const LOGIN_OUTCOME_LABELS: Record<LoginOutcome, string> = {
 	ok: "Giriş yaptı",
+	bad_phone: "Telefon 10 haneden kısa",
+	bad_pin: "PIN 6 rakam değil",
 	bad_input: "Telefon veya PIN biçimi hatalı",
 	unknown_phone: "Bu telefonla kayıtlı sürücü yok",
 	inactive: "Sürücü pasif",
@@ -79,7 +91,7 @@ async function logLogin(db: Db, phone: string, driverId: string | null, result: 
 	const now = new Date();
 	await db
 		.insertInto("sd_driver_login_log")
-		.values({ at: now.toISOString(), phone_tail: phone.replace(/\D/g, "").slice(-4), driver_id: driverId, result })
+		.values({ at: now.toISOString(), phone_tail: phoneKey(phone).slice(-4), driver_id: driverId, result })
 		.execute();
 	await db
 		.deleteFrom("sd_driver_login_log")
@@ -102,12 +114,16 @@ export async function checkPin(db: Db, phone: string, pin: string): Promise<Sign
 	const outcome = await matchPin(db, phone, pin);
 	await logLogin(db, phone, outcome.driverId, outcome.result);
 	if (outcome.result === "ok") return { ok: true, driverId: outcome.driverId! };
-	return { ok: false, error: outcome.result === "locked" ? "locked" : "invalid" };
+	const { result } = outcome;
+	// Format mistakes say nothing about who is registered, so the driver can be told exactly.
+	return { ok: false, error: result === "locked" || result === "bad_phone" || result === "bad_pin" ? result : "invalid" };
 }
 
 async function matchPin(db: Db, phone: string, pin: string): Promise<{ result: LoginOutcome; driverId: string | null }> {
 	const key = phoneKey(phone);
-	if (key.length < 10 || !/^\d{6}$/.test(pin)) return { result: "bad_input", driverId: null };
+	pin = pinDigits(pin);
+	if (key.length < 10) return { result: "bad_phone", driverId: null };
+	if (pin.length !== 6) return { result: "bad_pin", driverId: null };
 	const candidates = await db
 		.selectFrom("sd_drivers as d")
 		.leftJoin("sd_driver_access as a", "a.driver_id", "d.id")

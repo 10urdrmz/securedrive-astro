@@ -14,7 +14,7 @@ let phone = "";
 const form = await readForm(Astro);
 if (form) {
 	phone = text(form, "phone", 24);
-	const pin = text(form, "pin", 6);
+	const pin = text(form, "pin", 40);
 	if (!(await allowVisitor(Astro, "driver-login", 10, 15))) {
 		error = "Çok fazla deneme. 15 dakika sonra tekrar deneyin.";
 	} else {
@@ -26,7 +26,11 @@ if (form) {
 		error =
 			result.error === "locked"
 				? "Çok fazla hatalı PIN. 15 dakika sonra tekrar deneyin ya da operasyondan yeni PIN isteyin."
-				: "Telefon veya PIN hatalı.";
+				: result.error === "bad_phone"
+					? "Telefon numaranızı başında 0 ile 11 hane olarak yazın (05xx xxx xx xx)."
+					: result.error === "bad_pin"
+						? "PIN 6 rakamdan oluşur."
+						: "Telefon veya PIN hatalı.";
 	}
 }
 ---
@@ -42,7 +46,7 @@ if (form) {
 		</label>
 		<label class="drv-field">
 			PIN
-			<input name="pin" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required />
+			<input name="pin" type="password" inputmode="numeric" autocomplete="one-time-code" required />
 		</label>
 		<button type="submit" class="drv-btn">Giriş yap</button>
 	</form>
