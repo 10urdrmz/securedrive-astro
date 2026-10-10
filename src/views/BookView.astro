@@ -5,6 +5,7 @@
  */
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
+import Notice from "../components/Notice.astro";
 import { BOOK_SLUG, LOCALE_META, accountPath, bookPath, localizePath, pagePath } from "../i18n/locales";
 import { useTranslations, type UiKey } from "../i18n/ui";
 import type { BookPage } from "../lib/booking-page";
@@ -46,6 +47,52 @@ const path = page.view === "detail" ? `${BOOK_SLUG}/${page.booking.code}` : BOOK
 const airports = page.view === "wizard" ? page.zones.filter((z) => z.kind === "airport") : [];
 const districts = page.view === "wizard" ? page.zones.filter((z) => z.kind !== "airport") : [];
 const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airport" ? t("book.pickupAddress") : t("book.dropoffAddress");
+// Conventional status colours: amber waits on someone, blue is in progress,
+// green is done, red is cancelled, grey is closed without a trip.
+type Tone = "success" | "info" | "warning" | "danger" | "neutral";
+const STATUS_TONE: Record<string, Tone> = {
+	pending_payment: "warning",
+	confirmed: "info",
+	assigned: "info",
+	driver_en_route: "info",
+	driver_arrived: "info",
+	on_board: "info",
+	completed: "success",
+	no_show: "neutral",
+	cancelled: "danger",
+};
+const BADGE: Record<Tone, string> = {
+	success: "bg-emerald-100 text-emerald-800",
+	info: "bg-sky-100 text-sky-900",
+	warning: "bg-amber-100 text-amber-900",
+	danger: "bg-red-100 text-red-800",
+	neutral: "bg-gray-200 text-gray-700",
+};
+const TONE_ICON = { success: "check", info: "clock", warning: "alert", danger: "x-circle", neutral: "info" } as const;
+const statusTone: Tone = page.view === "detail" ? (STATUS_TONE[page.booking.status] ?? "neutral") : "neutral";
+const paymentTone: Tone =
+	page.view !== "detail"
+		? "neutral"
+		: page.booking.payment_status === "paid"
+			? "success"
+			: page.booking.payment_status === "unpaid"
+				? page.booking.status === "pending_payment"
+					? "warning"
+					: "neutral"
+				: "neutral";
+
+// Progress of the trip, as on any ride or delivery tracker.
+const PROGRESS = ["confirmed", "assigned", "driver_en_route", "completed"] as const;
+const progressAt =
+	page.view !== "detail"
+		? -1
+		: ({ pending_payment: -1, confirmed: 0, assigned: 1, driver_en_route: 2, driver_arrived: 2, on_board: 2, completed: 3 } as Record<string, number>)[
+				page.booking.status
+			] ?? -1;
+// Who drives is worth showing until the trip is over; afterwards only if someone did.
+const showDriver =
+	page.view === "detail" && !["cancelled", "no_show"].includes(page.booking.status) && (page.booking.status !== "completed" || !!page.driver);
+const showProgress = page.view === "detail" && !["cancelled", "no_show"].includes(page.booking.status);
 ---
 
 <Base locale={locale} path={path} title={title} description={t("book.lead")} noindex={page.view === "detail" || Astro.url.search.length > 0}>
@@ -57,8 +104,8 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 						<p class="text-sm font-semibold uppercase tracking-[0.14em] text-gold-300 rtl:tracking-normal">{t("book.reservation")}</p>
 						<div class="mt-3 flex flex-wrap items-center gap-4">
 							<h1 class="font-display text-3xl sm:text-4xl font-bold tabular-nums" dir="ltr">{page.booking.code}</h1>
-							<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-white/15">
-								<span class="size-1.5 rounded-full bg-current" />
+							<span class:list={["inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-semibold", BADGE[statusTone]]}>
+								<Icon name={TONE_ICON[statusTone]} size={16} />
 								{t(`book.status.${page.booking.status}` as UiKey)}
 							</span>
 						</div>
@@ -77,7 +124,7 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 									]}
 									aria-current={i + 1 === page.step ? "step" : undefined}
 								>
-									<span class="tabular-nums">{i + 1}</span>
+									{i + 1 < page.step ? <Icon name="tick" size={16} /> : <span class="tabular-nums">{i + 1}</span>}
 									{label}
 								</li>
 							))}
@@ -91,7 +138,7 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 	<section class="bg-gray-100 py-8 sm:py-12 min-h-[50vh]">
 		<div class="container grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-8 items-start">
 			<div class="grid gap-6 min-w-0">
-				{page.error && <p class="form-status" data-state="error" role="alert">{t(page.error)}</p>}
+				{page.error && <Notice tone="danger">{t(page.error)}</Notice>}
 
 				{
 					page.view === "wizard" && (
@@ -286,7 +333,7 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 					page.view === "detail" && (
 						<>
 							{page.notice && page.notice !== "paymentFailed" && (
-								<p class="form-status" data-state="success" role="status">
+								<Notice tone={page.notice === "cancelled" ? "info" : "success"}>
 									{page.notice === "created"
 										? t("book.created", { code: page.booking.code })
 										: page.notice === "paid"
@@ -294,66 +341,140 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 											: page.notice === "reviewed"
 												? t("book.reviewed")
 												: t("book.cancelled")}
-								</p>
+								</Notice>
 							)}
-							{page.notice === "paymentFailed" && <p class="form-status" data-state="error" role="alert">{t("book.paymentFailed")}</p>}
+							{page.notice === "paymentFailed" && <Notice tone="danger">{t("book.paymentFailed")}</Notice>}
 							{page.payHref && (
-								<div class:list={[card, "grid gap-3 p-6 sm:p-8"]}>
+								<Notice tone="warning" title={t("book.status.pending_payment")}>
 									<p>{t("book.awaitingPayment")}</p>
-									<a class="btn btn--primary justify-self-start" href={page.payHref}>
+									<a class="btn btn--primary btn--sm mt-3" href={page.payHref}>
+										<Icon name="card" size={18} />
 										{t("book.payNow")} · {money(page.booking.price_minor)}
 									</a>
+								</Notice>
+							)}
+							{page.booking.status === "cancelled" && <Notice tone="danger">{t("book.status.cancelled")}</Notice>}
+							{page.booking.status === "no_show" && <Notice tone="warning">{t("book.status.no_show")}</Notice>}
+
+							{showProgress && (
+								<div class:list={[card, "p-5 sm:p-6"]}>
+									<ol class="grid grid-cols-4 list-none p-0 m-0">
+										{PROGRESS.map((step, i) => {
+											const done = i <= progressAt;
+											const current = i === progressAt + 1 && page.booking.status !== "completed";
+											return (
+												<li class="relative grid justify-items-center gap-2 text-center" aria-current={i === progressAt ? "step" : undefined}>
+													{i > 0 && (
+														<span
+															class:list={["absolute top-4 h-0.5 -translate-y-1/2 start-[-50%] end-1/2 rtl:start-auto", i <= progressAt ? "bg-emerald-500" : "bg-gray-200"]}
+															aria-hidden="true"
+														/>
+													)}
+													<span
+														class:list={[
+															"relative z-10 grid place-items-center size-8 rounded-full border-2 border-solid",
+															done ? "bg-emerald-500 border-emerald-500 text-white" : current ? "bg-white border-sky-500 text-sky-600" : "bg-white border-gray-300 text-gray-400",
+														]}
+													>
+														{done ? <Icon name="tick" size={16} /> : <span class="text-xs font-bold tabular-nums">{i + 1}</span>}
+													</span>
+													<span class:list={["text-xs sm:text-sm leading-tight", done ? "font-semibold text-gray-900" : "text-gray-500"]}>
+														{t(`book.status.${step}` as UiKey)}
+													</span>
+												</li>
+											);
+										})}
+									</ol>
 								</div>
 							)}
-							<div class:list={[card, "grid gap-5 p-6 sm:p-8"]}>
-								<ol class="grid gap-3 list-none p-0">
-									<li class="flex items-center gap-3 font-semibold">
-										<span class="size-3 shrink-0 rounded-full border-2 border-solid border-navy-700 bg-white" />
-										{page.fromName}
-										{page.booking.pickup_address && <span class="font-normal text-gray-600">· {page.booking.pickup_address}</span>}
+
+							<div class:list={[card, "grid gap-6 p-6 sm:p-8"]}>
+								<ol class="relative grid gap-5 list-none p-0 m-0">
+									<span class="absolute start-[11px] top-6 bottom-6 w-0.5 bg-gray-200" aria-hidden="true" />
+									<li class="relative flex items-start gap-4">
+										<span class="grid place-items-center size-6 shrink-0 rounded-full bg-white border-2 border-solid border-navy-700">
+											<span class="size-2 rounded-full bg-navy-700" />
+										</span>
+										<div class="grid gap-0.5 min-w-0">
+											<span class="font-semibold text-gray-900">{page.fromName}</span>
+											{page.booking.pickup_address && <span class="text-sm text-gray-600">{page.booking.pickup_address}</span>}
+										</div>
 									</li>
-									<li class="flex items-center gap-3 font-semibold">
-										<span class="size-3 shrink-0 rounded-full bg-navy-700" />
-										{page.toName}
-										{page.booking.dropoff_address && <span class="font-normal text-gray-600">· {page.booking.dropoff_address}</span>}
+									<li class="relative flex items-start gap-4">
+										<span class="grid place-items-center size-6 shrink-0 rounded-full bg-navy-700 text-white">
+											<Icon name="pin" size={14} />
+										</span>
+										<div class="grid gap-0.5 min-w-0">
+											<span class="font-semibold text-gray-900">{page.toName}</span>
+											{page.booking.dropoff_address && <span class="text-sm text-gray-600">{page.booking.dropoff_address}</span>}
+										</div>
 									</li>
 								</ol>
-								<dl class="grid gap-x-6 gap-y-3 sm:grid-cols-2 text-sm">
-									<div><dt class="text-gray-500">{t("book.pickupTime")}</dt><dd class="font-semibold">{when(page.booking.pickup_at)}</dd></div>
-									<div><dt class="text-gray-500">{t("form.vehicle")}</dt><dd class="font-semibold">{page.className}</dd></div>
-									<div><dt class="text-gray-500">{t("quick.passengers")} / {t("form.luggage")}</dt><dd class="font-semibold">{page.booking.pax} / {page.booking.bags}</dd></div>
-									{page.booking.flight_no && <div><dt class="text-gray-500">{t("form.flight")}</dt><dd class="font-semibold" dir="ltr">{page.booking.flight_no}</dd></div>}
-									<div><dt class="text-gray-500">{t("form.name")}</dt><dd class="font-semibold">{page.booking.contact_name}</dd></div>
-									{page.booking.sign_name && <div><dt class="text-gray-500">{t("book.signName")}</dt><dd class="font-semibold">{page.booking.sign_name}</dd></div>}
+								<dl class="grid gap-4 sm:grid-cols-2 m-0 pt-5 border-0 border-t border-solid border-gray-200">
+									{[
+										{ icon: "calendar", label: t("book.pickupTime"), value: when(page.booking.pickup_at) },
+										{ icon: "car", label: t("form.vehicle"), value: page.className },
+										{ icon: "users", label: `${t("quick.passengers")} / ${t("form.luggage")}`, value: `${page.booking.pax} / ${page.booking.bags}` },
+										page.booking.flight_no && { icon: "plane", label: t("form.flight"), value: page.booking.flight_no, ltr: true },
+										{ icon: "user", label: t("form.name"), value: page.booking.contact_name },
+										page.booking.sign_name && { icon: "sign", label: t("book.signName"), value: page.booking.sign_name },
+									]
+										.filter(Boolean)
+										.map((item: any) => (
+											<div class="flex items-start gap-3 min-w-0">
+												<span class="grid place-items-center size-9 shrink-0 rounded-lg bg-navy-50 text-navy-700">
+													<Icon name={item.icon} size={18} />
+												</span>
+												<div class="min-w-0">
+													<dt class="text-xs text-gray-500">{item.label}</dt>
+													<dd class="m-0 font-semibold text-gray-900" dir={item.ltr ? "ltr" : undefined}>{item.value}</dd>
+												</div>
+											</div>
+										))}
 								</dl>
 							</div>
 
-							<div class:list={[card, "grid gap-3 p-6 sm:p-8"]}>
-								<h2 class="font-display text-lg font-bold">{t("book.driver")}</h2>
+							{showDriver && (
+							<div class:list={[card, "grid gap-4 p-6 sm:p-8"]}>
+								<h2 class="font-display text-lg font-bold m-0">{t("book.driver")}</h2>
 								{page.driver && page.booking.status !== "cancelled" ? (
-									<p>
-										<strong>{page.driver.name}</strong>
-										{page.driver.vehicle && <> · {page.driver.vehicle}</>}
-										{page.driver.plate && <> · <span dir="ltr">{page.driver.plate}</span></>}
-										<br />
-										<a class="underline" href={`tel:${page.driver.phone.replace(/[^\d+]/g, "")}`} dir="ltr">{page.driver.phone}</a>
-									</p>
+									<div class="flex flex-wrap items-center gap-4">
+										<span class="grid place-items-center size-12 shrink-0 rounded-full bg-navy-50 text-navy-700">
+											<Icon name="user" size={24} />
+										</span>
+										<div class="grid gap-0.5 min-w-0 flex-1">
+											<strong class="text-gray-900">{page.driver.name}</strong>
+											<span class="text-sm text-gray-600">
+												{page.driver.vehicle}
+												{page.driver.plate && <> · <span dir="ltr" class="font-semibold tracking-wide">{page.driver.plate}</span></>}
+											</span>
+										</div>
+										<a class="btn btn--ghost btn--sm" href={`tel:${page.driver.phone.replace(/[^\d+]/g, "")}`} dir="ltr">
+											<Icon name="phone" size={16} />
+											{page.driver.phone}
+										</a>
+									</div>
 								) : (
-									<p class="text-gray-600">{t("book.driverPending")}</p>
+									<div class="flex items-start gap-3 text-sm text-gray-600">
+										<Icon name="clock" size={20} class="shrink-0 text-gray-400" />
+										<p class="m-0">{t("book.driverPending")}</p>
+									</div>
 								)}
 							</div>
+							)}
 
 							{page.canReview && (
 								<form method="post" class:list={[card, "form grid gap-4 p-6 sm:p-8"]}>
 									<input type="hidden" name="intent" value="review" />
-									<h2 class="font-display text-lg font-bold">{t("book.reviewTitle")}</h2>
+									<h2 class="font-display text-lg font-bold m-0">{t("book.reviewTitle")}</h2>
 									<fieldset class="grid gap-2 border-0 p-0 m-0">
 										<legend class="text-sm font-semibold mb-2">{t("book.reviewRating")}</legend>
-										<div class="flex flex-wrap gap-3">
+										<div class="flex flex-wrap gap-2">
 											{[5, 4, 3, 2, 1].map((n) => (
-												<label class="checkbox">
-													<input type="radio" name="rating" value={n} required checked={n === 5} />
-													<span>{"★".repeat(n)}</span>
+												<label class="inline-flex items-center gap-1.5 cursor-pointer rounded-full border border-solid border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500">
+													<input type="radio" name="rating" value={n} required checked={n === 5} class="sr-only" />
+													<span class="tabular-nums">{n}</span>
+													<Icon name="star-fill" size={16} class="text-amber-400" />
 												</label>
 											))}
 										</div>
@@ -366,24 +487,31 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 								</form>
 							)}
 							{page.review && (
-								<div class:list={[card, "grid gap-2 p-6 sm:p-8"]}>
-									<h2 class="font-display text-lg font-bold">{t("book.yourReview")}</h2>
-									<p class="text-gold-500 text-xl" aria-label={`${page.review.rating}/5`}>{"★".repeat(page.review.rating)}{"☆".repeat(5 - page.review.rating)}</p>
-									{page.review.comment && <p class="text-gray-700">{page.review.comment}</p>}
+								<div class:list={[card, "grid gap-3 p-6 sm:p-8"]}>
+									<h2 class="font-display text-lg font-bold m-0">{t("book.yourReview")}</h2>
+									<p class="flex gap-1 m-0" role="img" aria-label={`${page.review.rating}/5`}>
+										{[1, 2, 3, 4, 5].map((n) => (
+											<Icon name={n <= page.review!.rating ? "star-fill" : "star"} size={22} class={n <= page.review!.rating ? "text-amber-400" : "text-gray-300"} />
+										))}
+									</p>
+									{page.review.comment && <p class="m-0 text-gray-700">{page.review.comment}</p>}
 								</div>
 							)}
 
 							{["pending_payment", "confirmed", "assigned"].includes(page.booking.status) && (
 								<div class:list={[card, "grid gap-3 p-6 sm:p-8"]}>
-									<h2 class="font-display text-lg font-bold">{t("book.cancel")}</h2>
+									<h2 class="font-display text-lg font-bold m-0">{t("book.cancel")}</h2>
 									{page.canCancel ? (
 										<form method="post" class="grid gap-3">
 											<input type="hidden" name="intent" value="cancel" />
-											<p class="text-sm text-gray-600">{t("book.cancelFree", { h: page.freeCancelHours })}</p>
-											<button type="submit" class="btn btn--ghost justify-self-start">{t("book.cancel")}</button>
+											<p class="m-0 text-sm text-gray-600">{t("book.cancelFree", { h: page.freeCancelHours })}</p>
+											<button type="submit" class="btn btn--sm justify-self-start border border-solid border-red-300 bg-white text-red-700 hover:bg-red-50">
+												<Icon name="x-circle" size={16} />
+												{t("book.cancel")}
+											</button>
 										</form>
 									) : (
-										<p class="text-sm text-gray-600">{t("book.cancelClosed")}</p>
+										<p class="m-0 text-sm text-gray-600">{t("book.cancelClosed")}</p>
 									)}
 								</div>
 							)}
@@ -396,7 +524,7 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 				{
 					((page.view === "wizard" && page.option) || page.view === "detail") && (
 						<div class:list={[card, "grid gap-3 p-6"]}>
-							<h2 class="font-display text-lg font-bold">{t("book.summary")}</h2>
+							<h2 class="font-display text-lg font-bold m-0">{t("book.summary")}</h2>
 							{page.view === "wizard" && page.quote && (
 								<p class="text-sm text-gray-600">
 									{page.quote.from.name} → {page.quote.to.name}
@@ -404,7 +532,7 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 									{when(page.quote.pickupAt)}
 								</p>
 							)}
-							<ul class="grid gap-2 list-none p-0 text-sm">
+							<ul class="grid gap-2 list-none p-0 m-0 text-sm">
 								{(page.view === "wizard" ? page.option!.lines : page.lines).map((line) => (
 									<li class="flex justify-between gap-3">
 										<span>{lineLabel(line)}</span>
@@ -412,17 +540,25 @@ const addressLabel = page.view === "wizard" && page.quote?.from.kind !== "airpor
 									</li>
 								))}
 							</ul>
-							<div class="flex justify-between gap-3 pt-3 border-0 border-t border-solid border-gray-200 font-bold">
+							<div class="flex justify-between gap-3 pt-3 border-0 border-t border-solid border-gray-200 font-bold text-lg">
 								<span>{t("book.total")}</span>
 								<span class="tabular-nums">{money(page.view === "wizard" ? page.option!.total_minor : page.booking.price_minor)}</span>
 							</div>
 							{page.view === "detail" && (
-								<p class="text-sm text-gray-600">
-									{t(`book.pay.${page.booking.payment_method}` as UiKey)} · {t(`book.paymentStatus.${page.booking.payment_status}` as UiKey)}
-								</p>
+								<div class="flex flex-wrap items-center justify-between gap-2 text-sm">
+									<span class="inline-flex items-center gap-2 text-gray-600">
+										<Icon name={page.booking.payment_method === "cash" ? "wallet" : "card"} size={18} class="text-gray-400" />
+										{t(`book.pay.${page.booking.payment_method}` as UiKey)}
+									</span>
+									<span class:list={["inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold", BADGE[paymentTone]]}>
+										{paymentTone === "success" && <Icon name="tick" size={14} />}
+										{t(`book.paymentStatus.${page.booking.payment_status}` as UiKey)}
+									</span>
+								</div>
 							)}
 							{page.view === "detail" && page.booking.status !== "cancelled" && (
-								<a class="btn btn--ghost btn--sm justify-self-start" href={`${bookPath(locale, page.booking.code, page.booking.tracking_token)}&makbuz=1`}>
+								<a class="btn btn--ghost btn--sm btn--block mt-1" href={`${bookPath(locale, page.booking.code, page.booking.tracking_token)}&makbuz=1`}>
+									<Icon name="receipt" size={16} />
 									{t("book.receipt")}
 								</a>
 							)}

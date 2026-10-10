@@ -1,0 +1,34 @@
+---
+/**
+ * Inline message in the four conventional tones: success (green), info (blue),
+ * warning (amber), danger (red). Colour is never the only signal: each tone has
+ * its own icon, and errors are announced as alerts.
+ */
+import Icon from "./Icon.astro";
+
+interface Props {
+	tone: "success" | "info" | "warning" | "danger";
+	title?: string;
+	class?: string;
+}
+
+const { tone, title, class: className } = Astro.props;
+const TONES = {
+	success: { icon: "check", box: "bg-emerald-50 border-emerald-200 text-emerald-900", mark: "text-emerald-600" },
+	info: { icon: "info", box: "bg-sky-50 border-sky-200 text-sky-950", mark: "text-sky-600" },
+	warning: { icon: "alert", box: "bg-amber-50 border-amber-200 text-amber-950", mark: "text-amber-600" },
+	danger: { icon: "x-circle", box: "bg-red-50 border-red-200 text-red-900", mark: "text-red-600" },
+} as const;
+const style = TONES[tone];
+---
+
+<div
+	class:list={["flex items-start gap-3 rounded-xl border border-solid p-4 text-sm leading-relaxed", style.box, className]}
+	role={tone === "danger" ? "alert" : "status"}
+>
+	<Icon name={style.icon} size={20} class:list={["mt-px shrink-0", style.mark]} />
+	<div class="grid gap-1 min-w-0">
+		{title && <p class="font-semibold">{title}</p>}
+		<div><slot /></div>
+	</div>
+</div>
