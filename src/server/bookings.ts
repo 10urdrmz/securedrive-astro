@@ -161,10 +161,12 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 			? [...lines, { kind: "adjustment", label: "Operasyon fiyat düzeltmesi", amount_minor: input.priceOverrideMinor - input.option.total_minor }]
 			: lines;
 	const now = new Date().toISOString();
+	// Online payments confirm the booking only when iyzico reports the money taken.
+	const status: BookingStatus = input.paymentMethod === "online" ? "pending_payment" : "confirmed";
 	const row = {
 		id,
 		code,
-		status: "confirmed" as BookingStatus,
+		status,
 		version: 1,
 		source: input.source,
 		locale: input.locale,
@@ -204,7 +206,7 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 			.values({ booking_id: id, extra_key: line.key, name: line.label, qty: line.qty ?? 1, price_minor: line.amount_minor })
 			.execute();
 	}
-	await addEvent(db, id, actor, "created", null, "confirmed", { source: input.source, price_minor: price });
+	await addEvent(db, id, actor, "created", null, status, { source: input.source, price_minor: price });
 	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null } as Booking;
 }
 
@@ -369,4 +371,42 @@ export function sameSecret(a: string, b: string): boolean {
 	let diff = 0;
 	for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
 	return diff === 0;
+}
+
+/**
+ * An online payment came back successful: record it and confirm the booking.
+ * Safe to call twice for the same payment (a reloaded callback): the second call does nothing.
+ */
+export async function confirmOnlinePayment(
+	db: Db,
+	bookingId: string,
+	payment: { provider: string; providerRef: string; amountMinor: number; currency: string },
+): Promise<Booking | undefined> {
+	const existing = await db.selectFrom("sd_payments").select("id").where("provider", "=", payment.provider).where("provider_ref", "=", payment.providerRef).executeTakeFirst();
+	let booking = (await db.selectFrom("sd_bookings").selectAll().where("id", "=", bookingId).executeTakeFirst()) as Booking | undefined;
+	if (!booking || existing) return booking;
+	const system: Actor = { kind: "system" };
+	await db
+		.insertInto("sd_payments")
+		.values({
+			id: ulid(),
+			booking_id: booking.id,
+			provider: payment.provider,
+			method: "online",
+			kind: "charge",
+			amount_minor: payment.amountMinor,
+			currency: payment.currency,
+			status: "captured",
+			provider_ref: payment.providerRef,
+		})
+		.execute();
+	const paid = payment.amountMinor >= booking.price_minor;
+	await updateBooking(db, booking, { payment_status: paid ? "paid" : "unpaid", ...(booking.status === "pending_payment" && paid ? { status: "confirmed" } : {}) });
+	await addEvent(db, booking.id, system, "payment", booking.status, paid && booking.status === "pending_payment" ? "confirmed" : null, {
+		provider: payment.provider,
+		amount_minor: payment.amountMinor,
+		ref: payment.providerRef,
+	});
+	booking = (await db.selectFrom("sd_bookings").selectAll().where("id", "=", bookingId).executeTakeFirst()) as Booking;
+	return booking;
 }

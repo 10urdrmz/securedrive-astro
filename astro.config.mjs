@@ -26,6 +26,9 @@ const cachedPage = { maxAge: 60, swr: 86400 };
 
 export default defineConfig({
 	output: "server",
+	// The same-origin form check lives in src/middleware.ts, so payment providers can
+	// post the passenger back to /api/odeme/*. Everything else is checked as before.
+	security: { checkOrigin: false },
 	adapter: onCloudflare ? cloudflare() : node({ mode: "standalone" }),
 	site: "https://securedrive.org",
 	i18n: {

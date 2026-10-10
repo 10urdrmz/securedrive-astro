@@ -25,6 +25,7 @@ import { quote, refundPct, type ClassQuote, type Quote, type QuoteInput } from "
 import { getSettings } from "../server/settings";
 import { NO_STORE } from "./account-page";
 import { allowVisitor, currentMember, EMAIL, PHONE, type Member } from "./members";
+import { iyzicoEnabled, iyzicoIsSandbox } from "../server/payments/iyzico";
 
 export interface Zone {
 	id: string;
@@ -53,6 +54,10 @@ export interface WizardPage {
 	error?: UiKey;
 	/** Details typed so far, to refill the form after an error. */
 	values: Record<string, string>;
+	/** Online card payment is configured (iyzico keys present). */
+	online: boolean;
+	/** Online payment runs against the iyzico sandbox (test cards only). */
+	sandbox: boolean;
 }
 
 export interface BookingDetail {
@@ -69,14 +74,16 @@ export interface BookingDetail {
 	/** Hours before pickup until which the passenger may cancel online, free of charge. */
 	freeCancelHours: number;
 	canCancel: boolean;
-	notice?: "created" | "cancelled";
+	notice?: "created" | "cancelled" | "paid" | "paymentFailed";
+	/** Where "pay now" leads, while a booking waits for its online payment. */
+	payHref: string | null;
 	error?: UiKey;
 }
 
 export type BookPage = WizardPage | BookingDetail;
 
 const CODE = /^SD-\d{4}-\d{4,}$/i;
-const PUBLIC_METHODS: PaymentMethod[] = ["cash", "card_in_vehicle"];
+const publicMethods = (): PaymentMethod[] => (iyzicoEnabled() ? ["online", "cash", "card_in_vehicle"] : ["cash", "card_in_vehicle"]);
 
 const clean = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const int = (value: string | null, fallback: number) => (value && /^\d{1,2}$/.test(value) ? Number(value) : fallback);
@@ -122,7 +129,8 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	const zones = await loadZones(db);
 	const params = Astro.url.searchParams;
 	const trip = readTrip(params);
-	const page: WizardPage = { view: "wizard", locale, member, step: 1, zones, trip, values: {} };
+	const online = iyzicoEnabled();
+	const page: WizardPage = { view: "wizard", locale, member, step: 1, zones, trip, values: {}, online, sandbox: online && iyzicoIsSandbox() };
 	if (!trip.from || !trip.to || !trip.date || !trip.time) return page;
 
 	const input: QuoteInput = { fromZoneId: trip.from, toZoneId: trip.to, date: trip.date, time: trip.time, pax: trip.pax!, bags: trip.bags! };
@@ -149,7 +157,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	if (!option) return page;
 	page.option = option;
 	page.step = 3;
-	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: "cash" };
+	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: online ? "online" : "cash" };
 	if (!form) return page;
 
 	const field = (name: string, max = 200) => clean(form!.get(name), max);
@@ -173,7 +181,9 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	const v = page.values;
 	if (v.name.length < 2 || !PHONE.test(v.phone)) return fail("details");
 	if (v.email && !EMAIL.test(v.email)) return fail("email");
-	if (!PUBLIC_METHODS.includes(v.payment as PaymentMethod)) return fail("details");
+	if (!publicMethods().includes(v.payment as PaymentMethod)) return fail("details");
+	// iyzico sends the receipt by e-mail and requires an address.
+	if (v.payment === "online" && !v.email) return fail("emailRequired");
 	if (form.get("terms") !== "on") return fail("terms");
 	if (!(await allowVisitor(Astro, "booking", 5, 60))) return fail("rate", 429);
 
@@ -199,6 +209,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 		},
 		{ kind: "passenger" },
 	);
+	if (booking.payment_method === "online") return redirect(Astro, paymentStartPath(booking));
 	return redirect(Astro, `${bookPath(locale, booking.code, booking.tracking_token)}&ok=created`);
 }
 
@@ -231,9 +242,10 @@ async function bookingDetail(
 		...detail,
 		freeCancelHours: Number.isFinite(freeCancelHours) ? freeCancelHours : 0,
 		canCancel,
+		payHref: booking.status === "pending_payment" && booking.payment_method === "online" && iyzicoEnabled() ? paymentStartPath(booking) : null,
 	};
 	const ok = Astro.url.searchParams.get("ok");
-	if (ok === "created" || ok === "cancelled") page.notice = ok;
+	if (ok === "created" || ok === "cancelled" || ok === "paid" || ok === "paymentFailed") page.notice = ok;
 
 	if (Astro.request.method === "POST") {
 		if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
@@ -306,4 +318,9 @@ export async function memberBookingCards(Astro: AstroGlobal, member: Member): Pr
 		toName: r.to_name,
 		price_minor: r.price_minor,
 	}));
+}
+
+/** Starts (or restarts) the online payment of a booking; see src/pages/api/odeme. */
+export function paymentStartPath(booking: Pick<Booking, "code" | "tracking_token">): string {
+	return `/api/odeme/baslat?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`;
 }

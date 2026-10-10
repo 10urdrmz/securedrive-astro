@@ -343,6 +343,13 @@ const tr = {
 	"book.myBookingsEmpty": "Henüz online rezervasyonunuz yok.",
 	"book.view": "Görüntüle",
 	"book.new": "Yeni rezervasyon",
+	"book.onlineHint": "Kartla güvenli ödeme (3D Secure, iyzico). Ödeme onaylanınca rezervasyonunuz kesinleşir.",
+	"book.sandbox": "Test modu: gerçek kart kullanmayın.",
+	"book.payNow": "Ödemeyi tamamla",
+	"book.awaitingPayment": "Rezervasyonunuz ödeme bekliyor. Ödemeyi tamamladığınızda kesinleşir.",
+	"book.paid": "Ödemeniz alındı, rezervasyonunuz onaylandı.",
+	"book.paymentFailed": "Ödeme tamamlanamadı. Tekrar deneyebilir ya da bizi arayabilirsiniz.",
+	"book.error.emailRequired": "Online ödeme için e-posta adresi gerekli; makbuz bu adrese gönderilir.",
 };
 
 export type UiKey = keyof typeof tr;
@@ -686,6 +693,13 @@ const en: Dictionary = {
 	"book.myBookingsEmpty": "You have no online bookings yet.",
 	"book.view": "View",
 	"book.new": "New booking",
+	"book.onlineHint": "Secure card payment (3D Secure, iyzico). Your booking is confirmed once the payment goes through.",
+	"book.sandbox": "Test mode: do not use a real card.",
+	"book.payNow": "Complete payment",
+	"book.awaitingPayment": "Your booking is waiting for payment. It is confirmed once you pay.",
+	"book.paid": "Payment received. Your booking is confirmed.",
+	"book.paymentFailed": "The payment did not go through. You can try again or call us.",
+	"book.error.emailRequired": "An e-mail address is required for online payment; the receipt is sent there.",
 };
 
 const ar: Dictionary = {
@@ -1024,6 +1038,13 @@ const ar: Dictionary = {
 	"book.myBookingsEmpty": "لا توجد لديك حجوزات إلكترونية بعد.",
 	"book.view": "عرض",
 	"book.new": "حجز جديد",
+	"book.onlineHint": "دفع آمن بالبطاقة (3D Secure، iyzico). يتم تأكيد الحجز فور إتمام الدفع.",
+	"book.sandbox": "وضع الاختبار: لا تستخدم بطاقة حقيقية.",
+	"book.payNow": "إتمام الدفع",
+	"book.awaitingPayment": "حجزك بانتظار الدفع، ويتم تأكيده بعد إتمام الدفع.",
+	"book.paid": "تم استلام الدفع وتأكيد حجزك.",
+	"book.paymentFailed": "لم يكتمل الدفع. يمكنك المحاولة مرة أخرى أو الاتصال بنا.",
+	"book.error.emailRequired": "البريد الإلكتروني مطلوب للدفع الإلكتروني، وسيُرسل الإيصال إليه.",
 };
 
 const ru: Dictionary = {
@@ -1363,6 +1384,13 @@ const ru: Dictionary = {
 	"book.myBookingsEmpty": "У вас пока нет онлайн-бронирований.",
 	"book.view": "Открыть",
 	"book.new": "Новое бронирование",
+	"book.onlineHint": "Безопасная оплата картой (3D Secure, iyzico). Бронирование подтверждается после оплаты.",
+	"book.sandbox": "Тестовый режим: не используйте настоящую карту.",
+	"book.payNow": "Оплатить",
+	"book.awaitingPayment": "Бронирование ожидает оплаты и будет подтверждено после неё.",
+	"book.paid": "Оплата получена, бронирование подтверждено.",
+	"book.paymentFailed": "Оплата не прошла. Попробуйте ещё раз или позвоните нам.",
+	"book.error.emailRequired": "Для онлайн-оплаты нужен e-mail: на него придёт чек.",
 };
 
 const DICTIONARIES: Record<Locale, Dictionary> = { tr, en, ar, ru };
