@@ -58,7 +58,8 @@ export default defineConfig({
 		emdash({
 			// Passkeys are bound to this origin. Set EMDASH_SITE_URL at build time to
 			// run the admin on another hostname (e.g. the workers.dev preview).
-			...(onCloudflare && { siteUrl: env.EMDASH_SITE_URL || "https://securedrive.org" }),
+			// Until the domain moves, the Worker serves the workers.dev test site, so that is the default.
+			...(onCloudflare && { siteUrl: env.EMDASH_SITE_URL || "https://securedrive-astro.onurdurmaz.workers.dev" }),
 			database: onCloudflare ? d1({ binding: "DB", session: "auto" }) : sqlite({ url: "file:./data.db" }),
 			storage: onCloudflare
 				? r2({ binding: "MEDIA" })
