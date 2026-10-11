@@ -134,6 +134,8 @@ export async function bestDriver(db: Db, booking: Booking): Promise<Candidate | 
 		.where("d.status", "=", "active")
 		// Own fleet only: partner drivers get work through their partner.
 		.where("d.org_id", "is", null)
+		// Independent drivers pick their work from the job pool.
+		.where("d.kind", "!=", "independent")
 		.where((eb) => eb.or([eb("d.class_key", "is", null), eb("d.class_key", "=", booking.class_key)]))
 		// Anyone who already had it (declined, timed out, released) is not asked again.
 		.where("d.id", "not in", db.selectFrom("sd_assignments").select("driver_id").where("booking_id", "=", booking.id))

@@ -1,0 +1,161 @@
+---
+/**
+ * The job pool for independent drivers: fixed-payout jobs to take and auctions to bid
+ * on, for the class they drive. A won job lands in "İşlerim", already accepted.
+ */
+import DriverLayout from "../../layouts/DriverLayout.astro";
+import { getDb } from "../../server/db";
+import { sessionDriver, when } from "../../server/driver-app";
+import { formatMoney, parseMoney, readForm, text } from "../../server/ops";
+import { getOpenPoolByCode, openPoolFor, placeBid, takeFixed, withdrawBid } from "../../server/pool";
+
+const db = await getDb(Astro.locals);
+const driver = await sessionDriver(db, Astro.cookies);
+if (!driver) return Astro.redirect("/surucu/giris");
+if (driver.kind !== "independent" || driver.org_id) return Astro.redirect("/surucu");
+const bidder = { kind: "driver" as const, id: driver.id };
+
+let notice = "";
+let error = "";
+const form = await readForm(Astro);
+if (form) {
+	const intent = text(form, "intent", 20);
+	const code = text(form, "code", 20).toUpperCase();
+	try {
+		const job = await getOpenPoolByCode(db, code);
+		if (!job) throw new Error("Bu iş artık havuzda değil.");
+		if (intent === "take") {
+			await takeFixed(db, job, bidder, { kind: "driver", userId: null });
+			return Astro.redirect(`/surucu/is/${code}`, 303);
+		} else if (intent === "bid") {
+			const amount = parseMoney(text(form, "amount", 20));
+			if (!amount) throw new Error("Teklif tutarını yazın. Örnek: 1.650");
+			await placeBid(db, job, bidder, amount, null);
+			notice = `${formatMoney(amount)} ₺ teklifiniz kaydedildi. Süre bitince en düşük teklif kazanır.`;
+		} else if (intent === "withdraw") {
+			await withdrawBid(db, job, bidder);
+			notice = "Teklifiniz geri çekildi.";
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const jobs = await openPoolFor(db, bidder, driver.class_key);
+const left = (iso: string) => {
+	const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60_000));
+	return minutes >= 120 ? `${Math.floor(minutes / 60)} saat` : `${minutes} dk`;
+};
+---
+
+<DriverLayout title="İş havuzu" driver={driver} back refresh={form ? undefined : 60}>
+	<h1>İş havuzu</h1>
+	<p class="drv-muted">
+		<strong>Sabit</strong> işleri ilk alan alır. <strong>İhalede</strong> tavanın altında teklif verin; süre bitince en düşük teklif kazanır. Kazandığınız
+		iş İşlerim'e düşer.
+	</p>
+	{notice && <p class="drv-notice">{notice}</p>}
+	{error && <p class="drv-notice error" role="alert">{error}</p>}
+	{
+		jobs.length === 0 && (
+			<div class="drv-card" style="text-align:center;padding:32px 16px">
+				<strong>Şu an havuzda iş yok.</strong>
+				<p class="drv-muted" style="margin:6px 0 0">Sayfa dakikada bir yenilenir.</p>
+			</div>
+		)
+	}
+	{
+		jobs.map((j) => {
+			const w = when(j.pickup_at);
+			const active = j.my_bid_status === "active";
+			return (
+				<div class="drv-card pool">
+					<div class="top">
+						<div class="whenx">
+							<strong>{w.time}</strong>
+							<span>{w.day}</span>
+						</div>
+						<span class="drv-pill warn">{j.mode === "auction" ? "İhale" : "Sabit"}</span>
+					</div>
+					<div class="route">{j.from_name} → {j.to_name}</div>
+					<div class="drv-muted meta">
+						{j.class_name} · {j.pax} kişi · {j.bags} bavul{j.flight_no && ` · ${j.flight_no}`}
+					</div>
+					{j.note && <div class="drv-muted meta">Not: {j.note}</div>}
+					<div class="money">
+						<strong>{formatMoney(j.payout_minor)} ₺</strong>
+						<span class="drv-muted">
+							{j.mode === "auction" ? "tavan" : "kazancınız"} · {left(j.deadline_at)} kaldı
+							{j.mode === "auction" && ` · ${j.bids} teklif`}
+						</span>
+					</div>
+					{j.mode === "fixed" ? (
+						<form method="post">
+							<input type="hidden" name="code" value={j.code} />
+							<button class="drv-btn green" type="submit" name="intent" value="take">
+								İşi al
+							</button>
+						</form>
+					) : (
+						<form method="post">
+							<input type="hidden" name="code" value={j.code} />
+							<label class="drv-field">
+								Teklifiniz (₺){active && ` · şu an ${formatMoney(j.my_bid)} ₺`}
+								<input type="text" name="amount" inputmode="decimal" required placeholder={formatMoney(j.payout_minor)} />
+							</label>
+							<button class="drv-btn" type="submit" name="intent" value="bid">
+								{active ? "Teklifi güncelle" : "Teklif ver"}
+							</button>
+							{active && (
+								<button class="drv-btn ghost" type="submit" name="intent" value="withdraw" formnovalidate style="margin-top:8px">
+									Teklifi geri çek
+								</button>
+							)}
+						</form>
+					)}
+				</div>
+			);
+		})
+	}
+</DriverLayout>
+
+<style>
+	.pool {
+		display: grid;
+		gap: 8px;
+	}
+	.top {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+	.whenx {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+	}
+	.whenx strong {
+		font-size: 24px;
+		font-variant-numeric: tabular-nums;
+	}
+	.whenx span {
+		color: var(--drv-muted);
+		font-weight: 600;
+	}
+	.route {
+		font-weight: 600;
+	}
+	.meta {
+		font-size: 14px;
+	}
+	.money {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		flex-wrap: wrap;
+		margin-bottom: 4px;
+	}
+	.money strong {
+		font-size: 22px;
+	}
+</style>

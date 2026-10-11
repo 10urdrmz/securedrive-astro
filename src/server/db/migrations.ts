@@ -499,5 +499,30 @@ export const MIGRATIONS: Migration[] = [
 				UNIQUE (pool_job_id, bidder_kind, bidder_id)
 			)`,
 		],
+	},	{
+		name: "0015_driver_applications",
+		statements: [
+			// Independent drivers apply on /surucu/basvuru; ops approves them into sd_drivers.
+			`CREATE TABLE IF NOT EXISTS sd_driver_applications (
+				id TEXT PRIMARY KEY,
+				name TEXT NOT NULL,
+				phone TEXT NOT NULL,
+				phone_key TEXT NOT NULL,
+				class_key TEXT,
+				plate TEXT,
+				vehicle TEXT,
+				languages TEXT NOT NULL DEFAULT '',
+				licence TEXT,
+				note TEXT,
+				status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+				driver_id TEXT,
+				reviewed_by TEXT,
+				reviewed_at TEXT,
+				review_note TEXT,
+				created_at TEXT NOT NULL DEFAULT (${NOW})
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_driver_applications_status ON sd_driver_applications(status, created_at)`,
+			`CREATE INDEX IF NOT EXISTS sd_driver_applications_phone ON sd_driver_applications(phone_key)`,
+		],
 	},
 ];
