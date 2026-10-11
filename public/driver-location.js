@@ -158,11 +158,21 @@
 			say("Konum bulunamıyor. GPS'in açık olduğundan emin olun; kapalı alandaysanız açık alana çıkınca düzelir.", "warn");
 			if (retry) retry.hidden = false;
 		}
+		// The watch keeps running after a timeout. Restart it only once the phone has
+		// proven it allows location: on iPhones set to "Ask", every new request shows the
+		// permission dialog again, and repeated dialogs lock the page.
 		clearTimeout(restartTimer);
 		restartTimer = setTimeout(() => {
 			highAccuracy = !highAccuracy;
-			begin(true);
+			autoRestart();
 		}, 10000);
+	};
+
+	let lastRestart = 0;
+	const autoRestart = () => {
+		if (stopped || !lastFix || document.hidden || Date.now() - lastRestart < 30000) return;
+		lastRestart = Date.now();
+		begin(true);
 	};
 
 	const keepAwake = async () => {
@@ -199,7 +209,7 @@
 			const permission = await navigator.permissions?.query({ name: "geolocation" });
 			if (permission?.state === "denied") return onError({ code: 1 });
 			permission?.addEventListener?.("change", () => {
-				if (permission.state === "granted") begin(false);
+				if (permission.state === "granted" && watch === null) begin(false);
 				else if (permission.state === "denied") onError({ code: 1 });
 			});
 		} catch {
@@ -215,16 +225,22 @@
 		if (pending && Date.now() - lastSent >= SEND_EVERY_MS * 2) send(pending);
 		if (watch !== null && lastFix && Date.now() - lastFix > STALE_MS) {
 			say("Konum bir dakikadır güncellenmiyor, yeniden deneniyor…", "warn");
-			lastFix = Date.now();
-			begin(true);
+			autoRestart();
 		}
 	}, SEND_EVERY_MS);
 
 	// Back from the lock screen, Maps or WhatsApp: the phone may have dropped the watch.
+	// Most phones carry on by themselves; restart only if nothing arrives shortly after.
 	const resume = () => {
-		if (stopped || document.hidden || watch === null && box.dataset.tone === "error") return;
+		if (stopped || document.hidden || !lastFix) return;
 		lastSent = 0;
-		begin(true);
+		const back = Date.now();
+		setTimeout(() => {
+			if (lastFix < back) {
+				lastRestart = 0;
+				autoRestart();
+			}
+		}, 5000);
 	};
 	document.addEventListener("visibilitychange", () => {
 		if (document.hidden) {
