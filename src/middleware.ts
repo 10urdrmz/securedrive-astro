@@ -1,6 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { getDb } from "./server/db";
 import { PRIVATE_PATH, purgeEdgeCacheOnce } from "./server/edge-cache";
+import { dispatchIfDue } from "./server/dispatch";
 
 /**
  * Adds the SecureDrive theme to the EmDash admin.
@@ -40,6 +41,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
 	if (PRIVATE_PATH.test(context.url.pathname)) {
 		if (context.cache?.enabled) context.cache.set(false);
 		if (import.meta.env.PROD) await purgeEdgeCacheOnce(await getDb(context.locals));
+		// Automatic driver offers move on while ops or drivers have the panels open.
+		if (/^\/(?:ops|surucu)(?:\/|$)/.test(context.url.pathname)) await dispatchIfDue(await getDb(context.locals));
 	}
 	const response = await next();
 	if (!context.url.pathname.startsWith("/_emdash/admin")) return response;

@@ -40,6 +40,9 @@ if (form) {
 			cancellation: [0, 1, 2]
 				.map((i) => ({ hoursBefore: num(`cancel_h_${i}`, 0, 720), refundPct: num(`cancel_p_${i}`, 0, 100) }))
 				.sort((a, b) => b.hoursBefore - a.hoursBefore),
+			autoAssign: form.get("autoAssign") === "on",
+			autoAssignHours: num("autoAssignHours", 1, 168),
+			offerMinutes: num("offerMinutes", 2, 120),
 		};
 		await saveSettings(db, next, user.id);
 		await audit(db, user, "settings.save", "settings", "business", { before: settings, after: next });
@@ -52,7 +55,7 @@ if (form) {
 const dis = !canWrite;
 ---
 
-<OpsLayout title="Fiyat ve iptal kuralları" user={user}>
+<OpsLayout title="Kurallar" user={user}>
 	{notice && <p class="notice">{notice}</p>}
 	{error && <p class="notice error">{error}</p>}
 	{!canWrite && <p class="muted">Bu kuralları yalnızca süper admin değiştirebilir.</p>}
@@ -88,6 +91,21 @@ const dis = !canWrite;
 					</div>
 				))
 			}
+		</div>
+		<div class="card">
+			<h2 style="margin-top:0">Otomatik sürücü ataması</h2>
+			<p class="muted">
+				Sürücüsü olmayan rezervasyonlar, alıştan belirtilen süre önce uygun sürücülere sırayla önerilir: aynı sınıfı süren, o saatte (±3 saat) başka işi
+				olmayan, o gün en az iş almış sürücü önce. Süresinde cevap vermeyen ya da reddeden sürücüden iş sıradakine geçer. Uygun sürücü kalmazsa bildirim
+				gelir, elle atarsınız.
+			</p>
+			<div class="form-grid">
+				<label style="flex-direction:row;align-items:center;gap:8px"
+					><input type="checkbox" name="autoAssign" checked={settings.autoAssign} disabled={dis} /> Otomatik atama açık</label
+				>
+				<label>Alıştan kaç saat önce başlasın<input type="number" name="autoAssignHours" value={settings.autoAssignHours} disabled={dis} /></label>
+				<label>Sürücünün cevap süresi (dakika)<input type="number" name="offerMinutes" value={settings.offerMinutes} disabled={dis} /></label>
+			</div>
 		</div>
 		{canWrite && <button class="btn" type="submit">Kaydet</button>}
 	</form>

@@ -294,7 +294,7 @@ export async function transition(
 }
 
 /** Manual assignment by ops. Re-assigning ends the previous driver's assignment. */
-export async function assignDriver(db: Db, booking: Booking, driverId: string | null, actor: Actor) {
+export async function assignDriver(db: Db, booking: Booking, driverId: string | null, actor: Actor, mode: "manual" | "auto" = "manual") {
 	if (FINAL_STATUSES.includes(booking.status)) throw new Error("Kapanmış bir rezervasyona atama yapılamaz.");
 	if (booking.status === "quoted") throw new Error("Müşteri teklifi onaylamadan sürücü atanamaz.");
 	const now = new Date().toISOString();
@@ -311,7 +311,7 @@ export async function assignDriver(db: Db, booking: Booking, driverId: string | 
 	if (driverId) {
 		await db
 			.insertInto("sd_assignments")
-			.values({ id: ulid(), booking_id: booking.id, driver_id: driverId, status: "accepted", mode: "manual", payout_minor: booking.payout_minor, assigned_by: actor.userId ?? null })
+			.values({ id: ulid(), booking_id: booking.id, driver_id: driverId, status: "accepted", mode, payout_minor: booking.payout_minor, assigned_by: actor.userId ?? null })
 			.execute();
 	}
 	await addEvent(db, booking.id, actor, driverId ? "assigned" : "unassigned", booking.status, driverId ? "assigned" : "confirmed", { driverId });

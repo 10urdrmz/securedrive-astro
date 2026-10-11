@@ -22,6 +22,12 @@ export interface BusinessSettings {
 	freeWaitAddressMin: number;
 	/** Refund share by hours before pickup, checked top to bottom. */
 	cancellation: { hoursBefore: number; refundPct: number }[];
+	/** Offer unassigned bookings to drivers one by one, without ops. */
+	autoAssign: boolean;
+	/** Start offering this many hours before pickup. */
+	autoAssignHours: number;
+	/** A driver who has not answered an automatic offer within this loses it. */
+	offerMinutes: number;
 }
 
 export const DEFAULT_SETTINGS: BusinessSettings = {
@@ -40,6 +46,9 @@ export const DEFAULT_SETTINGS: BusinessSettings = {
 		{ hoursBefore: 3, refundPct: 50 },
 		{ hoursBefore: 0, refundPct: 0 },
 	],
+	autoAssign: true,
+	autoAssignHours: 24,
+	offerMinutes: 15,
 };
 
 const KEY = "business";
