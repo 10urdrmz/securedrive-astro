@@ -1,0 +1,453 @@
+---
+/**
+ * One booking, as the passenger sees it: a trip screen in the style of ride and
+ * transfer apps. What matters now comes first (status, driver, live map, messages);
+ * trip facts, payment, help and cancelling follow. Data and actions come from
+ * lib/booking-page.ts; the wizard lives in BookView.
+ */
+import Base from "../layouts/Base.astro";
+import Icon from "../components/Icon.astro";
+import Notice from "../components/Notice.astro";
+import ChatBox from "../components/ChatBox.astro";
+import { BOOK_SLUG, LOCALE_META, bookPath } from "../i18n/locales";
+import { useTranslations, type UiKey } from "../i18n/ui";
+import type { BookingDetail } from "../lib/booking-page";
+import { formatTry } from "../lib/format";
+import { SITE, telHref, whatsappHref } from "../lib/site";
+import { isoToIstanbul } from "../server/pricing";
+
+type Props = BookingDetail;
+
+const page = Astro.props;
+const { locale, booking } = page;
+const t = useTranslations(locale);
+const intl = LOCALE_META[locale].intl;
+const dir = LOCALE_META[locale].dir;
+const money = (minor: number) => formatTry(minor / 100, locale);
+const status = booking.status;
+const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0_8px_24px_-16px_rgb(16_24_40/0.25)]";
+
+const pickup = isoToIstanbul(booking.pickup_at);
+const pickupDay = new Intl.DateTimeFormat(intl, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${pickup.date}T00:00:00Z`));
+const pickupLong = new Intl.DateTimeFormat(intl, { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${pickup.date}T00:00:00Z`));
+
+const lineLabel = (line: { kind: string; label: string; qty?: number }) => {
+	if (locale === "tr" || line.kind === "extra") return line.qty && line.qty > 1 ? `${line.label} × ${line.qty}` : line.label;
+	return t(`book.line.${line.kind}` as UiKey);
+};
+
+// The four steps every ride tracker shows.
+const STEPS = ["confirmed", "assigned", "driver_en_route", "completed"] as const;
+const stepAt = ({ confirmed: 0, assigned: 1, driver_en_route: 2, driver_arrived: 2, on_board: 2, completed: 3 } as Record<string, number>)[status] ?? -1;
+const closed = ["cancelled", "no_show"].includes(status);
+const isQuote = status === "quoted";
+const live = ["driver_en_route", "driver_arrived", "on_board"].includes(status);
+const showDriver = !closed && !isQuote && (status !== "completed" || !!page.driver);
+const canManage = ["pending_payment", "confirmed", "assigned"].includes(status);
+const initials = (page.driver?.name ?? "")
+	.split(/\s+/)
+	.filter(Boolean)
+	.slice(0, 2)
+	.map((w) => w[0]!.toLocaleUpperCase(intl))
+	.join("");
+const vehicleLine = [page.driver?.vehicle, page.className].find(Boolean);
+const headTone = closed ? "from-gray-700 to-gray-800" : status === "completed" ? "from-emerald-700 to-emerald-800" : isQuote || status === "pending_payment" ? "from-amber-600 to-amber-700" : "from-navy-800 to-ink-900";
+const payTone = booking.payment_status === "paid" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-gray-100 text-gray-700 ring-gray-200";
+const receiptHref = `${bookPath(locale, booking.code, booking.tracking_token)}&makbuz=1`;
+
+const NOTICE: Partial<Record<NonNullable<BookingDetail["notice"]>, UiKey>> = {
+	paid: "book.paid",
+	reviewed: "book.reviewed",
+	quoteAccepted: "book.quoteAccepted",
+	quoteDeclined: "book.quoteDeclined",
+	cancelled: "book.cancelled",
+};
+---
+
+<Base locale={locale} path={`${BOOK_SLUG}/${booking.code}`} title={t("book.detailTitle", { code: booking.code })} description={t("book.lead")} noindex hideDock>
+	<section class="bg-gray-100 pb-16 pt-4 sm:pt-8 min-h-[70vh]">
+		<div class="container max-w-5xl grid gap-4 sm:gap-6">
+			{page.error && <Notice tone="danger">{t(page.error)}</Notice>}
+			{page.notice === "created" && <Notice tone="success">{t("book.created", { code: booking.code })}</Notice>}
+			{page.notice && NOTICE[page.notice] && <Notice tone={page.notice === "cancelled" || page.notice === "quoteDeclined" ? "info" : "success"}>{t(NOTICE[page.notice]!)}</Notice>}
+			{page.notice === "paymentFailed" && <Notice tone="danger">{t("book.paymentFailed")}</Notice>}
+
+			<!-- Status: the one thing the passenger wants to know first. -->
+			<header class:list={["relative overflow-hidden rounded-3xl bg-gradient-to-br p-5 text-white sm:p-8", headTone]}>
+				<div class="flex flex-wrap items-center justify-between gap-2 text-sm text-white/75">
+					<span class="inline-flex items-center gap-2">
+						<span>{t("trip.code")}</span>
+						<strong class="font-mono tracking-wide text-white" dir="ltr">{booking.code}</strong>
+					</span>
+					<span class="inline-flex items-center gap-1.5">
+						<Icon name="calendar" size={16} />
+						{pickupDay} · <strong class="text-white tabular-nums" dir="ltr">{pickup.time}</strong>
+					</span>
+				</div>
+				<div class="mt-5 flex items-center gap-3">
+					{
+						live && (
+							<span class="relative flex size-3 shrink-0">
+								<span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-300 opacity-75 motion-reduce:animate-none" />
+								<span class="relative inline-flex size-3 rounded-full bg-emerald-400" />
+							</span>
+						)
+					}
+					<h1 class="m-0 font-display text-[1.625rem] font-bold leading-tight text-white sm:text-[2.25rem]">{t(`trip.head.${status}` as UiKey)}</h1>
+				</div>
+				<p class="mt-2 mb-0 max-w-xl text-white/80">{t(`trip.sub.${status}` as UiKey)}</p>
+				{
+					stepAt >= 0 && (
+						<ol class="mt-6 grid grid-cols-4 gap-1.5 list-none p-0 m-0" aria-label={t(`book.status.${status}` as UiKey)}>
+							{STEPS.map((step, i) => (
+								<li class="grid gap-1.5" aria-current={i === stepAt ? "step" : undefined}>
+									<span class:list={["h-1.5 rounded-full", i <= stepAt ? "bg-white" : "bg-white/25"]} />
+									<span class:list={["text-[11px] leading-tight sm:text-xs", i <= stepAt ? "font-semibold text-white" : "text-white/60"]}>
+										{t(`book.status.${step}` as UiKey)}
+									</span>
+								</li>
+							))}
+						</ol>
+					)
+				}
+			</header>
+
+			<div class="grid items-start gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+				<div class="grid min-w-0 gap-4 sm:gap-6">
+					{
+						page.payHref && (
+							<div class:list={[card, "grid gap-3 p-5 sm:p-6 border-amber-300 ring-1 ring-amber-200"]}>
+								<p class="m-0 text-gray-700">{t("book.awaitingPayment")}</p>
+								<a class="btn btn--primary justify-self-start" href={page.payHref}>
+									<Icon name="card" size={18} />
+									{t("book.payNow")} · {money(booking.price_minor)}
+								</a>
+							</div>
+						)
+					}
+
+					{
+						isQuote && (
+							<div class:list={[card, "grid gap-4 p-5 sm:p-6 border-amber-300 ring-1 ring-amber-200"]}>
+								<div class="flex flex-wrap items-start justify-between gap-3">
+									<div class="grid gap-1">
+										<h2 class="m-0 font-display text-xl font-bold">{t("book.quoteTitle")}</h2>
+										<p class="m-0 max-w-prose text-sm text-gray-600">{t("book.quoteLead")}</p>
+									</div>
+									<strong class="font-display text-3xl tabular-nums text-gray-900" dir="ltr">
+										{money(booking.price_minor)}
+									</strong>
+								</div>
+								<form method="post" class="m-0">
+									<button class="btn btn--primary btn--block sm:w-auto" type="submit" name="intent" value="quote_accept">
+										<Icon name="check" size={18} />
+										{t("book.quoteAccept")}
+									</button>
+								</form>
+								<details>
+									<summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-red-700 [&::-webkit-details-marker]:hidden">
+										<Icon name="x-circle" size={16} />
+										{t("book.quoteDecline")}
+									</summary>
+									<form method="post" class="m-0 mt-3 grid gap-3">
+										<p class="m-0 text-sm text-gray-600">{t("book.quoteDeclineConfirm")}</p>
+										<button class="btn btn--ghost btn--sm justify-self-start border-red-300 text-red-700" type="submit" name="intent" value="quote_decline">
+											{t("book.quoteDecline")}
+										</button>
+									</form>
+								</details>
+							</div>
+						)
+					}
+
+					{
+						showDriver && (
+							<section class:list={[card, "overflow-hidden"]} aria-label={t("book.driver")}>
+								{page.driver ? (
+									<div class="flex items-center gap-4 p-5 sm:p-6">
+										<span class="grid size-14 shrink-0 place-items-center rounded-full bg-navy-700 font-display text-lg font-bold text-white" aria-hidden="true">
+											{initials || <Icon name="user" size={24} />}
+										</span>
+										<div class="grid min-w-0 flex-1 gap-1">
+											<span class="text-xs font-semibold uppercase tracking-wide text-gray-500 rtl:tracking-normal">{t("book.driver")}</span>
+											<strong class="truncate text-lg text-gray-900">{page.driver.name}</strong>
+											<span class="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+												{vehicleLine}
+												{page.driver.plate && (
+													<span
+														class="inline-flex items-center rounded-md border border-solid border-gray-900 bg-white px-2 py-0.5 font-mono text-xs font-bold tracking-wider text-gray-900"
+														dir="ltr"
+														title={t("trip.plate")}
+													>
+														{page.driver.plate}
+													</span>
+												)}
+											</span>
+										</div>
+										<a class="btn btn--primary btn--sm shrink-0" href="#mesajlar">
+											<Icon name="message" size={16} />
+											<span class="hidden sm:inline">{t("trip.message")}</span>
+										</a>
+									</div>
+								) : (
+									<div class="flex items-center gap-4 p-5 sm:p-6">
+										<span class="grid size-14 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-400">
+											<Icon name="clock" size={24} />
+										</span>
+										<div class="grid gap-1">
+											<strong class="text-gray-900">{t("book.driver")}</strong>
+											<p class="m-0 text-sm text-gray-600">{t("book.driverPending")}</p>
+										</div>
+									</div>
+								)}
+								{page.driver && live && (
+									<div
+										class="grid gap-2 border-0 border-t border-solid border-gray-100 p-3 sm:p-4"
+										data-live-map
+										data-mode="one"
+										data-src={`/api/konum.json?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`}
+										data-waiting={t("book.liveWaiting")}
+										data-updated={t("book.liveUpdated")}
+										data-ended={t("book.liveEnded")}
+										data-now={t("book.liveNow")}
+										data-min={t("book.liveMin")}
+										data-hour={t("book.liveHour")}
+										data-failed={t("book.liveFailed")}
+									>
+										<div data-live-map-canvas dir="ltr" class="overflow-hidden rounded-xl" />
+										<p class="m-0 px-1 text-sm text-gray-600" data-live-map-note role="status">
+											{t("book.liveWaiting")}
+										</p>
+									</div>
+								)}
+							</section>
+						)
+					}
+
+					{
+						!isQuote && (
+							<ChatBox
+								messages={page.messages}
+								me="passenger"
+								src={`/api/mesajlar.json?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`}
+								writable={page.chatWritable}
+								dir={dir}
+								labels={{
+									title: t("book.chat.title"),
+									privacy: t("book.chat.privacy"),
+									empty: t("book.chat.empty"),
+									placeholder: t("book.chat.placeholder"),
+									send: t("book.chat.send"),
+									closed: t("book.chat.closed"),
+									passenger: t("book.chat.passenger"),
+									driver: t("book.chat.driver"),
+									ops: t("book.chat.ops"),
+									system: t("book.chat.system"),
+									you: t("book.chat.you"),
+								}}
+								quick={page.driver && !closed && status !== "completed" ? [t("book.chat.q1"), t("book.chat.q2"), t("book.chat.q3"), t("book.chat.q4")] : []}
+							/>
+						)
+					}
+
+					{
+						page.canReview && (
+							<form method="post" class:list={[card, "form m-0 grid gap-4 p-5 sm:p-6"]}>
+								<input type="hidden" name="intent" value="review" />
+								<h2 class="m-0 font-display text-lg font-bold">{t("book.reviewTitle")}</h2>
+								<fieldset class="m-0 grid gap-2 border-0 p-0">
+									<legend class="mb-2 text-sm font-semibold">{t("book.reviewRating")}</legend>
+									<div class="flex flex-wrap gap-2">
+										{[5, 4, 3, 2, 1].map((n) => (
+											<label class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-solid border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500">
+												<input type="radio" name="rating" value={n} required checked={n === 5} class="sr-only" />
+												<span class="tabular-nums">{n}</span>
+												<Icon name="star-fill" size={16} class="text-amber-400" />
+											</label>
+										))}
+									</div>
+								</fieldset>
+								<div class="field">
+									<label for="rv-comment">{t("book.reviewComment")}</label>
+									<textarea id="rv-comment" name="comment" rows="3" maxlength="1000" />
+								</div>
+								<button type="submit" class="btn btn--primary justify-self-start">
+									{t("book.reviewSubmit")}
+								</button>
+							</form>
+						)
+					}
+					{
+						page.review && (
+							<div class:list={[card, "grid gap-2 p-5 sm:p-6"]}>
+								<h2 class="m-0 font-display text-lg font-bold">{t("book.yourReview")}</h2>
+								<p class="m-0 flex gap-1" role="img" aria-label={`${page.review.rating}/5`}>
+									{[1, 2, 3, 4, 5].map((n) => (
+										<Icon name={n <= page.review!.rating ? "star-fill" : "star"} size={22} class={n <= page.review!.rating ? "text-amber-400" : "text-gray-300"} />
+									))}
+								</p>
+								{page.review.comment && <p class="m-0 text-gray-700">{page.review.comment}</p>}
+							</div>
+						)
+					}
+				</div>
+
+				<aside class="grid min-w-0 gap-4 sm:gap-6 lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]">
+					<section class:list={[card, "grid gap-5 p-5 sm:p-6"]}>
+						<h2 class="m-0 text-base font-bold text-gray-900">{t("trip.details")}</h2>
+						<ol class="relative m-0 grid list-none gap-5 p-0">
+							<span class="absolute start-[7px] top-4 bottom-4 w-0.5 bg-gray-200" aria-hidden="true" />
+							<li class="relative flex items-start gap-3">
+								<span class="mt-1 size-4 shrink-0 rounded-full border-4 border-solid border-navy-700 bg-white" aria-hidden="true" />
+								<div class="grid min-w-0 gap-0.5">
+									<span class="text-xs text-gray-500" dir="ltr">{pickup.time}</span>
+									<span class="font-semibold text-gray-900">{page.fromName}</span>
+									{booking.pickup_address && <span class="text-sm text-gray-600">{booking.pickup_address}</span>}
+								</div>
+							</li>
+							<li class="relative flex items-start gap-3">
+								<span class="mt-1 size-4 shrink-0 rounded-sm bg-navy-700" aria-hidden="true" />
+								<div class="grid min-w-0 gap-0.5">
+									<span class="font-semibold text-gray-900">{page.toName}</span>
+									{booking.dropoff_address && <span class="text-sm text-gray-600">{booking.dropoff_address}</span>}
+								</div>
+							</li>
+						</ol>
+						<dl class="m-0 grid grid-cols-2 gap-x-4 gap-y-3 border-0 border-t border-solid border-gray-100 pt-4 text-sm">
+							{[
+								{ icon: "calendar", label: t("book.pickupTime"), value: `${pickupLong} · ${pickup.time}`, wide: true },
+								{ icon: "car", label: t("form.vehicle"), value: page.className, wide: true },
+								{ icon: "users", label: t("quick.passengers"), value: String(booking.pax) },
+								{ icon: "luggage", label: t("form.luggage"), value: String(booking.bags) },
+								booking.flight_no && { icon: "plane", label: t("track.flight"), value: booking.flight_no, ltr: true },
+								booking.sign_name && { icon: "sign", label: t("book.signName"), value: booking.sign_name },
+							]
+								.filter(Boolean)
+								.map((item: any) => (
+									<div class:list={["flex min-w-0 items-start gap-2.5", item.wide && "col-span-2"]}>
+										<Icon name={item.icon} size={18} class="mt-0.5 shrink-0 text-gray-400" />
+										<div class="min-w-0">
+											<dt class="text-xs text-gray-500">{item.label}</dt>
+											<dd class="m-0 font-semibold text-gray-900" dir={item.ltr ? "ltr" : undefined}>
+												{item.value}
+											</dd>
+										</div>
+									</div>
+								))}
+						</dl>
+					</section>
+
+					<section class:list={[card, "grid gap-3 p-5 sm:p-6"]}>
+						<div class="flex items-center justify-between gap-3">
+							<h2 class="m-0 text-base font-bold text-gray-900">{t("trip.payment")}</h2>
+							<span class:list={["inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset", payTone]}>
+								{booking.payment_status === "paid" && <Icon name="tick" size={14} />}
+								{t(`book.paymentStatus.${booking.payment_status}` as UiKey)}
+							</span>
+						</div>
+						<div class="flex items-end justify-between gap-3">
+							<span class="inline-flex items-center gap-2 text-sm text-gray-600">
+								<Icon name={booking.payment_method === "cash" ? "wallet" : "card"} size={18} class="text-gray-400" />
+								{t(`book.pay.${booking.payment_method}` as UiKey)}
+							</span>
+							<strong class="font-display text-2xl tabular-nums text-gray-900" dir="ltr">
+								{money(booking.price_minor)}
+							</strong>
+						</div>
+						{
+							page.lines.length > 0 && (
+								<details class="group text-sm">
+									<summary class="inline-flex cursor-pointer list-none items-center gap-1 font-semibold text-navy-700 [&::-webkit-details-marker]:hidden">
+										{t("trip.breakdown")}
+										<Icon name="chevron" size={14} class="transition group-open:rotate-180" />
+									</summary>
+									<ul class="m-0 mt-3 grid list-none gap-2 p-0 text-gray-700">
+										{page.lines.map((line) => (
+											<li class="flex justify-between gap-3">
+												<span>{lineLabel(line)}</span>
+												<span class="tabular-nums">{line.amount_minor ? money(line.amount_minor) : t("book.free")}</span>
+											</li>
+										))}
+									</ul>
+								</details>
+							)
+						}
+						{
+							status !== "cancelled" && !isQuote && (
+								<a class="btn btn--ghost btn--sm btn--block" href={receiptHref}>
+									<Icon name="receipt" size={16} />
+									{t("book.receipt")}
+								</a>
+							)
+						}
+					</section>
+
+					<section class:list={[card, "grid gap-3 p-5 sm:p-6"]}>
+						<div class="flex items-start gap-3">
+							<span class="grid size-10 shrink-0 place-items-center rounded-full bg-navy-50 text-navy-700">
+								<Icon name="headset" size={20} />
+							</span>
+							<div class="grid gap-0.5">
+								<h2 class="m-0 text-base font-bold text-gray-900">{t("trip.help")}</h2>
+								<p class="m-0 text-sm text-gray-600">{t("trip.helpLead")}</p>
+							</div>
+						</div>
+						<div class="grid grid-cols-3 gap-2">
+							{
+								!isQuote && (
+									<a class="flex flex-col items-center gap-1 rounded-xl bg-gray-50 px-2 py-3 text-xs font-semibold text-gray-800 no-underline hover:bg-gray-100" href="#mesajlar">
+										<Icon name="message" size={20} class="text-navy-700" />
+										{t("trip.message")}
+									</a>
+								)
+							}
+							<a class="flex flex-col items-center gap-1 rounded-xl bg-gray-50 px-2 py-3 text-xs font-semibold text-gray-800 no-underline hover:bg-gray-100" href={telHref} aria-label={SITE.phoneDisplay}>
+								<Icon name="phone" size={20} class="text-navy-700" />
+								{t("nav.call")}
+							</a>
+							<a class="flex flex-col items-center gap-1 rounded-xl bg-gray-50 px-2 py-3 text-xs font-semibold text-gray-800 no-underline hover:bg-gray-100" href={whatsappHref()} target="_blank" rel="noopener">
+								<Icon name="whatsapp" size={20} class="text-emerald-600" />
+								WhatsApp
+							</a>
+						</div>
+					</section>
+
+					{
+						canManage && (
+							<details class:list={[card, "group p-5 sm:p-6"]}>
+								<summary class="flex cursor-pointer list-none items-center justify-between gap-2 font-semibold text-gray-700 [&::-webkit-details-marker]:hidden">
+									{t("trip.manage")}
+									<Icon name="chevron" size={16} class="transition group-open:rotate-180" />
+								</summary>
+								<div class="mt-4 grid gap-3">
+									{page.canCancel ? (
+										<form method="post" class="m-0 grid gap-3">
+											<input type="hidden" name="intent" value="cancel" />
+											<p class="m-0 text-sm text-gray-600">{t("book.cancelFree", { h: page.freeCancelHours })}</p>
+											<button type="submit" class="btn btn--sm justify-self-start border border-solid border-red-300 bg-white text-red-700 hover:bg-red-50">
+												<Icon name="x-circle" size={16} />
+												{t("book.cancel")}
+											</button>
+										</form>
+									) : (
+										<p class="m-0 text-sm text-gray-600">{t("book.cancelClosed")}</p>
+									)}
+								</div>
+							</details>
+						)
+					}
+
+					{
+						closed && (
+							<a class="btn btn--primary btn--block" href={bookPath(locale)}>
+								<Icon name="calendar" size={18} />
+								{t("nav.book")}
+							</a>
+						)
+					}
+				</aside>
+			</div>
+		</div>
+	</section>
+	{live && page.driver && <script src="/live-map.js" defer is:inline />}
+</Base>
