@@ -19,6 +19,9 @@ const { title, driver, back = false, refresh } = Astro.props;
 Astro.response.headers.set("Cache-Control", "no-store");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
 Astro.response.headers.set("Referrer-Policy", "same-origin");
+// EmDash denies geolocation on every page unless the page says otherwise; the driver
+// app needs it to share the car's position during a trip.
+Astro.response.headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(self), payment=()");
 ---
 
 <!doctype html>

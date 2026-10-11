@@ -1,0 +1,55 @@
+---
+/** Every car on a live trip, on one map. Positions come from the driver app (/surucu). */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { requireOps } from "../../server/ops";
+import { STATUS_LABELS } from "../../server/bookings";
+import { liveCars } from "../../server/live-location";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const cars = await liveCars(db);
+const clock = (iso: string) => new Date(Date.parse(iso) + 3 * 3600_000).toISOString().slice(11, 16);
+---
+
+<OpsLayout title="Canlı harita" user={user}>
+	<div
+		class="card"
+		data-live-map
+		data-mode="many"
+		data-src="/ops/konum.json"
+		data-count="Yoldaki araç: {n}"
+		data-now="şimdi"
+		data-min="{n} dk önce"
+		data-hour="{n} sa önce"
+		data-failed="Harita yüklenemedi."
+	>
+		<div data-live-map-canvas style="height:min(70vh,560px)"></div>
+		<p class="muted" data-live-map-note style="margin:10px 0 0">Harita yükleniyor…</p>
+	</div>
+	<p class="muted">
+		Sürücü "Yola çıktım" dediği andan yolculuk bitene kadar iş sayfası açıkken konumu görünür. Son 10 dakikada konum göndermeyen araç haritada çıkmaz.
+	</p>
+	{
+		cars.length > 0 && (
+			<div class="card">
+				<table>
+					<tbody>
+						{cars.map((c) => (
+							<tr>
+								<td>
+									<a href={`/ops/rezervasyonlar/${c.code}`}>{c.code}</a>
+								</td>
+								<td>{c.driverName}{c.plate && ` · ${c.plate}`}</td>
+								<td>{STATUS_LABELS[c.status]}</td>
+								<td class="muted">{clock(c.at)}</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)
+	}
+</OpsLayout>
+
+<script src="/live-map.js" defer is:inline></script>

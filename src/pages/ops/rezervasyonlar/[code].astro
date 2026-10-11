@@ -26,6 +26,7 @@ import {
 import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../../server/ops";
 import { isoToIstanbul, refundPct } from "../../../server/pricing";
 import { getSettings } from "../../../server/settings";
+import { isTracked } from "../../../server/live-location";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -197,6 +198,26 @@ const driverHasApp = booking.driver_id
 		</div>
 	</div>
 
+	{assigned && isTracked(booking.status) && (
+		<div
+			class="card"
+			data-live-map
+			data-mode="one"
+			data-src={`/ops/konum.json?code=${encodeURIComponent(booking.code)}`}
+			data-waiting="Sürücünün telefonundan konum bekleniyor. Sürücü iş sayfasını açık tutmalı ve konum izni vermeli."
+			data-updated="Son konum: {ago}"
+			data-ended="Yolculuk bitti, takip durdu."
+			data-now="şimdi"
+			data-min="{n} dk önce"
+			data-hour="{n} sa önce"
+			data-failed="Harita yüklenemedi."
+		>
+			<h2 style="margin-top:0">Canlı konum</h2>
+			<div data-live-map-canvas />
+			<p class="muted" data-live-map-note style="margin:10px 0 0">Harita yükleniyor…</p>
+		</div>
+	)}
+
 	<div class="card">
 		<h2 style="margin-top:0">Sürücü</h2>
 		{assigned ? (
@@ -357,3 +378,5 @@ const driverHasApp = booking.driver_id
 	</div>
 	<p><a href="/ops/rezervasyonlar">← Rezervasyonlar</a></p>
 </OpsLayout>
+
+{assigned && isTracked(booking.status) && <script src="/live-map.js" defer is:inline />}
