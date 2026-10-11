@@ -11,6 +11,9 @@ import { DRIVER_STEPS, driverJob, driverStep, jobBadge, respond, sessionDriver, 
 import { formatMoney, readForm, text } from "../../../server/ops";
 import { isTracked } from "../../../server/live-location";
 import { getSettings } from "../../../server/settings";
+import ChatBox from "../../../components/ChatBox.astro";
+import { canWrite, firstName, listMessages, markRead, postMessage } from "../../../server/messages";
+import { SITE, telHref } from "../../../lib/site";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
@@ -24,6 +27,10 @@ let error = "";
 const form = await readForm(Astro);
 if (form) {
 	const intent = text(form, "intent", 20);
+	if (intent === "message") {
+		await postMessage(db, job.booking, "driver", driver.id, firstName(driver.name), String(form.get("message") ?? ""));
+		return Astro.redirect(`/surucu/is/${code}#mesajlar`, 303);
+	}
 	try {
 		if (Number(text(form, "version", 10)) !== job.booking.version) throw new ConflictError();
 		if (intent === "accept") await respond(db, job, driver, "accepted");
@@ -44,12 +51,13 @@ const w = when(b.pickup_at);
 const badge = jobBadge(job);
 const steps = DRIVER_STEPS[b.status] ?? [];
 const needsAnswer = b.status === "assigned" && !job.response && !!job.assignmentId;
-const digits = (phone: string) => phone.replace(/\D/g, "").replace(/^0/, "90");
 const maps = (place: string) => `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${place}, İstanbul`)}`;
 const pickupPlace = b.pickup_address || job.fromName;
 const dropoffPlace = b.dropoff_address || job.toName;
 const collect = (b.payment_method === "cash" || b.payment_method === "card_in_vehicle") && b.payment_status !== "paid";
 const tripStarted = isTracked(b.status);
+const messages = await listMessages(db, b, "driver");
+await markRead(db, b.id, "driver");
 // An automatic offer: how long the driver has left to answer.
 const offerMinutes = job.offeredAt ? (await getSettings(db)).offerMinutes : 0;
 const minutesLeft = job.offeredAt ? Math.max(0, Math.ceil((Date.parse(job.offeredAt) + offerMinutes * 60_000 - Date.now()) / 60_000)) : null;
@@ -153,11 +161,11 @@ const minutesLeft = job.offeredAt ? Math.max(0, Math.ceil((Date.parse(job.offere
 	<section class="drv-card">
 		<div class="label">Yolcu</div>
 		<strong class="big">{b.contact_name}</strong>
-		<div class="drv-muted">{b.contact_phone}</div>
 		<div class="two">
-			<a class="drv-btn ghost" href={`tel:${b.contact_phone.replace(/[^\d+]/g, "")}`}>Ara</a>
-			<a class="drv-btn ghost" href={`https://wa.me/${digits(b.contact_phone)}`} target="_blank" rel="noopener">WhatsApp</a>
+			<a class="drv-btn ghost" href="#mesajlar">Yolcuya mesaj</a>
+			<a class="drv-btn ghost" href={telHref}>Operasyonu ara</a>
 		</div>
+		<p class="drv-muted" style="margin:8px 0 0;font-size:13px">Yolcunun telefonu gizlidir; yolcuyla bu sayfadaki mesajlardan yazışın. Acil durumda operasyonu arayın: {SITE.phoneDisplay}</p>
 		<dl class="facts">
 			<div><dt>Kişi / bavul</dt><dd>{b.pax} / {b.bags}</dd></div>
 			<div><dt>Araç</dt><dd>{job.className}</dd></div>
@@ -192,6 +200,26 @@ const minutesLeft = job.offeredAt ? Math.max(0, Math.ceil((Date.parse(job.offere
 		}
 		{b.payout_minor != null && <p class="drv-muted" style="margin:6px 0 0">Sizin payınız: {formatMoney(b.payout_minor)} ₺</p>}
 	</section>
+	<ChatBox
+		messages={messages}
+		me="driver"
+		src={`/surucu/mesajlar.json?code=${encodeURIComponent(b.code)}`}
+		writable={canWrite(b, "driver")}
+		labels={{
+			title: "Mesajlar",
+			privacy: "Yolcu ve operasyon görür. Telefon numaraları otomatik gizlenir.",
+			empty: "Henüz mesaj yok.",
+			placeholder: "Yolcuya mesaj yazın",
+			send: "Gönder",
+			closed: "Bu iş için mesajlaşma kapandı.",
+			passenger: "Yolcu",
+			driver: "Sürücü",
+			ops: "SecureDrive Operasyon",
+			system: "Sistem",
+			you: "Siz",
+		}}
+		quick={["Alış noktasına vardım, sizi bekliyorum.", "Trafik nedeniyle biraz gecikeceğim.", "Karşılama tabelasıyla çıkış kapısındayım.", "Hangi kapıdasınız?"]}
+	/>
 </DriverLayout>
 
 {tripStarted && <script src="/driver-location.js" defer is:inline />}

@@ -3,6 +3,7 @@
 import DriverLayout from "../../layouts/DriverLayout.astro";
 import { getDb } from "../../server/db";
 import { driverJobs, jobBadge, sessionDriver, when, type DriverJob } from "../../server/driver-app";
+import { unreadCounts } from "../../server/messages";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
@@ -12,6 +13,7 @@ const { open, done } = await driverJobs(db, driver.id);
 const active = open.filter((j) => ["driver_en_route", "driver_arrived", "on_board"].includes(j.booking.status));
 const upcoming = open.filter((j) => !active.includes(j));
 const waiting = upcoming.filter((j) => !j.response).length;
+const unread = await unreadCounts(db, open.map((j) => j.booking.id), "driver");
 const sections: { title: string; jobs: DriverJob[] }[] = [
 	{ title: "Şu an", jobs: active },
 	{ title: "Yaklaşan işler", jobs: upcoming },
@@ -48,6 +50,9 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 										<span class="dot to" aria-hidden="true" />
 										{job.toName}
 									</div>
+									{(unread.get(job.booking.id) ?? 0) > 0 && (
+										<div class="job-unread">{unread.get(job.booking.id)} yeni mesaj</div>
+									)}
 									<div class="job-meta drv-muted">
 										{job.booking.pax} kişi · {job.booking.bags} bavul · {job.className}
 										{job.booking.flight_no && <> · {job.booking.flight_no}</>}
@@ -108,6 +113,15 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 	}
 	.dot.to {
 		background: var(--drv-blue);
+	}
+	.job-unread {
+		justify-self: start;
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: #0a2540;
+		color: #fff;
+		font-size: 13px;
+		font-weight: 600;
 	}
 	.job-meta {
 		font-size: 14px;
