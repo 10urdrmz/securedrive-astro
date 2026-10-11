@@ -27,6 +27,8 @@ import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../.
 import { isoToIstanbul, refundPct } from "../../../server/pricing";
 import { getSettings } from "../../../server/settings";
 import { isTracked } from "../../../server/live-location";
+import ChatBox from "../../../components/ChatBox.astro";
+import { listMessages, markRead, postMessage } from "../../../server/messages";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -44,6 +46,10 @@ let error = "";
 const form = canWrite || canPay ? await readForm(Astro) : null;
 if (form) {
 	const intent = text(form, "intent", 20);
+	if (intent === "message" && canWrite) {
+		await postMessage(db, booking, "ops", user.id, "Operasyon", String(form.get("message") ?? ""));
+		return Astro.redirect(`/ops/rezervasyonlar/${booking.code}#mesajlar`, 303);
+	}
 	try {
 		if (Number(text(form, "version", 10)) !== booking.version) throw new ConflictError();
 		if (intent === "status" && canWrite) {
@@ -60,7 +66,7 @@ if (form) {
 		} else if (intent === "assign" && canWrite) {
 			const driverId = text(form, "driver_id", 40) || null;
 			await assignDriver(db, booking, driverId, actor);
-			notice = driverId ? "Sürücü atandı. İş sürücü uygulamasında görünür; isterseniz WhatsApp ile de gönderin." : "Atama kaldırıldı.";
+			notice = driverId ? "Sürücü atandı. İş sürücü uygulamasında görünür; yolcuyla sürücü bu sayfadaki mesajlardan yazışır." : "Atama kaldırıldı.";
 		} else if (intent === "payment" && canPay) {
 			const amount = parseMoney(text(form, "amount", 20));
 			const kind = text(form, "kind", 10) === "refund" ? "refund" : "charge";
@@ -110,25 +116,10 @@ const isFinal = FINAL_STATUSES.includes(booking.status);
 const digits = (phone: string) => phone.replace(/\D/g, "").replace(/^0/, "90");
 const locale = isLocale(booking.locale) ? booking.locale : "tr";
 const passengerLink = new URL(bookPath(locale, booking.code, booking.tracking_token), Astro.url.origin).href;
-const address = booking.pickup_address || booking.dropoff_address;
-const driverMessage = [
-	`SecureDrive iş: ${booking.code}`,
-	`${at.date} ${at.time}`,
-	`${info.fromName} → ${info.toName}${address ? ` (${address})` : ""}`,
-	booking.flight_no ? `Uçuş: ${booking.flight_no}` : "",
-	`${booking.pax} kişi, ${booking.bags} bavul · ${info.className}`,
-	`Yolcu: ${booking.contact_name} ${booking.contact_phone}`,
-	booking.sign_name ? `Tabela: ${booking.sign_name}` : "",
-	booking.notes ? `Not: ${booking.notes}` : "",
-	booking.payment_method === "cash" || booking.payment_method === "card_in_vehicle"
-		? `Tahsilat: ${formatMoney(booking.price_minor)} TL (${PAYMENT_METHOD_LABELS[booking.payment_method]})`
-		: "",
-	`Uygulamada aç: ${new URL(`/surucu/is/${booking.code}`, Astro.url.origin).href}`,
-]
-	.filter(Boolean)
-	.join("\n");
 const assigned = drivers.find((d) => d.id === booking!.driver_id) ?? (booking.driver_id ? await db.selectFrom("sd_drivers").selectAll().where("id", "=", booking.driver_id).executeTakeFirst() : null);
 const isQuote = booking.status === "quoted";
+const messages = await listMessages(db, booking, "ops");
+if (Astro.request.method === "GET") await markRead(db, booking.id, "ops");
 const passengerMessage = isQuote
 	? `SecureDrive transfer teklifiniz ${booking.code}: ${at.date} ${at.time}, ${info.fromName} → ${info.toName}, ${info.className}, ${formatMoney(booking.price_minor)} TL. Onaylamak için: ${passengerLink}`
 	: `SecureDrive rezervasyonunuz ${booking.code}: ${at.date} ${at.time}, ${info.fromName} → ${info.toName}. Detaylar: ${passengerLink}`;
@@ -264,11 +255,6 @@ const driverHasApp = booking.driver_id
 		) : (
 			<p class="muted">Henüz atanmadı.</p>
 		)}
-		{assigned && (
-			<div class="actions" style="margin-top:0">
-				<a class="btn" href={`https://wa.me/${digits(assigned.phone)}?text=${encodeURIComponent(driverMessage)}`} target="_blank" rel="noopener">İşi sürücüye WhatsApp ile gönder</a>
-			</div>
-		)}
 		{isQuote && <p class="muted">Müşteri teklifi onaylayınca sürücü atanabilir.</p>}
 		{canWrite && !isFinal && !isQuote && (
 			<form method="post" class="form-grid" style="margin-top:16px">
@@ -388,6 +374,28 @@ const driverHasApp = booking.driver_id
 			<div class="actions"><button class="btn secondary" type="submit">Notu kaydet</button></div>
 		</form>
 	)}
+
+	<div style="margin-bottom:16px">
+		<ChatBox
+			messages={messages}
+			me="ops"
+			src={`/ops/mesajlar.json?code=${encodeURIComponent(booking.code)}`}
+			writable={canWrite}
+			labels={{
+				title: "Mesajlar",
+				privacy: "Yolcu, atanan sürücü ve operasyon aynı yazışmayı görür. Yolcu ve sürücünün yazdığı telefon ve e-postalar otomatik gizlenir; sizin yazdıklarınız gizlenmez.",
+				empty: "Henüz mesaj yok.",
+				placeholder: "Yolcuya ve sürücüye yazın",
+				send: "Gönder",
+				closed: "Mesaj yazma yetkiniz yok.",
+				passenger: "Yolcu",
+				driver: "Sürücü",
+				ops: "Operasyon",
+				system: "Sistem",
+				you: "Operasyon (siz)",
+			}}
+		/>
+	</div>
 
 	<div class="card">
 		<h2 style="margin-top:0">Geçmiş</h2>

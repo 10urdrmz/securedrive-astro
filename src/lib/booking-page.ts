@@ -27,6 +27,7 @@ import { quote, refundPct, type ClassQuote, type Quote, type QuoteInput } from "
 import { getSettings } from "../server/settings";
 import { NO_STORE } from "./account-page";
 import { allowVisitor, currentMember, EMAIL, PHONE, type Member } from "./members";
+import { canWrite, firstName, listMessages, markRead, postMessage, type ChatMessage } from "../server/messages";
 import { iyzicoEnabled, iyzicoIsSandbox } from "../server/payments/iyzico";
 
 export interface Zone {
@@ -72,7 +73,10 @@ export interface BookingDetail {
 	toName: string;
 	className: string;
 	lines: { kind: string; label: string; qty?: number; amount_minor: number }[];
-	driver: { name: string; phone: string; plate: string | null; vehicle: string | null } | null;
+	/** The passenger never gets the driver's phone: they write through the messages. */
+	driver: { name: string; plate: string | null; vehicle: string | null } | null;
+	messages: ChatMessage[];
+	chatWritable: boolean;
 	/** Hours before pickup until which the passenger may cancel online, free of charge. */
 	freeCancelHours: number;
 	canCancel: boolean;
@@ -247,6 +251,9 @@ async function bookingDetail(
 		booking,
 		token: booking.tracking_token,
 		...detail,
+		driver: detail.driver ? { name: detail.driver.name, plate: detail.driver.plate, vehicle: detail.driver.vehicle } : null,
+		messages: await listMessages(db, booking, "passenger"),
+		chatWritable: canWrite(booking, "passenger"),
 		freeCancelHours: Number.isFinite(freeCancelHours) ? freeCancelHours : 0,
 		canCancel,
 		payHref: booking.status === "pending_payment" && booking.payment_method === "online" && iyzicoEnabled() ? paymentStartPath(booking) : null,
@@ -256,6 +263,7 @@ async function bookingDetail(
 	};
 	page.review = (await db.selectFrom("sd_reviews").select(["rating", "comment"]).where("booking_id", "=", booking.id).executeTakeFirst()) ?? null;
 	page.canReview = booking.status === "completed" && !page.review;
+	if (Astro.request.method === "GET") await markRead(db, booking.id, "passenger");
 	const ok = Astro.url.searchParams.get("ok");
 	if (ok === "created" || ok === "cancelled" || ok === "paid" || ok === "paymentFailed" || ok === "reviewed" || ok === "quoteAccepted" || ok === "quoteDeclined")
 		page.notice = ok;
@@ -263,6 +271,10 @@ async function bookingDetail(
 	if (Astro.request.method === "POST") {
 		if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
 		const form = await Astro.request.formData();
+		if (form.get("intent") === "message") {
+			await postMessage(db, booking, "passenger", null, firstName(booking.contact_name), String(form.get("message") ?? ""));
+			return redirect(Astro, `${self}#mesajlar`);
+		}
 		if (form.get("intent") === "review") {
 			const rating = Number(form.get("rating"));
 			if (!page.canReview || !Number.isInteger(rating) || rating < 1 || rating > 5) return redirect(Astro, self);

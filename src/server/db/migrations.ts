@@ -346,4 +346,28 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		name: "0008_messages",
+		statements: [
+			// In-app messages per booking between passenger, driver and ops; nobody sees anybody's phone.
+			`CREATE TABLE IF NOT EXISTS sd_messages (
+				id TEXT PRIMARY KEY,
+				booking_id TEXT NOT NULL REFERENCES sd_bookings(id),
+				sender TEXT NOT NULL CHECK (sender IN ('passenger','driver','ops','system')),
+				sender_id TEXT,
+				sender_name TEXT,
+				body TEXT NOT NULL,
+				at TEXT NOT NULL
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_messages_booking ON sd_messages(booking_id, at)`,
+			`CREATE INDEX IF NOT EXISTS sd_messages_at ON sd_messages(at)`,
+			// How far each side has read a booking's messages.
+			`CREATE TABLE IF NOT EXISTS sd_message_reads (
+				booking_id TEXT NOT NULL REFERENCES sd_bookings(id),
+				reader TEXT NOT NULL CHECK (reader IN ('passenger','driver','ops')),
+				last_read_at TEXT NOT NULL,
+				PRIMARY KEY (booking_id, reader)
+			)`,
+		],
+	},
 ];

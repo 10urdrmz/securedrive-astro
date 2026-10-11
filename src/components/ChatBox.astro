@@ -1,0 +1,237 @@
+---
+/**
+ * The booking's message thread, shared by the passenger page, the driver app and ops.
+ * Works without JavaScript (the form posts back to the page); public/chat.js adds
+ * polling for new messages and sending without a page reload.
+ */
+import type { ChatMessage, ChatRole } from "../server/messages";
+
+interface Props {
+	messages: ChatMessage[];
+	me: ChatRole;
+	/** JSON endpoint chat.js polls. */
+	src: string;
+	writable: boolean;
+	labels: {
+		title: string;
+		privacy: string;
+		empty: string;
+		placeholder: string;
+		send: string;
+		closed: string;
+		passenger: string;
+		driver: string;
+		ops: string;
+		system: string;
+		you: string;
+	};
+	/** One-tap messages. */
+	quick?: string[];
+	dir?: "ltr" | "rtl";
+}
+
+const { messages, me, src, writable, labels, quick = [], dir = "ltr" } = Astro.props;
+const time = (iso: string) => new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
+const who = (m: ChatMessage) => {
+	if (m.sender === me) return labels.you;
+	const role = labels[m.sender];
+	return m.name && m.sender !== "ops" && m.sender !== "system" ? `${m.name} · ${role}` : role;
+};
+---
+
+<section
+	class="chat"
+	id="mesajlar"
+	dir={dir}
+	data-chat
+	data-src={src}
+	data-me={me}
+	data-l-passenger={labels.passenger}
+	data-l-driver={labels.driver}
+	data-l-ops={labels.ops}
+	data-l-system={labels.system}
+	data-l-you={labels.you}
+	data-l-empty={labels.empty}
+>
+	<header class="chat-head">
+		<h2>{labels.title}</h2>
+		<p>{labels.privacy}</p>
+	</header>
+	<ol class="chat-list" data-chat-list aria-live="polite">
+		{messages.length === 0 && <li class="chat-empty">{labels.empty}</li>}
+		{
+			messages.map((m) => (
+				<li class:list={["chat-msg", m.sender === me ? "mine" : m.sender]} data-id={m.id}>
+					<span class="chat-who">
+						{who(m)} · {time(m.at)}
+					</span>
+					<span class="chat-body">{m.body}</span>
+				</li>
+			))
+		}
+	</ol>
+	{
+		writable ? (
+			<form class="chat-form" method="post" action="#mesajlar" data-chat-form>
+				<input type="hidden" name="intent" value="message" />
+				{quick.length > 0 && (
+					<div class="chat-quick">
+						{quick.map((q) => (
+							<button type="button" data-chat-quick={q}>
+								{q}
+							</button>
+						))}
+					</div>
+				)}
+				<div class="chat-row">
+					<textarea name="message" rows="2" maxlength="1000" required placeholder={labels.placeholder} aria-label={labels.placeholder} />
+					<button type="submit" class="chat-send">
+						{labels.send}
+					</button>
+				</div>
+			</form>
+		) : (
+			<p class="chat-closed">{labels.closed}</p>
+		)
+	}
+</section>
+
+<script src="/chat.js" defer is:inline></script>
+
+<style>
+	.chat {
+		display: grid;
+		gap: 12px;
+		padding: 16px;
+		border: 1px solid #e4e7ec;
+		border-radius: 16px;
+		background: #fff;
+		color: #101828;
+	}
+	.chat-head h2 {
+		margin: 0;
+		font-size: 18px;
+		font-weight: 700;
+		color: #101828;
+		text-transform: none;
+		letter-spacing: normal;
+	}
+	.chat-head p {
+		margin: 4px 0 0;
+		font-size: 13px;
+		color: #667085;
+	}
+	.chat-list {
+		list-style: none;
+		margin: 0;
+		padding: 4px 2px;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		max-height: 380px;
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+	.chat-empty {
+		text-align: center;
+		font-size: 14px;
+		color: #667085;
+		padding: 16px 0;
+	}
+	.chat-msg {
+		display: grid;
+		gap: 2px;
+		max-width: 85%;
+		align-self: flex-start;
+		padding: 8px 12px;
+		border-radius: 14px;
+		border-start-start-radius: 4px;
+		background: #f2f4f7;
+	}
+	.chat-msg.mine {
+		align-self: flex-end;
+		border-start-start-radius: 14px;
+		border-start-end-radius: 4px;
+		background: #0a2540;
+		color: #fff;
+	}
+	.chat-msg.ops {
+		background: #fffaeb;
+		border: 1px solid #fedf89;
+	}
+	.chat-msg.system {
+		align-self: center;
+		max-width: 100%;
+		background: transparent;
+		text-align: center;
+		color: #667085;
+		font-size: 13px;
+	}
+	.chat-who {
+		font-size: 12px;
+		font-weight: 600;
+		opacity: 0.75;
+	}
+	.chat-body {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		font-size: 15px;
+		line-height: 1.4;
+	}
+	.chat-form {
+		display: grid;
+		gap: 8px;
+		margin: 0;
+	}
+	.chat-quick {
+		display: flex;
+		gap: 6px;
+		overflow-x: auto;
+		padding-bottom: 2px;
+	}
+	.chat-quick button {
+		flex: none;
+		padding: 6px 12px;
+		border: 1px solid #d0d5dd;
+		border-radius: 999px;
+		background: #fff;
+		color: #344054;
+		font: inherit;
+		font-size: 13px;
+		cursor: pointer;
+	}
+	.chat-row {
+		display: flex;
+		gap: 8px;
+		align-items: flex-end;
+	}
+	.chat-row textarea {
+		flex: 1;
+		min-width: 0;
+		padding: 10px 12px;
+		border: 1px solid #d0d5dd;
+		border-radius: 12px;
+		font: inherit;
+		font-size: 16px;
+		resize: vertical;
+	}
+	.chat-send {
+		min-height: 44px;
+		padding: 0 16px;
+		border: 0;
+		border-radius: 12px;
+		background: #0a2540;
+		color: #fff;
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.chat-send:disabled {
+		opacity: 0.6;
+	}
+	.chat-closed {
+		margin: 0;
+		font-size: 14px;
+		color: #667085;
+	}
+</style>

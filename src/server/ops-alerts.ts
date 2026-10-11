@@ -7,6 +7,7 @@
  */
 import type { Db } from "./db";
 import { can, type SessionUser } from "./auth/rbac";
+import { opsUnread } from "./messages";
 
 export interface OpsCounts {
 	/** Transfer price requests nobody has picked up yet. */
@@ -17,7 +18,7 @@ export interface OpsCounts {
 
 export interface OpsFeedItem {
 	key: string;
-	kind: "request" | "booking" | "declined";
+	kind: "request" | "booking" | "declined" | "message";
 	title: string;
 	detail: string;
 	href: string;
@@ -52,7 +53,7 @@ export async function opsCounts(db: Db, user: SessionUser): Promise<OpsCounts> {
 
 export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<OpsFeedItem[]> {
 	if (!can(user, "bookings.read")) return [];
-	const [requests, bookings, events] = await Promise.all([
+	const [requests, bookings, events, messages] = await Promise.all([
 		db
 			.selectFrom("ec_inquiries")
 			.select(["id", "reference", "name", "details", "created_at"])
@@ -78,6 +79,7 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			.orderBy("e.at", "desc")
 			.limit(limit)
 			.execute(),
+		opsUnread(db, limit),
 	]);
 	const route = (details: unknown) => {
 		try {
@@ -88,6 +90,14 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 		}
 	};
 	const items: OpsFeedItem[] = [
+		...messages.map((m) => ({
+			key: `message:${m.id}`,
+			kind: "message" as const,
+			title: `${m.sender === "driver" ? "Sürücüden" : "Yolcudan"} mesaj · ${m.code}`,
+			detail: [m.sender_name, String(m.body).slice(0, 80)].filter(Boolean).join(": "),
+			href: `/ops/rezervasyonlar/${m.code}#mesajlar`,
+			at: String(m.at),
+		})),
 		...requests.map((r) => ({
 			key: `request:${r.id}`,
 			kind: "request" as const,

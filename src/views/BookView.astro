@@ -6,6 +6,7 @@
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import Notice from "../components/Notice.astro";
+import ChatBox from "../components/ChatBox.astro";
 import { BOOK_SLUG, LOCALE_META, accountPath, bookPath, localizePath, pagePath } from "../i18n/locales";
 import { useTranslations, type UiKey } from "../i18n/ui";
 import type { BookPage } from "../lib/booking-page";
@@ -485,9 +486,9 @@ const showProgress = page.view === "detail" && !["cancelled", "no_show", "quoted
 												{page.driver.plate && <> · <span dir="ltr" class="font-semibold tracking-wide">{page.driver.plate}</span></>}
 											</span>
 										</div>
-										<a class="btn btn--ghost btn--sm" href={`tel:${page.driver.phone.replace(/[^\d+]/g, "")}`} dir="ltr">
-											<Icon name="phone" size={16} />
-											{page.driver.phone}
+										<a class="btn btn--ghost btn--sm" href="#mesajlar">
+											<Icon name="inbox" size={16} />
+											{t("book.chat.title")}
 										</a>
 									</div>
 								) : (
@@ -516,6 +517,30 @@ const showProgress = page.view === "detail" && !["cancelled", "no_show", "quoted
 									</div>
 								)}
 							</div>
+							)}
+
+							{!isQuote && (
+								<ChatBox
+									messages={page.messages}
+									me="passenger"
+									src={`/api/mesajlar.json?${new URLSearchParams({ code: page.booking.code, t: page.booking.tracking_token })}`}
+									writable={page.chatWritable}
+									dir={LOCALE_META[locale].dir}
+									labels={{
+										title: t("book.chat.title"),
+										privacy: t("book.chat.privacy"),
+										empty: t("book.chat.empty"),
+										placeholder: t("book.chat.placeholder"),
+										send: t("book.chat.send"),
+										closed: t("book.chat.closed"),
+										passenger: t("book.chat.passenger"),
+										driver: t("book.chat.driver"),
+										ops: t("book.chat.ops"),
+										system: t("book.chat.system"),
+										you: t("book.chat.you"),
+									}}
+									quick={page.driver ? [t("book.chat.q1"), t("book.chat.q2"), t("book.chat.q3"), t("book.chat.q4")] : []}
+								/>
 							)}
 
 							{page.canReview && (
