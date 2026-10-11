@@ -330,4 +330,20 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_driver_login_log_at ON sd_driver_login_log(at)`,
 		],
 	},
+	{
+		name: "0007_driver_locations",
+		statements: [
+			// Each driver's latest position, sent from the driver app while a trip is under way.
+			`CREATE TABLE IF NOT EXISTS sd_driver_locations (
+				driver_id TEXT PRIMARY KEY REFERENCES sd_drivers(id),
+				booking_id TEXT REFERENCES sd_bookings(id),
+				lat REAL NOT NULL,
+				lng REAL NOT NULL,
+				accuracy REAL,
+				heading REAL,
+				speed REAL,
+				at TEXT NOT NULL
+			)`,
+		],
+	},
 ];

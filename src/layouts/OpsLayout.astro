@@ -39,6 +39,7 @@ const NAV: { href: string; label: string; show: boolean; count?: keyof OpsCounts
 			{ href: "/ops", label: "Pano", show: true },
 			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", show: can(user, "bookings.read"), count: "bookings" as const, hint: "sürücü bekleyen" },
 			{ href: "/ops/talepler", label: "Fiyat talepleri", show: can(user, "bookings.read"), count: "requests" as const, hint: "yeni talep" },
+			{ href: "/ops/harita", label: "Canlı harita", show: can(user, "bookings.read") },
 			{ href: "/ops/suruculer", label: "Sürücüler", show: can(user, "bookings.read") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", show: can(user, "catalog.read") },

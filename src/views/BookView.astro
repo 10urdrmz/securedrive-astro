@@ -92,6 +92,7 @@ const progressAt =
 // Who drives is worth showing until the trip is over; afterwards only if someone did.
 const showDriver =
 	page.view === "detail" && !["cancelled", "no_show"].includes(page.booking.status) && (page.booking.status !== "completed" || !!page.driver);
+const liveTracking = page.view === "detail" && ["driver_en_route", "driver_arrived", "on_board"].includes(page.booking.status);
 const showProgress = page.view === "detail" && !["cancelled", "no_show"].includes(page.booking.status);
 ---
 
@@ -460,6 +461,25 @@ const showProgress = page.view === "detail" && !["cancelled", "no_show"].include
 										<p class="m-0">{t("book.driverPending")}</p>
 									</div>
 								)}
+								{page.driver && liveTracking && (
+									<div
+										class="grid gap-2"
+										data-live-map
+										data-mode="one"
+										data-src={`/api/konum.json?${new URLSearchParams({ code: page.booking.code, t: page.booking.tracking_token })}`}
+										data-waiting={t("book.liveWaiting")}
+										data-updated={t("book.liveUpdated")}
+										data-ended={t("book.liveEnded")}
+										data-now={t("book.liveNow")}
+										data-min={t("book.liveMin")}
+										data-hour={t("book.liveHour")}
+										data-failed={t("book.liveFailed")}
+									>
+										<h3 class="m-0 text-base font-semibold text-gray-900">{t("book.liveTitle")}</h3>
+										<div data-live-map-canvas dir="ltr" />
+										<p class="m-0 text-sm text-gray-600" data-live-map-note role="status">{t("book.liveWaiting")}</p>
+									</div>
+								)}
 							</div>
 							)}
 
@@ -573,4 +593,5 @@ const showProgress = page.view === "detail" && !["cancelled", "no_show"].include
 			</aside>
 		</div>
 	</section>
+	{liveTracking && <script src="/live-map.js" defer is:inline />}
 </Base>
