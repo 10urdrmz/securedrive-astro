@@ -1,0 +1,122 @@
+---
+/** The company's own logins: admins add colleagues who book transfers, reset or close them. */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { can } from "../../server/auth/rbac";
+import { companyUsers, requireCompany } from "../../server/companies";
+import { createOrgLogin, LOGIN_PATTERN, resetLogin } from "../../server/org-accounts";
+import { audit, readForm, text } from "../../server/ops";
+
+const ctx = await requireCompany(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, company } = ctx;
+if (!can(user, "company.manage")) return Astro.redirect("/firma");
+
+const ROLES: Record<string, string> = { company_admin: "Yönetici", company_booker: "Rezervasyon yetkilisi" };
+let notice = "";
+let error = "";
+let credentials: { name: string; login: string; password: string } | null = null;
+const form = await readForm(Astro);
+if (form) {
+	const intent = text(form, "intent", 20);
+	try {
+		if (intent === "add") {
+			const name = text(form, "name", 80);
+			const login = text(form, "login", 120).toLowerCase();
+			const role = text(form, "role", 30) === "company_admin" ? "company_admin" : "company_booker";
+			if (name.length < 2) throw new Error("Ad soyad gerekli.");
+			if (!LOGIN_PATTERN.test(login)) throw new Error("Giriş için e-posta ya da harf, rakam ve . _ - içeren bir kullanıcı adı yazın.");
+			const created = await createOrgLogin(db, { orgId: company.id, role, name, login });
+			await audit(db, user, "company.user.create", "user", created.userId, { org: company.id, role });
+			credentials = { name, login, password: created.password };
+		} else {
+			// Only this company's people, whatever the form says.
+			const member = (await companyUsers(db, company.id)).find((u) => u.id === text(form, "id", 40));
+			if (!member) throw new Error("Kullanıcı bulunamadı.");
+			if (member.id === user.id) throw new Error("Kendi hesabınızı buradan değiştiremezsiniz.");
+			if (intent === "reset") {
+				const reset = await resetLogin(db, member.id);
+				await audit(db, user, "company.user.reset", "user", member.id, { org: company.id });
+				credentials = { name: member.name, ...reset! };
+			} else if (intent === "close") {
+				await db.updateTable("sd_users").set({ status: "locked" }).where("id", "=", member.id).execute();
+				await db.deleteFrom("sd_sessions").where("user_id", "=", member.id).execute();
+				await audit(db, user, "company.user.close", "user", member.id, { org: company.id });
+				notice = `${member.name} artık giriş yapamaz.`;
+			}
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const people = await companyUsers(db, company.id);
+const panelUrl = new URL("/firma", Astro.url.origin).href;
+---
+
+<OpsLayout title="Ekip" user={user} panel="company">
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	{
+		credentials && (
+			<div class="notice">
+				<strong>{credentials.name}</strong> için giriş: <a href={panelUrl}>{panelUrl}</a>
+				<br />
+				Kullanıcı: <strong>{credentials.login}</strong> · Şifre: <strong style="letter-spacing:0.05em">{credentials.password}</strong>
+				<br />
+				Şifre bir daha gösterilmez; kişiye güvenli bir yoldan iletin.
+			</div>
+		)
+	}
+	<p class="muted" style="margin-top:0">Rezervasyon yetkilileri transfer ayırır ve yolculukları görür. Yöneticiler ayrıca ekibi yönetir.</p>
+	<div class="card">
+		<table class="data">
+			<thead>
+				<tr><th>Ad soyad</th><th>Giriş</th><th>Rol</th><th>Son giriş</th><th /></tr>
+			</thead>
+			<tbody>
+				{
+					people.map((p) => (
+						<tr>
+							<td>
+								{p.name}
+								{p.status !== "active" && <span class="badge off">Kapalı</span>}
+							</td>
+							<td>{p.login}</td>
+							<td>{ROLES[p.role] ?? p.role}</td>
+							<td class="muted">{p.last_login_at ? p.last_login_at.slice(0, 10).split("-").reverse().join(".") : "—"}</td>
+							<td>
+								{p.id !== user.id && (
+									<form method="post" class="actions" style="margin:0">
+										<input type="hidden" name="id" value={p.id} />
+										<button class="btn secondary" type="submit" name="intent" value="reset">
+											{p.status === "active" ? "Yeni şifre" : "Yeniden aç"}
+										</button>
+										{p.status === "active" && (
+											<button class="btn secondary" type="submit" name="intent" value="close">
+												Girişi kapat
+											</button>
+										)}
+									</form>
+								)}
+							</td>
+						</tr>
+					))
+				}
+			</tbody>
+		</table>
+	</div>
+	<form class="card form-grid" method="post">
+		<input type="hidden" name="intent" value="add" />
+		<strong style="grid-column:1/-1">Ekibe kişi ekle</strong>
+		<label>Ad soyad <input type="text" name="name" required /></label>
+		<label>Giriş (e-posta ya da kullanıcı adı) <input type="text" name="login" required autocomplete="off" /></label>
+		<label>
+			Rol
+			<select name="role">
+				<option value="company_booker">Rezervasyon yetkilisi</option>
+				<option value="company_admin">Yönetici</option>
+			</select>
+		</label>
+		<div><button class="btn" type="submit">Ekle</button></div>
+	</form>
+</OpsLayout>

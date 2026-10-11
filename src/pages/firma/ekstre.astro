@@ -1,0 +1,90 @@
+---
+/**
+ * Monthly statement of the company's account: every trip of the month that was not
+ * cancelled, by cost centre, with a CSV download for the finance team.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Trips from "../../components/CompanyTrips.astro";
+import { companyTrips, currentMonth, monthName, requireCompany } from "../../server/companies";
+import { formatMoney } from "../../server/ops";
+
+const ctx = await requireCompany(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, company } = ctx;
+
+const asked = Astro.url.searchParams.get("ay") ?? "";
+const month = /^\d{4}-\d{2}$/.test(asked) ? asked : currentMonth();
+const trips = (await companyTrips(db, company.id, { month })).filter((t) => !["cancelled", "quoted"].includes(t.status));
+const total = trips.reduce((sum, t) => sum + t.price_minor, 0);
+const done = trips.filter((t) => t.status === "completed");
+const byCenter = new Map<string, { count: number; total: number }>();
+for (const t of trips) {
+	const key = t.cost_center ?? "—";
+	const entry = byCenter.get(key) ?? { count: 0, total: 0 };
+	entry.count++;
+	entry.total += t.price_minor;
+	byCenter.set(key, entry);
+}
+const months = Array.from({ length: 12 }, (_, i) => {
+	const d = new Date(Date.UTC(Number(currentMonth().slice(0, 4)), Number(currentMonth().slice(5, 7)) - 1 - i + 1, 1));
+	return d.toISOString().slice(0, 7);
+});
+---
+
+<OpsLayout title="Ekstre" user={user} panel="company">
+	<form method="get" class="actions" style="margin-top:0;align-items:end">
+		<label>
+			Ay
+			<select name="ay" onchange="this.form.submit()">
+				{months.map((m) => <option value={m} selected={m === month}>{monthName(m)}</option>)}
+			</select>
+		</label>
+		<noscript><button class="btn secondary" type="submit">Göster</button></noscript>
+		<a class="btn secondary" href={`/firma/ekstre.csv?ay=${month}`}>Excel (CSV) indir</a>
+		<button class="btn secondary" type="button" onclick="print()">Yazdır / PDF</button>
+	</form>
+	<div class="stats">
+		<div class="stat">
+			<span class="muted">{monthName(month)} toplamı</span>
+			<strong>{formatMoney(total)} ₺</strong>
+		</div>
+		<div class="stat">
+			<span class="muted">Yolculuk</span>
+			<strong>{trips.length}</strong>
+			<span class="muted">{done.length} tamamlandı</span>
+		</div>
+	</div>
+	<p class="muted">
+		Ödeme yöntemi cari hesap. Fatura ay sonunda SecureDrive tarafından kesilir; tamamlanmamış yolculuklar gerçekleştikçe ekstreye girer. İptal edilenler ekstrede
+		yer almaz.
+	</p>
+	{
+		byCenter.size > 1 && (
+			<div class="card">
+				<h2 style="margin-top:0">Masraf merkezlerine göre</h2>
+				<table class="data">
+					<thead>
+						<tr>
+							<th>Masraf merkezi</th>
+							<th class="num">Yolculuk</th>
+							<th class="num">Tutar</th>
+						</tr>
+					</thead>
+					<tbody>
+						{[...byCenter.entries()].map(([center, v]) => (
+							<tr>
+								<td>{center}</td>
+								<td class="num">{v.count}</td>
+								<td class="num">{formatMoney(v.total)} ₺</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)
+	}
+	<div class="card">
+		<h2 style="margin-top:0">Yolculuklar</h2>
+		<Trips trips={trips} />
+	</div>
+</OpsLayout>

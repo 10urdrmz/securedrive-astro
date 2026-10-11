@@ -1,0 +1,72 @@
+---
+/** Company dashboard: this month's spend against the limit and the trips coming up. */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Trips from "../../components/CompanyTrips.astro";
+import { companyTrips, currentMonth, monthName, monthSpend, requireCompany } from "../../server/companies";
+import { formatMoney } from "../../server/ops";
+
+const ctx = await requireCompany(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, company } = ctx;
+
+const month = currentMonth();
+const spend = await monthSpend(db, company.id, month);
+const upcoming = await companyTrips(db, company.id, { upcoming: true, limit: 20 });
+const limit = company.settings.monthlyLimitMinor;
+const used = limit ? Math.min(100, Math.round((spend.total / limit) * 100)) : 0;
+---
+
+<OpsLayout title="Pano" user={user} panel="company">
+	<p class="muted" style="margin-top:0">{company.name}</p>
+	<div class="stats">
+		<div class="stat">
+			<span class="muted">{monthName(month)} harcaması</span>
+			<strong>{formatMoney(spend.total)} ₺</strong>
+			{
+				limit && (
+					<>
+						<div class="bar" aria-hidden="true">
+							<span style={`width:${used}%`} class:list={[used >= 90 && "hot"]} />
+						</div>
+						<span class="muted">
+							Limit {formatMoney(limit)} ₺ · kalan {formatMoney(Math.max(0, limit - spend.total))} ₺
+						</span>
+					</>
+				)
+			}
+		</div>
+		<div class="stat">
+			<span class="muted">Bu ayki yolculuk</span>
+			<strong>{spend.trips}</strong>
+		</div>
+		<div class="stat">
+			<span class="muted">Yaklaşan</span>
+			<strong>{upcoming.length}</strong>
+		</div>
+	</div>
+	<div class="actions" style="margin-bottom:16px">
+		<a class="btn" href="/firma/yeni">Yeni transfer ayır</a>
+	</div>
+	<div class="card">
+		<h2 style="margin-top:0">Yaklaşan yolculuklar</h2>
+		<Trips trips={upcoming} />
+	</div>
+</OpsLayout>
+
+<style>
+	.bar {
+		height: 6px;
+		border-radius: 999px;
+		background: var(--gray-200);
+		margin: 8px 0 6px;
+		overflow: hidden;
+	}
+	.bar span {
+		display: block;
+		height: 100%;
+		background: #144c7f;
+	}
+	.bar span.hot {
+		background: #d92d20;
+	}
+</style>

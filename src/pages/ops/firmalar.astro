@@ -1,0 +1,187 @@
+---
+/**
+ * Company accounts (kurumsal): firms that book on account. Ops opens the account with
+ * the contract terms and its first admin login; the firm books at /firma and gets a
+ * monthly statement.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Terms from "../../components/CompanyTerms.astro";
+import { can } from "../../server/auth/rbac";
+import { companyUsers, createCompany, currentMonth, getCompany, listCompanies, monthSpend, saveCompanySettings, type CompanySettings } from "../../server/companies";
+import { LOGIN_PATTERN, resetLogin } from "../../server/org-accounts";
+import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../server/ops";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canManage = can(user, "companies.manage");
+const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name"]).where("active", "=", 1).orderBy("sort").execute();
+
+/** Contract terms from the form; throws on input ops has to fix. */
+function readSettings(form: FormData): CompanySettings {
+	const discountPct = Number(text(form, "discount", 6).replace(",", ".") || "0");
+	if (!(discountPct >= 0 && discountPct <= 50)) throw new Error("İndirim 0 ile 50 arasında olmalı.");
+	const limitText = text(form, "limit", 20);
+	const monthlyLimitMinor = limitText ? parseMoney(limitText) : null;
+	if (limitText && !monthlyLimitMinor) throw new Error("Aylık limit okunamadı. Örnek: 50.000");
+	const picked = form.getAll("classes").map(String).filter((k) => classes.some((c) => c.key === k));
+	return { discountPct, monthlyLimitMinor, classes: picked.length === classes.length ? [] : picked };
+}
+
+let notice = "";
+let error = "";
+let credentials: { name: string; login: string; password: string } | null = null;
+const form = await readForm(Astro);
+if (form && canManage) {
+	const intent = text(form, "intent", 20);
+	try {
+		if (intent === "create") {
+			const name = text(form, "name", 120);
+			const adminName = text(form, "admin_name", 80);
+			const login = text(form, "login", 120).toLowerCase();
+			if (name.length < 2 || adminName.length < 2) throw new Error("Firma adı ve yönetici adı gerekli.");
+			if (!LOGIN_PATTERN.test(login)) throw new Error("Giriş için e-posta ya da harf, rakam ve . _ - içeren bir kullanıcı adı yazın.");
+			const settings = readSettings(form);
+			const created = await createCompany(db, { name, legalName: text(form, "legal_name", 160) || null, taxNo: text(form, "tax_no", 20) || null, settings, adminName, login });
+			await audit(db, user, "company.create", "org", created.id, { name, ...settings });
+			credentials = { name, login, password: created.password };
+		} else {
+			const company = await getCompany(db, text(form, "id", 40));
+			if (!company) throw new Error("Firma bulunamadı.");
+			if (intent === "settings") {
+				const settings = readSettings(form);
+				await saveCompanySettings(db, company.id, settings);
+				await audit(db, user, "company.settings", "org", company.id, settings);
+				notice = `${company.name} sözleşme koşulları kaydedildi.`;
+			} else if (intent === "reset") {
+				const admin = (await companyUsers(db, company.id)).find((u) => u.role === "company_admin");
+				const reset = admin ? await resetLogin(db, admin.id) : null;
+				if (!admin || !reset) throw new Error("Firmanın yöneticisi bulunamadı.");
+				await audit(db, user, "company.password_reset", "org", company.id, { user: admin.id });
+				credentials = { name: `${company.name} · ${admin.name}`, ...reset };
+			} else if (intent === "toggle") {
+				const status = company.status === "active" ? "inactive" : "active";
+				await db.updateTable("sd_orgs").set({ status }).where("id", "=", company.id).execute();
+				await audit(db, user, `company.${status}`, "org", company.id);
+				notice = status === "active" ? `${company.name} yeniden aktif.` : `${company.name} pasif: panele giremez, yeni rezervasyon yapamaz.`;
+			}
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const companies = await listCompanies(db);
+const month = currentMonth();
+const spend = new Map(await Promise.all(companies.map(async (c) => [c.id, await monthSpend(db, c.id, month)] as const)));
+const panelUrl = new URL("/firma", Astro.url.origin).href;
+const allowed = (s: CompanySettings) => (s.classes.length === 0 ? "Tüm sınıflar" : classes.filter((c) => s.classes.includes(c.key)).map((c) => c.name).join(", "));
+---
+
+<OpsLayout title="Kurumsal firmalar" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	{
+		credentials && (
+			<div class="notice">
+				<strong>{credentials.name}</strong> firma paneli girişi: <a href={panelUrl}>{panelUrl}</a>
+				<br />
+				Kullanıcı: <strong>{credentials.login}</strong> · Şifre: <strong style="letter-spacing:0.05em">{credentials.password}</strong>
+				<br />
+				Şifre bir daha gösterilmez; firmaya güvenli bir yoldan iletin.
+			</div>
+		)
+	}
+	<p class="muted" style="margin-top:0">
+		Kurumsal firmalar çalışanları ve misafirleri için <a href="/firma">/firma</a> panelinden cari hesaba transfer ayırır. Fiyat genel tarifeden (firmaya özel tarife varsa
+		ondan) sözleşme indirimiyle hesaplanır; aylık limit aşılırsa yeni rezervasyon yapılamaz. Firma yöneticisi kendi ekibine kullanıcı ekler.
+	</p>
+
+	{
+		companies.map((c) => {
+			const s = spend.get(c.id)!;
+			const limit = c.settings.monthlyLimitMinor;
+			return (
+				<details class="card company">
+					<summary>
+						<span>
+							<strong>{c.name}</strong>
+							{c.status !== "active" && <span class="badge off">Pasif</span>}
+							<span class="muted">
+								{" "}
+								· %{c.settings.discountPct} indirim · {allowed(c.settings)}
+							</span>
+						</span>
+						<span>
+							Bu ay {s.trips} yolculuk · <strong>{formatMoney(s.total)} ₺</strong>
+							{limit && <span class:list={["muted", s.total > limit * 0.9 && "warn"]}> / {formatMoney(limit)} ₺</span>}
+						</span>
+					</summary>
+					{canManage && (
+						<form method="post" class="form-grid" style="margin-top:14px">
+							<input type="hidden" name="id" value={c.id} />
+							<Terms settings={c.settings} classes={classes} />
+							<div class="actions" style="grid-column:1/-1">
+								<button class="btn" type="submit" name="intent" value="settings">Kaydet</button>
+								<button class="btn secondary" type="submit" name="intent" value="reset" formnovalidate>Yöneticiye yeni şifre</button>
+								<button class="btn secondary" type="submit" name="intent" value="toggle" formnovalidate>{c.status === "active" ? "Pasife al" : "Aktif et"}</button>
+								<a class="btn secondary" href={`/ops/rezervasyonlar?firma=${c.id}`}>Rezervasyonları</a>
+							</div>
+						</form>
+					)}
+				</details>
+			);
+		})
+	}
+	{companies.length === 0 && <p class="muted">Henüz kurumsal firma yok.</p>}
+
+	{
+		canManage && (
+			<form class="card form-grid" method="post">
+				<input type="hidden" name="intent" value="create" />
+				<strong style="grid-column:1/-1">Yeni kurumsal firma</strong>
+				<label>
+					Firma adı
+					<input type="text" name="name" required />
+				</label>
+				<label>
+					Ticari unvan
+					<input type="text" name="legal_name" />
+				</label>
+				<label>
+					Vergi no
+					<input type="text" name="tax_no" inputmode="numeric" />
+				</label>
+				<label>
+					Yönetici adı soyadı
+					<input type="text" name="admin_name" required />
+				</label>
+				<label>
+					Panel girişi (e-posta ya da kullanıcı adı)
+					<input type="text" name="login" required autocomplete="off" />
+				</label>
+				<Terms settings={{ discountPct: 0, monthlyLimitMinor: null, classes: [] }} classes={classes} />
+				<div>
+					<button class="btn" type="submit">Firma ekle</button>
+				</div>
+			</form>
+		)
+	}
+</OpsLayout>
+
+<style>
+	.company summary {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
+		cursor: pointer;
+		list-style: none;
+	}
+	.company summary::-webkit-details-marker {
+		display: none;
+	}
+	.warn {
+		color: #b54708;
+	}
+</style>

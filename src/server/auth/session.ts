@@ -7,13 +7,15 @@ import type { Db } from "../db";
 import { randomToken, sha256Hex } from "../ids";
 import type { Role, SessionUser } from "./rbac";
 
-export type Panel = "ops" | "partner";
+export type Panel = "ops" | "partner" | "company";
 
 const PANELS: Record<Panel, { cookie: string; hours: number; path: string }> = {
 	// One shift plus margin: ops staff sign in again every day.
 	ops: { cookie: "sd_ops", hours: 12, path: "/ops" },
 	// Partner dispatchers keep the panel open all week.
 	partner: { cookie: "sd_partner", hours: 7 * 24, path: "/partner" },
+	// Company travel desks book now and then; a month keeps them signed in.
+	company: { cookie: "sd_corp", hours: 30 * 24, path: "/firma" },
 };
 
 export async function createSession(db: Db, cookies: AstroCookies, userId: string, panel: Panel, userAgent: string | null) {

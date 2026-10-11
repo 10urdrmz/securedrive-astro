@@ -13,10 +13,10 @@ import type { AstroGlobal } from "astro";
 import type { Db } from "./db";
 import { getDb } from "./db";
 import { addEvent, assignDriver, ConflictError, FINAL_STATUSES, getBookingByCode, updateBooking, type Actor, type Booking } from "./bookings";
-import { hashPassword } from "./auth/password";
 import { can, type SessionUser } from "./auth/rbac";
 import { getSessionUser } from "./auth/session";
-import { randomToken, ulid } from "./ids";
+import { ulid } from "./ids";
+import { createOrgLogin, resetLogin } from "./org-accounts";
 
 export interface Partner {
 	id: string;
@@ -57,54 +57,33 @@ export async function getPartner(db: Db, id: string): Promise<Partner | null> {
 	return ((await db.selectFrom("sd_orgs").selectAll().where("id", "=", id).where("kind", "=", "carrier").executeTakeFirst()) as Partner | undefined) ?? null;
 }
 
-/** An easy-to-type one-off password, shown to ops once. */
-const newPassword = () => randomToken(9).replace(/[^A-Za-z0-9]/g, "").slice(0, 12).padEnd(12, "7");
-
 /** Create a partner company and its first manager login. Returns the password to pass on. */
 export async function createPartner(
 	db: Db,
 	input: { name: string; legalName: string | null; taxNo: string | null; contactName: string; login: string },
 ): Promise<{ id: string; password: string }> {
-	const login = input.login.toLowerCase();
 	const taken = await db
 		.selectFrom("sd_users")
 		.select("id")
-		.where((eb) => eb.or([eb("email", "=", login), eb("username", "=", login)]))
+		.where((eb) => eb.or([eb("email", "=", input.login.toLowerCase()), eb("username", "=", input.login.toLowerCase())]))
 		.executeTakeFirst();
 	if (taken) throw new Error("Bu kullanıcı adı ya da e-posta zaten kullanılıyor.");
 	const orgId = ulid();
-	const userId = ulid();
-	const password = newPassword();
 	await db.insertInto("sd_orgs").values({ id: orgId, kind: "carrier", name: input.name, legal_name: input.legalName, tax_no: input.taxNo }).execute();
-	await db
-		.insertInto("sd_users")
-		.values({
-			id: userId,
-			name: input.contactName,
-			email: login.includes("@") ? login : null,
-			username: login.includes("@") ? null : login,
-			password_hash: await hashPassword(password),
-		})
-		.execute();
-	await db.insertInto("sd_memberships").values({ id: ulid(), user_id: userId, org_id: orgId, role: "carrier_admin" }).execute();
+	const { password } = await createOrgLogin(db, { orgId, role: "carrier_admin", name: input.contactName, login: input.login });
 	return { id: orgId, password };
 }
 
 /** A fresh password for a partner's manager(s); the old one stops working. */
 export async function resetPartnerPassword(db: Db, orgId: string): Promise<{ login: string; password: string } | null> {
-	const user = await db
-		.selectFrom("sd_memberships as m")
-		.innerJoin("sd_users as u", "u.id", "m.user_id")
-		.select(["u.id", "u.email", "u.username"])
-		.where("m.org_id", "=", orgId)
-		.where("m.role", "=", "carrier_admin")
-		.orderBy("m.created_at")
+	const member = await db
+		.selectFrom("sd_memberships")
+		.select("user_id")
+		.where("org_id", "=", orgId)
+		.where("role", "=", "carrier_admin")
+		.orderBy("created_at")
 		.executeTakeFirst();
-	if (!user) return null;
-	const password = newPassword();
-	await db.updateTable("sd_users").set({ password_hash: await hashPassword(password), failed_logins: 0, locked_until: null }).where("id", "=", user.id).execute();
-	await db.deleteFrom("sd_sessions").where("user_id", "=", user.id).execute();
-	return { login: user.email ?? user.username ?? "", password };
+	return member ? resetLogin(db, member.user_id) : null;
 }
 
 /** The partner's live job on a booking: offered or accepted. */

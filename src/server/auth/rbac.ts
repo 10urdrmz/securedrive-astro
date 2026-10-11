@@ -8,7 +8,10 @@ export type InternalRole = (typeof INTERNAL_ROLES)[number];
 /** Partner fleet staff; they only ever see their own organisation's jobs. */
 export const PARTNER_ROLES = ["carrier_admin"] as const;
 export type PartnerRole = (typeof PARTNER_ROLES)[number];
-export type Role = InternalRole | PartnerRole | "passenger";
+/** Company (kurumsal) staff: admins also manage the company's logins. */
+export const COMPANY_ROLES = ["company_admin", "company_booker"] as const;
+export type CompanyRole = (typeof COMPANY_ROLES)[number];
+export type Role = InternalRole | PartnerRole | CompanyRole | "passenger";
 
 export const ROLE_LABELS: Record<Role, string> = {
 	super_admin: "Süper admin",
@@ -17,6 +20,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 	support_agent: "Destek",
 	finance: "Finans",
 	carrier_admin: "Partner yöneticisi",
+	company_admin: "Kurumsal yönetici",
+	company_booker: "Kurumsal rezervasyon yetkilisi",
 	passenger: "Yolcu",
 };
 
@@ -34,7 +39,10 @@ export type Permission =
 	| "payments.write"
 	| "partners.manage"
 	| "settlements.manage"
-	| "partner.access";
+	| "partner.access"
+	| "companies.manage"
+	| "company.access"
+	| "company.manage";
 
 const GRANTS: Record<Role, Permission[]> = {
 	super_admin: [
@@ -51,12 +59,15 @@ const GRANTS: Record<Role, Permission[]> = {
 		"payments.write",
 		"partners.manage",
 		"settlements.manage",
+		"companies.manage",
 	],
-	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write", "partners.manage", "settlements.manage"],
+	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write", "partners.manage", "settlements.manage", "companies.manage"],
 	ops_agent: ["ops.access", "catalog.read", "bookings.read", "bookings.write"],
 	support_agent: ["ops.access", "catalog.read", "bookings.read"],
 	finance: ["ops.access", "catalog.read", "bookings.read", "payments.write", "settlements.manage"],
 	carrier_admin: ["partner.access"],
+	company_admin: ["company.access", "company.manage"],
+	company_booker: ["company.access"],
 	passenger: [],
 };
 

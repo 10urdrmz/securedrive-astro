@@ -445,4 +445,13 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_bookings_settlement ON sd_bookings(settlement_id)`,
 		],
 	},
+	{
+		name: "0012_corporate",
+		statements: [
+			// Company accounts (sd_orgs kind 'company') book on account for their staff and
+			// guests; bookings carry the company in org_id and an optional cost centre.
+			`ALTER TABLE sd_bookings ADD COLUMN cost_center TEXT`,
+			`CREATE INDEX IF NOT EXISTS sd_bookings_org ON sd_bookings(org_id, pickup_at)`,
+		],
+	},
 ];
