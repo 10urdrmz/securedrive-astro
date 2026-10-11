@@ -82,6 +82,7 @@ const NAV_ALL: NavItem[] = !user
 			{ href: "/ops/firmalar", label: "Kurumsal firmalar", icon: "card", show: can(user, "bookings.read") },
 			{ href: "/ops/acenteler", label: "Acenteler ve oteller", icon: "globe", show: can(user, "bookings.read") },
 			{ href: "/ops/hakedis", label: "Hakediş", icon: "wallet", show: can(user, "settlements.manage") },
+			{ href: "/ops/raporlar", label: "Raporlar", icon: "gauge", show: can(user, "reports.read") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", icon: "pin", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", icon: "car", show: can(user, "catalog.read") },
