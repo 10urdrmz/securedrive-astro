@@ -1,0 +1,115 @@
+---
+/**
+ * Partner panel home: jobs SecureDrive gave this partner. New ones wait for an
+ * answer; accepted ones get one of the partner's own drivers, who then works the
+ * trip in the normal driver app.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Job from "../../components/PartnerJob.astro";
+import { ConflictError, getBookingByCode } from "../../server/bookings";
+import { flightView, getFlight } from "../../server/flights";
+import { audit, formatMoney, readForm, text } from "../../server/ops";
+import { PARTNER_ANSWER_MINUTES, partnerAssign, partnerJobs, partnerRespond, requirePartner } from "../../server/partners";
+
+const ctx = await requirePartner(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, org } = ctx;
+const actor = { kind: "partner" as const, userId: user.id };
+
+let notice = "";
+let error = "";
+const form = await readForm(Astro);
+if (form) {
+	const intent = text(form, "intent", 20);
+	const booking = await getBookingByCode(db, text(form, "code", 20).toUpperCase());
+	try {
+		if (!booking || booking.carrier_org_id !== org.id) throw new Error("Bu iş artık size ait değil.");
+		if (intent === "accept" || intent === "decline") {
+			await partnerRespond(db, booking, org.id, intent === "accept", actor);
+			notice = intent === "accept" ? `${booking.code} kabul edildi. Şimdi bir sürücü atayın.` : `${booking.code} reddedildi; iş SecureDrive'a geri döndü.`;
+		} else if (intent === "assign") {
+			const driverId = text(form, "driver_id", 40) || null;
+			await partnerAssign(db, booking, org.id, driverId, actor);
+			notice = driverId ? `${booking.code} için sürücü atandı. İş sürücünün uygulamasında görünür.` : `${booking.code} için atama kaldırıldı.`;
+		}
+		if (notice) await audit(db, user, `partner.${intent}`, "booking", booking!.id, { code: booking!.code, org: org.id });
+	} catch (e) {
+		error = e instanceof ConflictError ? "Bu iş siz bakarken değişti. Güncel hali aşağıda." : e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const jobs = await partnerJobs(db, org.id, "open");
+const offered = jobs.filter((j) => j.job_status === "offered");
+const accepted = jobs.filter((j) => j.job_status === "accepted");
+const drivers = await db
+	.selectFrom("sd_drivers as d")
+	.leftJoin("sd_vehicle_classes as c", "c.key", "d.class_key")
+	.select(["d.id", "d.name", "d.plate", "c.name as class_name"])
+	.where("d.org_id", "=", org.id)
+	.where("d.approval", "=", "approved")
+	.where("d.status", "=", "active")
+	.orderBy("d.name")
+	.execute();
+const flights = new Map(await Promise.all(jobs.filter((j) => j.flight_no).map(async (j) => [j.code, flightView(await getFlight(db, j.booking_id))] as const)));
+const minutesLeft = (offeredAt: string) => Math.max(0, PARTNER_ANSWER_MINUTES - Math.floor((Date.now() - Date.parse(offeredAt)) / 60_000));
+const unassignedSoon = accepted.filter((j) => !j.driver_id && Date.parse(j.pickup_at) - Date.now() < 24 * 3600_000).length;
+---
+
+<OpsLayout title="İşler" user={user} panel="partner">
+	<p class="muted" style="margin-top:0">{org.name}</p>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	{unassignedSoon > 0 && <p class="notice error">{unassignedSoon} işin alışına 24 saatten az kaldı ve sürücüsü yok.</p>}
+	{drivers.length === 0 && <p class="notice">Henüz onaylı sürücünüz yok. <a href="/partner/suruculer">Sürücüler</a> sayfasından ekleyin; SecureDrive onayladıktan sonra iş atayabilirsiniz.</p>}
+
+	<h2>Yeni işler {offered.length > 0 && <span class="badge off">{offered.length}</span>}</h2>
+	{offered.length === 0 && <p class="muted">Cevap bekleyen iş yok.</p>}
+	{
+		offered.map((j) => (
+			<div class="card">
+				<Job j={j} flight={flights.get(j.code) ?? null} />
+				<p class="muted" style="margin:8px 0 0">
+					{minutesLeft(j.offered_at) > 0 ? `${minutesLeft(j.offered_at)} dakika içinde cevap verin.` : "Cevap süresi doldu; yine de cevap verebilirsiniz, operasyon işi geri alabilir."}
+				</p>
+				<div class="actions">
+					<form method="post">
+						<input type="hidden" name="code" value={j.code} />
+						<button class="btn" type="submit" name="intent" value="accept">Kabul et · {formatMoney(j.payout_minor)} ₺</button>
+					</form>
+					<form method="post">
+						<input type="hidden" name="code" value={j.code} />
+						<button class="btn secondary" type="submit" name="intent" value="decline">Reddet</button>
+					</form>
+				</div>
+			</div>
+		))
+	}
+
+	<h2>Kabul ettiğim işler</h2>
+	{accepted.length === 0 && <p class="muted">Yaklaşan iş yok.</p>}
+	{
+		accepted.map((j) => (
+			<div class="card">
+				<Job j={j} flight={flights.get(j.code) ?? null} />
+				<form method="post" class="actions" style="align-items:end">
+					<input type="hidden" name="code" value={j.code} />
+					<input type="hidden" name="intent" value="assign" />
+					<label style="min-width:220px">
+						Sürücü
+						<select name="driver_id">
+							<option value="">— Sürücü seçin —</option>
+							{drivers.map((d) => (
+								<option value={d.id} selected={d.id === j.driver_id}>
+									{d.name}
+									{d.plate ? ` · ${d.plate}` : ""}
+									{d.class_name ? ` · ${d.class_name}` : ""}
+								</option>
+							))}
+						</select>
+					</label>
+					<button class="btn" type="submit">{j.driver_id ? "Sürücüyü değiştir" : "Sürücü ata"}</button>
+				</form>
+			</div>
+		))
+	}
+</OpsLayout>

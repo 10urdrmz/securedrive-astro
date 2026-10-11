@@ -77,7 +77,7 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			.selectFrom("sd_booking_events as e")
 			.innerJoin("sd_bookings as b", "b.id", "e.booking_id")
 			.select(["e.id", "e.at", "e.data", "e.type", "b.code", "b.contact_name"])
-			.where("e.type", "in", ["driver_declined", "quote_accepted", "quote_declined", "auto_unmatched"])
+			.where("e.type", "in", ["driver_declined", "quote_accepted", "quote_declined", "auto_unmatched", "carrier_declined"])
 			.orderBy("e.at", "desc")
 			.limit(limit)
 			.execute(),
@@ -155,6 +155,22 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 					kind: accepted ? ("booking" as const) : ("declined" as const),
 					title: `${accepted ? "Teklif onaylandı" : "Teklif reddedildi"} · ${d.code}`,
 					detail: [d.contact_name, accepted ? "sürücü atayın" : "rezervasyon kapandı"].filter(Boolean).join(" · "),
+					href: `/ops/rezervasyonlar/${d.code}`,
+					at: String(d.at),
+				};
+			}
+			if (d.type === "carrier_declined") {
+				let partner = "";
+				try {
+					partner = (JSON.parse(String(d.data)) as { partnerName?: string }).partnerName ?? "";
+				} catch {
+					// The title alone is enough.
+				}
+				return {
+					key: `carrier:${d.id}`,
+					kind: "declined" as const,
+					title: `Partner işi reddetti · ${d.code}`,
+					detail: [partner, "başka partnere verin ya da sürücü atayın"].filter(Boolean).join(" · "),
 					href: `/ops/rezervasyonlar/${d.code}`,
 					at: String(d.at),
 				};

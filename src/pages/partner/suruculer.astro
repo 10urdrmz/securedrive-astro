@@ -1,0 +1,182 @@
+---
+/**
+ * A partner's own drivers. New drivers wait for SecureDrive's approval; once approved
+ * the partner gives them a PIN for the driver app and puts them on jobs.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { ulid } from "../../server/ids";
+import { audit, readForm, text } from "../../server/ops";
+import { driversWithAccess, issuePin, phoneKey, revokeAccess } from "../../server/driver-app";
+import { requirePartner } from "../../server/partners";
+
+const ctx = await requirePartner(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, org } = ctx;
+
+const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name"]).orderBy("sort").execute();
+
+let notice = "";
+let error = "";
+let issued: { name: string; phone: string; pin: string } | null = null;
+const form = await readForm(Astro);
+const intent = form ? text(form, "intent", 20) : "";
+if (form) {
+	const id = text(form, "id", 40);
+	// Only this partner's drivers, whatever the form says.
+	const own = id ? await db.selectFrom("sd_drivers").selectAll().where("id", "=", id).where("org_id", "=", org.id).executeTakeFirst() : null;
+	if (id && !own) {
+		error = "Sürücü bulunamadı.";
+	} else if (intent === "pin" || intent === "revoke") {
+		if (own!.approval !== "approved") error = "SecureDrive bu sürücüyü onaylamadan PIN verilemez.";
+		else if (intent === "pin") {
+			issued = { name: own!.name, phone: own!.phone, pin: await issuePin(db, own!.id) };
+			await audit(db, user, "partner.driver.pin", "driver", own!.id, { org: org.id });
+		} else {
+			await revokeAccess(db, own!.id);
+			await audit(db, user, "partner.driver.revoke", "driver", own!.id, { org: org.id });
+			notice = `${own!.name} artık sürücü uygulamasına giremez.`;
+		}
+	} else {
+		const values = {
+			name: text(form, "name", 80),
+			phone: text(form, "phone", 24),
+			class_key: classes.some((c) => c.key === text(form, "class_key", 60)) ? text(form, "class_key", 60) : null,
+			plate: text(form, "plate", 16).toUpperCase() || null,
+			vehicle: text(form, "vehicle", 80) || null,
+			languages: text(form, "languages", 80),
+			status: form.get("active") === "on" ? "active" : "inactive",
+		};
+		const clash = await db
+			.selectFrom("sd_drivers")
+			.select(["id", "phone"])
+			.execute()
+			.then((rows) => rows.find((r) => r.id !== id && phoneKey(r.phone) === phoneKey(values.phone)));
+		if (values.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(values.phone) || phoneKey(values.phone).length < 10) {
+			error = "Ad soyad ve alan koduyla tam bir telefon gerekli (05xx xxx xx xx); sürücü uygulamaya bu numarayla girer.";
+		} else if (clash) {
+			error = "Bu telefon numarası başka bir sürücüde kayıtlı.";
+		} else if (own) {
+			// Changing who drives or what car needs a fresh look from SecureDrive.
+			const changed = own.phone !== values.phone || own.plate !== values.plate || own.name !== values.name;
+			await db
+				.updateTable("sd_drivers")
+				.set({ ...values, ...(changed && own.approval === "approved" ? { approval: "pending" } : {}) })
+				.where("id", "=", own.id)
+				.where("org_id", "=", org.id)
+				.execute();
+			if (changed && own.approval === "approved") await revokeAccess(db, own.id);
+			await audit(db, user, "partner.driver.update", "driver", own.id, { org: org.id, ...values });
+			notice = changed && own.approval === "approved" ? `${values.name} güncellendi; değişiklik SecureDrive onayına gitti.` : `${values.name} güncellendi.`;
+		} else {
+			const newId = ulid();
+			await db
+				.insertInto("sd_drivers")
+				.values({ id: newId, ...values, kind: "partner", org_id: org.id, approval: "pending", notes: null })
+				.execute();
+			await audit(db, user, "partner.driver.create", "driver", newId, { org: org.id, ...values });
+			notice = `${values.name} eklendi. SecureDrive onayladığında PIN verip iş atayabilirsiniz.`;
+		}
+	}
+}
+
+const drivers = await db.selectFrom("sd_drivers").selectAll().where("org_id", "=", org.id).orderBy("status").orderBy("name").execute();
+const withAccess = await driversWithAccess(db);
+const appUrl = new URL("/surucu", Astro.url.origin).href;
+const pinMessage = issued
+	? `Merhaba ${issued.name.split(" ")[0]}, SecureDrive sürücü uygulaması: ${appUrl}\nGiriş: bu telefon numaranız ve PIN ${issued.pin}\nAçınca "Ana ekrana ekle" ile telefonunuza kurabilirsiniz.`
+	: "";
+const waDigits = (phone: string) => phone.replace(/\D/g, "").replace(/^0/, "90");
+const APPROVAL: Record<string, string> = { approved: "Onaylı", pending: "SecureDrive onayı bekleniyor", rejected: "Onaylanmadı" };
+const blank = { id: "", name: "", phone: "", class_key: classes[0]?.key ?? "", plate: "", vehicle: "", languages: "", status: "active", approval: "" };
+---
+
+<OpsLayout title="Sürücüler" user={user} panel="partner">
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	{
+		issued && (
+			<div class="notice">
+				<strong>{issued.name}</strong> için PIN: <strong style="font-size:20px;letter-spacing:0.15em">{issued.pin}</strong>
+				<br />
+				Bu PIN bir daha gösterilmez. Sürücü <a href={appUrl}>{appUrl}</a> adresinden telefon numarası ve bu PIN ile girer.
+				<div class="actions">
+					<a class="btn" href={`https://wa.me/${waDigits(issued.phone)}?text=${encodeURIComponent(pinMessage)}`} target="_blank" rel="noopener">
+						PIN'i sürücüye WhatsApp ile gönder
+					</a>
+				</div>
+			</div>
+		)
+	}
+	<p class="muted">
+		Yeni sürücüler SecureDrive onayından sonra iş alabilir. Onaylanan sürücüye PIN verin; işlerini <a href="/surucu">sürücü uygulamasında</a> görür, kabul eder ve
+		yolculuk adımlarını işaretler. Ad, telefon ya da plaka değişince sürücü yeniden onaya gider.
+	</p>
+	{
+		[blank, ...drivers].map((d) => (
+			<form class="card form-grid" method="post">
+				<input type="hidden" name="id" value={d.id} />
+				{!d.id ? (
+					<strong style="grid-column:1/-1">Yeni sürücü</strong>
+				) : (
+					<div style="grid-column:1/-1">
+						<span class:list={["badge", d.approval === "approved" && "ok", d.approval !== "approved" && "off"]}>{APPROVAL[d.approval] ?? d.approval}</span>
+					</div>
+				)}
+				<label>
+					Ad soyad
+					<input type="text" name="name" value={d.name} required />
+				</label>
+				<label>
+					Telefon
+					<input type="text" name="phone" value={d.phone} required placeholder="+90 5xx xxx xx xx" />
+				</label>
+				<label>
+					Araç sınıfı
+					<select name="class_key">
+						{classes.map((c) => <option value={c.key} selected={d.class_key === c.key}>{c.name}</option>)}
+					</select>
+				</label>
+				<label>
+					Plaka
+					<input type="text" name="plate" value={d.plate ?? ""} />
+				</label>
+				<label>
+					Araç (marka, model, renk)
+					<input type="text" name="vehicle" value={d.vehicle ?? ""} />
+				</label>
+				<label>
+					Diller
+					<input type="text" name="languages" value={d.languages} placeholder="TR, EN, AR" />
+				</label>
+				<label class="inline">
+					<input type="checkbox" name="active" checked={d.status === "active"} /> Aktif
+				</label>
+				<div><button class="btn" type="submit">{d.id ? "Kaydet" : "Ekle"}</button></div>
+				{d.id && d.approval === "approved" && (
+					<div class="access" style="grid-column:1/-1">
+						<span class:list={["badge", withAccess.has(d.id) && "ok"]}>{withAccess.has(d.id) ? "Uygulama erişimi var" : "Uygulama erişimi yok"}</span>
+						<button class="btn secondary" type="submit" name="intent" value="pin" formnovalidate>
+							{withAccess.has(d.id) ? "PIN'i yenile" : "PIN oluştur"}
+						</button>
+						{withAccess.has(d.id) && (
+							<button class="btn secondary" type="submit" name="intent" value="revoke" formnovalidate>
+								Erişimi kapat
+							</button>
+						)}
+					</div>
+				)}
+			</form>
+		))
+	}
+</OpsLayout>
+
+<style>
+	.access {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+		padding-top: 12px;
+		border-top: 1px solid var(--gray-200);
+	}
+</style>

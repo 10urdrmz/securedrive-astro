@@ -62,7 +62,14 @@ if (form && (intent === "pin" || intent === "revoke")) {
 	}
 }
 
-const drivers = await db.selectFrom("sd_drivers").selectAll().orderBy("status").orderBy("name").execute();
+const drivers = await db
+	.selectFrom("sd_drivers as d")
+	.leftJoin("sd_orgs as o", "o.id", "d.org_id")
+	.selectAll("d")
+	.select(["o.name as partner_name"])
+	.orderBy("d.status")
+	.orderBy("d.name")
+	.execute();
 const withAccess = await driversWithAccess(db);
 const logins = await recentLogins(db);
 const lockedUntil = new Map(
@@ -127,6 +134,12 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 			<form class="card form-grid" method="post">
 				<input type="hidden" name="id" value={d.id} />
 				{!d.id && <strong style="grid-column:1/-1">Yeni sürücü</strong>}
+				{"partner_name" in d && d.partner_name && (
+					<div style="grid-column:1/-1">
+						<span class="badge">{d.partner_name} sürücüsü</span>{" "}
+						{d.approval !== "approved" && <a class="badge off" href="/ops/partnerler">{d.approval === "pending" ? "Onay bekliyor" : "Onaylanmadı"}</a>}
+					</div>
+				)}
 				<label>
 					Ad soyad
 					<input type="text" name="name" value={d.name} required disabled={!canWrite} />

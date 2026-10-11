@@ -100,6 +100,8 @@ export interface Booking {
 	payment_method: PaymentMethod;
 	payment_status: string;
 	driver_id: string | null;
+	/** The partner fleet the job is given to, if any. */
+	carrier_org_id: string | null;
 	cancel_reason: string | null;
 	refund_pct: number | null;
 	tracking_token: string;
@@ -109,7 +111,7 @@ export interface Booking {
 
 /** Who did it: an ops user, the passenger (through the site), the driver (through the driver app) or the system. */
 export interface Actor {
-	kind: "ops" | "passenger" | "driver" | "system";
+	kind: "ops" | "passenger" | "driver" | "partner" | "system";
 	userId?: string | null;
 }
 
@@ -213,7 +215,7 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 			.execute();
 	}
 	await addEvent(db, id, actor, "created", null, status, { source: input.source, price_minor: price });
-	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null } as Booking;
+	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null, carrier_org_id: null } as Booking;
 }
 
 export async function addEvent(
@@ -250,7 +252,7 @@ export class ConflictError extends Error {
  * Version-checked update. Throws ConflictError when someone else changed the booking
  * since it was read; the page reloads and shows the current state.
  */
-async function updateBooking(db: Db, booking: Booking, changes: Record<string, unknown>) {
+export async function updateBooking(db: Db, booking: Booking, changes: Record<string, unknown>) {
 	const result = await db
 		.updateTable("sd_bookings")
 		.set({ ...changes, version: booking.version + 1, updated_at: new Date().toISOString() })

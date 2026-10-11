@@ -16,9 +16,12 @@ interface Props {
 	user?: SessionUser | null;
 	/** Current path, to highlight the menu entry. */
 	active?: string;
+	/** The same shell serves partner fleets (/partner) with their own menu. */
+	panel?: "ops" | "partner";
 }
 
-const { title, user, active = Astro.url.pathname } = Astro.props;
+const { title, user, active = Astro.url.pathname, panel = "ops" } = Astro.props;
+const partner = panel === "partner";
 
 const watch = !!user && can(user, "bookings.read");
 let counts: OpsCounts = { requests: 0, bookings: 0 };
@@ -37,13 +40,21 @@ const ago = (iso: string) => {
 
 type IconName = Parameters<typeof Icon>[0]["name"];
 type NavItem = { href: string; label: string; icon: IconName; show: boolean; count?: keyof OpsCounts; hint?: string };
-const NAV_ALL: NavItem[] = user
-	? [
+const NAV_ALL: NavItem[] = !user
+	? []
+	: partner
+		? [
+				{ href: "/partner", label: "İşler", icon: "calendar", show: true },
+				{ href: "/partner/suruculer", label: "Sürücüler", icon: "user", show: true },
+				{ href: "/partner/finans", label: "Hakediş", icon: "wallet", show: true },
+			]
+		: [
 			{ href: "/ops", label: "Pano", icon: "dashboard", show: true },
 			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", icon: "calendar", show: can(user, "bookings.read"), count: "bookings" as const, hint: "sürücü bekleyen" },
 			{ href: "/ops/talepler", label: "Fiyat talepleri", icon: "inbox", show: can(user, "bookings.read"), count: "requests" as const, hint: "yeni talep" },
 			{ href: "/ops/harita", label: "Canlı harita", icon: "map", show: can(user, "bookings.read") },
 			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read") },
+			{ href: "/ops/partnerler", label: "Partner filolar", icon: "building", show: can(user, "bookings.read") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", icon: "pin", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", icon: "car", show: can(user, "catalog.read") },
@@ -51,8 +62,7 @@ const NAV_ALL: NavItem[] = user
 			{ href: "/ops/yonetim/ayarlar", label: "Kurallar", icon: "sliders", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/kullanicilar", label: "Ekip", icon: "users", show: can(user, "users.manage") },
 			{ href: "/ops/yonetim/denetim", label: "Denetim kaydı", icon: "file", show: can(user, "audit.read") },
-		]
-	: [];
+			];
 const NAV = NAV_ALL.filter((item) => item.show);
 
 Astro.response.headers.set("Cache-Control", "no-store");
@@ -66,12 +76,12 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="robots" content="noindex, nofollow" />
-		<title>{title} · SecureDrive Operasyon</title>
+		<title>{title} · SecureDrive {partner ? "Partner" : "Operasyon"}</title>
 		<link rel="icon" href="/favicon.svg" />
 	</head>
 	<body class="ops">
 		<header class="ops-top">
-			<a class="ops-brand" href="/ops">SecureDrive <span>Operasyon</span></a>
+			<a class="ops-brand" href={partner ? "/partner" : "/ops"}>SecureDrive <span>{partner ? "Partner" : "Operasyon"}</span></a>
 			{
 				user && (
 					<div class="ops-user">
@@ -112,7 +122,7 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 						<span>
 							{user.name} · {user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}
 						</span>
-						<form method="post" action="/ops/cikis">
+						<form method="post" action={partner ? "/partner/cikis" : "/ops/cikis"}>
 							<button type="submit" class="ops-link">Çıkış</button>
 						</form>
 					</div>
@@ -122,9 +132,9 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		<div class:list={["ops-shell", NAV.length === 0 && "no-nav"]}>
 			{
 				NAV.length > 0 && (
-					<nav class="ops-nav" aria-label="Operasyon menüsü">
+					<nav class="ops-nav" aria-label={partner ? "Partner menüsü" : "Operasyon menüsü"}>
 						{NAV.map((item) => (
-							<a href={item.href} aria-current={active === item.href || (item.href !== "/ops" && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
+							<a href={item.href} aria-current={active === item.href || (item.href !== "/ops" && item.href !== "/partner" && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
 								<Icon name={item.icon} size={18} class="ops-nav-icon" />
 								<span>{item.label}</span>
 								{item.count && (

@@ -1,0 +1,47 @@
+---
+/** One job as a partner sees it: the trip and their payout, never the passenger's price, phone or e-mail. */
+import { PAYMENT_METHOD_LABELS, STATUS_LABELS, type PaymentMethod } from "../server/bookings";
+import { FLIGHT_STATUS_LABELS, type FlightView } from "../server/flights";
+import { formatMoney } from "../server/ops";
+import type { PartnerJobRow } from "../server/partners";
+import { isoToIstanbul } from "../server/pricing";
+
+interface Props {
+	j: PartnerJobRow;
+	flight?: FlightView | null;
+}
+const { j, flight } = Astro.props;
+const { date, time } = isoToIstanbul(j.pickup_at);
+const day = new Intl.DateTimeFormat("tr-TR", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+const cash = j.payment_method === "cash" || j.payment_method === "card_in_vehicle";
+---
+
+<div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline">
+	<strong style="font-size:18px">{day} · {time}</strong>
+	<span class="muted">{j.code} · {STATUS_LABELS[j.status]}</span>
+</div>
+<p style="margin:6px 0 0;font-weight:600">{j.from_name} → {j.to_name}</p>
+<table class="data" style="margin-top:8px">
+	<tbody>
+		{j.pickup_address && <tr><th>Alış adresi</th><td>{j.pickup_address}</td></tr>}
+		{j.dropoff_address && <tr><th>Varış adresi</th><td>{j.dropoff_address}</td></tr>}
+		<tr><th>Araç</th><td>{j.class_name} · {j.pax} kişi · {j.bags} bavul</td></tr>
+		{
+			j.flight_no && (
+				<tr>
+					<th>Uçuş</th>
+					<td>
+						{j.flight_no}
+						{flight && <> · {FLIGHT_STATUS_LABELS[flight.status]}{flight.at && <> · iniş {isoToIstanbul(flight.at).time}</>}{flight.delayMin > 0 && <> · +{flight.delayMin} dk</>}</>}
+					</td>
+				</tr>
+			)
+		}
+		<tr><th>Yolcu</th><td>{j.contact_name}{j.sign_name && <> · tabela: {j.sign_name}</>}</td></tr>
+		{j.job_note && <tr><th>SecureDrive notu</th><td>{j.job_note}</td></tr>}
+		{j.notes && <tr><th>Yolcu notu</th><td>{j.notes}</td></tr>}
+		<tr><th>Ödeme</th><td>{PAYMENT_METHOD_LABELS[j.payment_method as PaymentMethod] ?? j.payment_method}{cash && j.payment_status !== "paid" ? " · sürücü tahsil eder, tutar sürücü uygulamasında" : ""}</td></tr>
+		<tr><th>Hakedişiniz</th><td><strong>{formatMoney(j.payout_minor)} ₺</strong></td></tr>
+		{j.job_status === "accepted" && <tr><th>Sürücü</th><td>{j.driver_name ?? <span class="badge off">Atanmadı</span>}</td></tr>}
+	</tbody>
+</table>

@@ -5,7 +5,10 @@
 
 export const INTERNAL_ROLES = ["super_admin", "ops_manager", "ops_agent", "support_agent", "finance"] as const;
 export type InternalRole = (typeof INTERNAL_ROLES)[number];
-export type Role = InternalRole | "passenger";
+/** Partner fleet staff; they only ever see their own organisation's jobs. */
+export const PARTNER_ROLES = ["carrier_admin"] as const;
+export type PartnerRole = (typeof PARTNER_ROLES)[number];
+export type Role = InternalRole | PartnerRole | "passenger";
 
 export const ROLE_LABELS: Record<Role, string> = {
 	super_admin: "Süper admin",
@@ -13,6 +16,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 	ops_agent: "Operasyon",
 	support_agent: "Destek",
 	finance: "Finans",
+	carrier_admin: "Partner yöneticisi",
 	passenger: "Yolcu",
 };
 
@@ -27,7 +31,9 @@ export type Permission =
 	| "bookings.read"
 	| "bookings.write"
 	| "drivers.manage"
-	| "payments.write";
+	| "payments.write"
+	| "partners.manage"
+	| "partner.access";
 
 const GRANTS: Record<Role, Permission[]> = {
 	super_admin: [
@@ -42,11 +48,13 @@ const GRANTS: Record<Role, Permission[]> = {
 		"bookings.write",
 		"drivers.manage",
 		"payments.write",
+		"partners.manage",
 	],
-	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write"],
+	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write", "partners.manage"],
 	ops_agent: ["ops.access", "catalog.read", "bookings.read", "bookings.write"],
 	support_agent: ["ops.access", "catalog.read", "bookings.read"],
 	finance: ["ops.access", "catalog.read", "bookings.read", "payments.write"],
+	carrier_admin: ["partner.access"],
 	passenger: [],
 };
 
