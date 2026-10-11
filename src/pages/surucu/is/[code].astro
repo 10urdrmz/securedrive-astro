@@ -106,6 +106,8 @@ const tripStarted = isTracked(b.status);
 			<div class="drv-card track" data-track-code={b.code} data-tone="warn" role="status">
 				<span class="track-dot" aria-hidden="true" />
 				<span data-track-status>Konum paylaşımı başlıyor…</span>
+				<ol class="track-help" data-track-help hidden />
+				<button type="button" class="drv-btn ghost track-retry" data-track-retry hidden>Tekrar dene</button>
 				<p class="drv-muted">Yolcu ve operasyon aracınızı haritada görür. Yolculuk bitene kadar bu sayfayı açık tutun.</p>
 			</div>
 		)
@@ -195,6 +197,25 @@ const tripStarted = isTracked(b.status);
 		margin: 0;
 		font-size: 14px;
 		font-weight: 400;
+	}
+	.track-help {
+		grid-column: 2;
+		margin: 4px 0 0;
+		padding-inline-start: 18px;
+		font-size: 14px;
+		font-weight: 500;
+		color: var(--drv-ink);
+		display: grid;
+		gap: 4px;
+	}
+	.track-help[hidden],
+	.track-retry[hidden] {
+		display: none;
+	}
+	.track-retry {
+		grid-column: 2;
+		min-height: 44px;
+		margin-top: 4px;
 	}
 	.track-dot {
 		width: 10px;

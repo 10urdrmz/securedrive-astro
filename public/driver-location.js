@@ -48,15 +48,54 @@
 	};
 
 	const onPosition = (position) => {
+		showHelp(false);
 		pending = position;
 		if (Date.now() - lastSent >= SEND_EVERY_MS) send(position);
 	};
 
+	const help = box.querySelector("[data-track-help]");
+	const retry = box.querySelector("[data-track-retry]");
+	const ua = navigator.userAgent;
+	const iphone = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+	const iosApp = /CriOS/.test(ua) ? "Chrome" : /FxiOS/.test(ua) ? "Firefox" : /EdgiOS/.test(ua) ? "Edge" : "Safari";
+	// Where the switch is on the driver's own phone, step by step.
+	const steps = iphone
+		? [
+				"Sayfayı WhatsApp içinden açtıysanız önce Safari'de açın (sağ alttaki pusula simgesi).",
+				"Ayarlar → Gizlilik ve Güvenlik → Konum Servisleri'ni açın.",
+				iosApp === "Safari"
+					? "Aynı sayfanın altında Safari Web Siteleri → \"Uygulamayı Kullanırken\" seçin, Kesin Konum'u açın."
+					: `Aynı sayfada ${iosApp} → "Uygulamayı Kullanırken" seçin, Kesin Konum'u açın.`,
+				...(iosApp === "Safari"
+					? [
+							"Ayarlar → Uygulamalar → Safari → Konum: \"Sor\" ya da \"İzin Ver\" seçin.",
+							"Safari'de adres çubuğundaki aA simgesi → Web Sitesi Ayarları → Konum → İzin Ver.",
+						]
+					: []),
+				"Sonra aşağıdaki \"Tekrar dene\" butonuna basın.",
+			]
+		: [
+				"Adres çubuğundaki kilit ya da ayar simgesine dokunun → İzinler → Konum → İzin ver.",
+				"Telefonun Ayarlar → Konum'unun açık olduğundan emin olun.",
+				"Sonra aşağıdaki \"Tekrar dene\" butonuna basın.",
+			];
+
+	const showHelp = (show) => {
+		if (help) {
+			help.replaceChildren(...(show ? steps.map((step) => Object.assign(document.createElement("li"), { textContent: step })) : []));
+			help.hidden = !show;
+		}
+		if (retry) retry.hidden = !show;
+	};
+
 	const onError = (error) => {
 		if (error.code === error.PERMISSION_DENIED) {
-			say("Konum izni verilmedi. Telefon ayarlarından bu siteye konum izni verin ki yolcu aracı görebilsin.", "error");
+			say("Konum izni yok. Yolcu aracı göremez. Açmak için:", "error");
+			showHelp(true);
 		} else {
-			say("Konum alınamıyor. GPS'in açık olduğundan emin olun.", "warn");
+			say("Konum alınamıyor. GPS'in açık olduğundan ve açık havada olduğunuzdan emin olun.", "warn");
+			showHelp(false);
+			if (retry) retry.hidden = false;
 		}
 	};
 
@@ -68,9 +107,15 @@
 		}
 	};
 
-	say("Konum izni isteniyor…", "warn");
-	watch = navigator.geolocation.watchPosition(onPosition, onError, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
-	keepAwake();
+	const begin = () => {
+		if (watch !== null) navigator.geolocation.clearWatch(watch);
+		say("Konum izni isteniyor…", "warn");
+		watch = navigator.geolocation.watchPosition(onPosition, onError, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+		keepAwake();
+	};
+	// A tap counts as the driver's own request, which some phones need before they ask.
+	retry?.addEventListener("click", begin);
+	begin();
 	// The phone may hold back updates when standing still: resend the latest one now and then.
 	setInterval(() => {
 		if (watch !== null && pending && Date.now() - lastSent >= SEND_EVERY_MS * 2) send(pending);
