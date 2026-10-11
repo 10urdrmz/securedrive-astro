@@ -17,6 +17,11 @@
 			"bucket_name": "securedrive-media",
 		},
 	],
+	// Live chat: one room per booking (src/chat-room.ts).
+	"durable_objects": {
+		"bindings": [{ "name": "CHAT", "class_name": "ChatRoom" }],
+	},
+	"migrations": [{ "tag": "chat-v1", "new_sqlite_classes": ["ChatRoom"] }],
 	// Sandboxed plugins require Worker Loader, available on Workers paid plans. Uncomment to enable:
 	// "worker_loaders": [{ "binding": "LOADER" }],
 	// General maintenance cron trigger

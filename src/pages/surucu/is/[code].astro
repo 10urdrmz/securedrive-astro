@@ -4,6 +4,7 @@
  * Each step is version-checked like every other booking change, so a double tap or
  * a change ops made meanwhile cannot skip a step.
  */
+import { chatRoom } from "../../../server/realtime";
 import DriverLayout from "../../../layouts/DriverLayout.astro";
 import { getDb } from "../../../server/db";
 import { ConflictError, PAYMENT_METHOD_LABELS, type BookingStatus } from "../../../server/bookings";
@@ -61,6 +62,7 @@ await markRead(db, b.id, "driver");
 // An automatic offer: how long the driver has left to answer.
 const offerMinutes = job.offeredAt ? (await getSettings(db)).offerMinutes : 0;
 const minutesLeft = job.offeredAt ? Math.max(0, Math.ceil((Date.parse(job.offeredAt) + offerMinutes * 60_000 - Date.now()) / 60_000)) : null;
+const chatRoomName = await chatRoom(b);
 ---
 
 <DriverLayout title={b.code} driver={driver} back>
@@ -204,6 +206,7 @@ const minutesLeft = job.offeredAt ? Math.max(0, Math.ceil((Date.parse(job.offere
 		messages={messages}
 		me="driver"
 		src={`/surucu/mesajlar.json?code=${encodeURIComponent(b.code)}`}
+		room={chatRoomName}
 		writable={canWrite(b, "driver")}
 		labels={{
 			title: "Mesajlar",

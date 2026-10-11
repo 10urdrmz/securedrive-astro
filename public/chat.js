@@ -69,23 +69,79 @@
 		lastKey = list.querySelectorAll(".chat-msg").length + ":" + (list.querySelector(".chat-msg:last-child")?.dataset.id ?? "");
 		// Poll fast while a conversation is going on, slower once it has gone quiet.
 		let timer = null;
+		let live = false;
 		const schedule = () => {
 			clearTimeout(timer);
 			if (document.hidden) return;
 			const quiet = Date.now() - lastActivity > 3 * 60000;
+			// With the live connection up, polling is only a safety net.
 			timer = setTimeout(async () => {
 				await refresh();
 				schedule();
-			}, quiet ? 8000 : 2500);
+			}, live ? 30000 : quiet ? 8000 : 2500);
+		};
+
+		// Live connection: the server says "changed" the moment someone writes.
+		let socket = null;
+		let retry = 1000;
+		let keepAlive = null;
+		const connect = () => {
+			if (!box.dataset.room || !("WebSocket" in window) || document.hidden || socket) return;
+			const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/sohbet/ws?room=${box.dataset.room}`;
+			let ws;
+			try {
+				ws = new WebSocket(url);
+			} catch {
+				return;
+			}
+			socket = ws;
+			ws.addEventListener("open", () => {
+				live = true;
+				retry = 1000;
+				refresh();
+				schedule();
+				clearInterval(keepAlive);
+				keepAlive = setInterval(() => ws.readyState === 1 && ws.send("ping"), 25000);
+			});
+			ws.addEventListener("message", (event) => {
+				if (event.data === "changed") {
+					lastActivity = Date.now();
+					refresh();
+				}
+			});
+			ws.addEventListener("close", () => {
+				clearInterval(keepAlive);
+				if (socket === ws) socket = null;
+				const wasLive = live;
+				live = false;
+				schedule();
+				// Reconnect with back-off; give up quietly if the server has no live chat.
+				if (!document.hidden && (wasLive || retry < 8000)) setTimeout(connect, retry);
+				retry = Math.min(retry * 2, 30000);
+			});
 		};
 		const wake = () => {
 			lastActivity = Date.now();
 			if (!document.hidden) refresh().then(schedule);
 		};
 		schedule();
-		document.addEventListener("visibilitychange", () => (document.hidden ? clearTimeout(timer) : wake()));
+		connect();
+		document.addEventListener("visibilitychange", () => {
+			if (document.hidden) {
+				clearTimeout(timer);
+				socket?.close();
+			} else {
+				retry = 1000;
+				wake();
+				connect();
+			}
+		});
 		window.addEventListener("focus", wake);
-		window.addEventListener("online", wake);
+		window.addEventListener("online", () => {
+			retry = 1000;
+			wake();
+			connect();
+		});
 		field?.addEventListener("input", () => (lastActivity = Date.now()));
 
 		box.querySelectorAll("[data-chat-quick]").forEach((button) =>
