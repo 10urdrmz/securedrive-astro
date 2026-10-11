@@ -5,6 +5,7 @@
  * trip facts, payment, help and cancelling follow. Data and actions come from
  * lib/booking-page.ts; the wizard lives in BookView.
  */
+import { chatRoom } from "../server/realtime";
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import Notice from "../components/Notice.astro";
@@ -62,6 +63,7 @@ const NOTICE: Partial<Record<NonNullable<BookingDetail["notice"]>, UiKey>> = {
 	quoteDeclined: "book.quoteDeclined",
 	cancelled: "book.cancelled",
 };
+const chatRoomName = await chatRoom(booking);
 ---
 
 <Base locale={locale} path={`${BOOK_SLUG}/${booking.code}`} title={t("book.detailTitle", { code: booking.code })} description={t("book.lead")} noindex hideDock>
@@ -230,6 +232,7 @@ const NOTICE: Partial<Record<NonNullable<BookingDetail["notice"]>, UiKey>> = {
 								messages={page.messages}
 								me="passenger"
 								src={`/api/mesajlar.json?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`}
+								room={chatRoomName}
 								writable={page.chatWritable}
 								dir={dir}
 								labels={{

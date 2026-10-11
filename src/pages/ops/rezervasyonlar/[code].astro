@@ -5,6 +5,7 @@
  * dispatchers editing the same booking get a "changed meanwhile" notice instead of
  * silently overwriting each other.
  */
+import { chatRoom } from "../../../server/realtime";
 import OpsLayout from "../../../layouts/OpsLayout.astro";
 import { bookPath, isLocale } from "../../../i18n/locales";
 import { describe } from "../../../lib/booking-page";
@@ -163,6 +164,7 @@ const ack = booking.driver_id
 const driverHasApp = booking.driver_id
 	? !!(await db.selectFrom("sd_driver_access").select("driver_id").where("driver_id", "=", booking.driver_id).executeTakeFirst())
 	: false;
+const chatRoomName = await chatRoom(booking);
 ---
 
 <OpsLayout title={`Rezervasyon ${booking.code}`} user={user} active="/ops/rezervasyonlar">
@@ -380,6 +382,7 @@ const driverHasApp = booking.driver_id
 			messages={messages}
 			me="ops"
 			src={`/ops/mesajlar.json?code=${encodeURIComponent(booking.code)}`}
+			room={chatRoomName}
 			writable={canWrite}
 			labels={{
 				title: "Mesajlar",

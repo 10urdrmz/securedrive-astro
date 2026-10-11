@@ -11,6 +11,8 @@ interface Props {
 	me: ChatRole;
 	/** JSON endpoint chat.js polls. */
 	src: string;
+	/** Live room name from server/realtime.ts chatRoom(); pages get new messages pushed through it. */
+	room?: string;
 	writable: boolean;
 	labels: {
 		title: string;
@@ -30,7 +32,7 @@ interface Props {
 	dir?: "ltr" | "rtl";
 }
 
-const { messages, me, src, writable, labels, quick = [], dir = "ltr" } = Astro.props;
+const { messages, me, src, room, writable, labels, quick = [], dir = "ltr" } = Astro.props;
 const time = (iso: string) => new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
 const who = (m: ChatMessage) => {
 	if (m.sender === me) return labels.you;
@@ -45,6 +47,7 @@ const who = (m: ChatMessage) => {
 	dir={dir}
 	data-chat
 	data-src={src}
+	data-room={room}
 	data-me={me}
 	data-l-passenger={labels.passenger}
 	data-l-driver={labels.driver}

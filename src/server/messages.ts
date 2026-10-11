@@ -10,6 +10,7 @@
 import type { Db } from "./db";
 import { ulid } from "./ids";
 import { FINAL_STATUSES, type Booking } from "./bookings";
+import { notifyChat } from "./realtime";
 
 export type ChatRole = "passenger" | "driver" | "ops";
 export type Sender = ChatRole | "system";
@@ -86,6 +87,7 @@ export async function postMessage(db: Db, booking: Booking, sender: ChatRole, se
 	const at = new Date().toISOString();
 	await db.insertInto("sd_messages").values({ id: ulid(), booking_id: booking.id, sender, sender_id: senderId, sender_name: senderName, body, at }).execute();
 	await markRead(db, booking.id, sender, at);
+	await notifyChat(booking);
 	return true;
 }
 
