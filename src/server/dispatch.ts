@@ -77,6 +77,7 @@ export async function runDispatch(db: Db, now = Date.now()): Promise<DispatchRes
 		.selectAll()
 		.where("status", "=", "confirmed")
 		.where("driver_id", "is", null)
+		.where("carrier_org_id", "is", null)
 		.where("pickup_at", ">", new Date(now).toISOString())
 		.where("pickup_at", "<=", new Date(now + settings.autoAssignHours * 3600_000).toISOString())
 		.orderBy("pickup_at")
@@ -129,6 +130,8 @@ export async function bestDriver(db: Db, booking: Booking): Promise<Candidate | 
 		.innerJoin("sd_driver_access as x", "x.driver_id", "d.id")
 		.select(["d.id", "d.name"])
 		.where("d.status", "=", "active")
+		// Own fleet only: partner drivers get work through their partner.
+		.where("d.org_id", "is", null)
 		.where((eb) => eb.or([eb("d.class_key", "is", null), eb("d.class_key", "=", booking.class_key)]))
 		// Anyone who already had it (declined, timed out, released) is not asked again.
 		.where("d.id", "not in", db.selectFrom("sd_assignments").select("driver_id").where("booking_id", "=", booking.id))

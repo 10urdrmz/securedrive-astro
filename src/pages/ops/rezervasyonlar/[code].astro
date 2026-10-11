@@ -31,6 +31,7 @@ import { getSettings } from "../../../server/settings";
 import { isTracked } from "../../../server/live-location";
 import ChatBox from "../../../components/ChatBox.astro";
 import { listMessages, markRead, postMessage } from "../../../server/messages";
+import { CARRIER_JOB_LABELS, currentCarrierJob, listPartners, offerToPartner, PARTNER_ANSWER_MINUTES, withdrawFromPartner } from "../../../server/partners";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -85,8 +86,21 @@ if (form) {
 			notice = `Durum: ${STATUS_LABELS[to]}.`;
 		} else if (intent === "assign" && canWrite) {
 			const driverId = text(form, "driver_id", 40) || null;
+			// Our own driver takes over from a partner.
+			if (driverId && booking.carrier_org_id) {
+				await withdrawFromPartner(db, booking, actor);
+				booking = (await getBookingByCode(db, code))!;
+			}
 			await assignDriver(db, booking, driverId, actor);
 			notice = driverId ? "Sürücü atandı. İş sürücü uygulamasında görünür; yolcuyla sürücü bu sayfadaki mesajlardan yazışır." : "Atama kaldırıldı.";
+		} else if (intent === "partner" && canWrite) {
+			const payout = parseMoney(text(form, "payout", 20));
+			if (!payout) throw new Error("Partnerin alacağı tutarı yazın. Örnek: 1.800");
+			await offerToPartner(db, booking, text(form, "org_id", 40), payout, actor, text(form, "note", 300) || null);
+			notice = "İş partnere verildi. Partner panelinden kabul edip kendi sürücüsünü atayacak.";
+		} else if (intent === "partner_back" && canWrite) {
+			await withdrawFromPartner(db, booking, actor);
+			notice = "İş partnerden geri alındı.";
 		} else if (intent === "payment" && canPay) {
 			const amount = parseMoney(text(form, "amount", 20));
 			const kind = text(form, "kind", 10) === "refund" ? "refund" : "charge";
@@ -115,7 +129,12 @@ if (form) {
 const info = await describe(db, booking);
 const settings = await getSettings(db);
 const at = isoToIstanbul(booking.pickup_at);
-const drivers = await db.selectFrom("sd_drivers").selectAll().where("status", "=", "active").orderBy("name").execute();
+// Direct assignment is for our own fleet; partner drivers come through their partner.
+const drivers = await db.selectFrom("sd_drivers").selectAll().where("status", "=", "active").where("org_id", "is", null).orderBy("name").execute();
+const partners = (await listPartners(db)).filter((p) => p.status === "active");
+const carrierJob = await currentCarrierJob(db, booking.id);
+const carrier = carrierJob ? (partners.find((p) => p.id === carrierJob.org_id) ?? (await listPartners(db)).find((p) => p.id === carrierJob.org_id)) : null;
+const answerLate = carrierJob?.status === "offered" && Date.now() - Date.parse(carrierJob.offered_at) > PARTNER_ANSWER_MINUTES * 60_000;
 const sameClass = drivers.filter((d) => d.class_key === booking!.class_key);
 const otherClass = drivers.filter((d) => d.class_key !== booking!.class_key);
 const events = await db
@@ -160,6 +179,10 @@ const EVENT_LABELS: Record<string, string> = {
 	offer_timed_out: "Sürücü süresinde cevap vermedi",
 	auto_unmatched: "Otomatik atama uygun sürücü bulamadı",
 	flight_update: "Uçuş durumu",
+	carrier_offered: "İş partnere verildi",
+	carrier_accepted: "Partner işi kabul etti",
+	carrier_declined: "Partner işi reddetti",
+	carrier_released: "İş partnerden geri alındı",
 };
 const eventDriver = (data: unknown) => {
 	try {
@@ -180,7 +203,15 @@ const eventFlight = (data: unknown) => {
 		return "";
 	}
 };
-const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", system: "Sistem" };
+const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", partner: "Partner", system: "Sistem" };
+const eventPartner = (data: unknown) => {
+	try {
+		const d = JSON.parse(String(data)) as { partnerName?: string; payoutMinor?: number };
+		return [d.partnerName, d.payoutMinor ? `${formatMoney(d.payoutMinor)} ₺` : ""].filter(Boolean).join(" · ");
+	} catch {
+		return "";
+	}
+};
 // The current driver's answer in the driver app (no row: not answered yet).
 const ack = booking.driver_id
 	? await db
@@ -334,6 +365,50 @@ const chatRoomName = await chatRoom(booking);
 			<h2 style="margin-top:0">Canlı konum</h2>
 			<div data-live-map-canvas />
 			<p class="muted" data-live-map-note style="margin:10px 0 0">Harita yükleniyor…</p>
+		</div>
+	)}
+
+	{(carrierJob || (canWrite && !isFinal && !isQuote && partners.length > 0)) && (
+		<div class="card">
+			<h2 style="margin-top:0">Partner filo</h2>
+			{carrierJob && carrier && (
+				<p>
+					<strong>{carrier.name}</strong> · partnerin alacağı <strong>{formatMoney(carrierJob.payout_minor)} ₺</strong>{" "}
+					<span class:list={["badge", carrierJob.status === "accepted" && "ok"]} style={carrierJob.status === "offered" ? "background:#fffaeb;color:#b54708" : undefined}>
+						{CARRIER_JOB_LABELS[carrierJob.status]}
+					</span>
+					{answerLate && <span class="badge off">{PARTNER_ANSWER_MINUTES} dakikada cevap vermedi</span>}
+					{carrierJob.status === "accepted" && !booking.driver_id && <span class="muted"> · partner henüz sürücü atamadı</span>}
+				</p>
+			)}
+			{canWrite && !isFinal && !isQuote && (
+				<form method="post" class="form-grid" style="margin-top:12px">
+					<input type="hidden" name="intent" value="partner" />
+					<input type="hidden" name="version" value={booking.version} />
+					<label>
+						{carrierJob ? "Başka partnere ver" : "İşi partnere ver"}
+						<select name="org_id" required>
+							{partners.map((p) => <option value={p.id} selected={p.id === carrierJob?.org_id}>{p.name}</option>)}
+						</select>
+					</label>
+					<label>
+						Partnerin alacağı (₺)
+						<input type="text" name="payout" inputmode="decimal" required value={carrierJob ? formatMoney(carrierJob.payout_minor) : booking.payout_minor ? formatMoney(booking.payout_minor) : ""} placeholder="1.800" />
+					</label>
+					<label>
+						Partnere not
+						<input type="text" name="note" />
+					</label>
+					<div><button class="btn" type="submit">Partnere gönder</button></div>
+				</form>
+			)}
+			{canWrite && !isFinal && carrierJob && (
+				<form method="post" class="actions">
+					<input type="hidden" name="intent" value="partner_back" />
+					<input type="hidden" name="version" value={booking.version} />
+					<button class="btn secondary" type="submit">Partnerden geri al</button>
+				</form>
+			)}
 		</div>
 	)}
 
@@ -508,6 +583,7 @@ const chatRoomName = await chatRoom(booking);
 							{EVENT_LABELS[e.type] ?? e.type}
 							{["auto_offered", "offer_timed_out", "driver_accepted", "driver_declined"].includes(e.type) && eventDriver(e.data) && <> · {eventDriver(e.data)}</>}
 							{e.type === "flight_update" && eventFlight(e.data) && <> · {eventFlight(e.data)}</>}
+							{e.type.startsWith("carrier_") && eventPartner(e.data) && <> · {eventPartner(e.data)}</>}
 							{e.to_status && e.type === "status_change" && <> → {STATUS_LABELS[e.to_status as BookingStatus] ?? e.to_status}</>}
 						</td>
 						<td class="muted">{e.user_name ?? ACTORS[e.actor] ?? e.actor}</td>

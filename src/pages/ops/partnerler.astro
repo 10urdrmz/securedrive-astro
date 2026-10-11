@@ -1,0 +1,202 @@
+---
+/**
+ * Partner fleets: companies with their own drivers that take jobs from us. Ops opens
+ * their account (a login for the partner panel at /partner) and approves the drivers
+ * they add before those drivers can work.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { can } from "../../server/auth/rbac";
+import { revokeAccess } from "../../server/driver-app";
+import { audit, readForm, requireOps, text } from "../../server/ops";
+import { createPartner, getPartner, listPartners, resetPartnerPassword } from "../../server/partners";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canManage = can(user, "partners.manage");
+const canApprove = can(user, "drivers.manage");
+
+let notice = "";
+let error = "";
+let credentials: { name: string; login: string; password: string } | null = null;
+const form = await readForm(Astro);
+if (form) {
+	const intent = text(form, "intent", 20);
+	try {
+		if (intent === "create" && canManage) {
+			const name = text(form, "name", 120);
+			const login = text(form, "login", 120).toLowerCase();
+			const contactName = text(form, "contact_name", 80);
+			if (name.length < 2 || contactName.length < 2) throw new Error("Firma adı ve yetkili adı gerekli.");
+			if (!/^[a-z0-9._@+-]{3,120}$/.test(login)) throw new Error("Giriş için e-posta ya da harf, rakam ve . _ - içeren bir kullanıcı adı yazın.");
+			const created = await createPartner(db, { name, legalName: text(form, "legal_name", 160) || null, taxNo: text(form, "tax_no", 20) || null, contactName, login });
+			await audit(db, user, "partner.create", "org", created.id, { name });
+			credentials = { name, login, password: created.password };
+		} else if (intent === "reset" && canManage) {
+			const partner = await getPartner(db, text(form, "id", 40));
+			const reset = partner ? await resetPartnerPassword(db, partner.id) : null;
+			if (!partner || !reset) throw new Error("Partner hesabı bulunamadı.");
+			await audit(db, user, "partner.password_reset", "org", partner.id);
+			credentials = { name: partner.name, ...reset };
+		} else if (intent === "toggle" && canManage) {
+			const partner = await getPartner(db, text(form, "id", 40));
+			if (!partner) throw new Error("Partner bulunamadı.");
+			const status = partner.status === "active" ? "inactive" : "active";
+			await db.updateTable("sd_orgs").set({ status }).where("id", "=", partner.id).execute();
+			await audit(db, user, `partner.${status}`, "org", partner.id);
+			notice = status === "active" ? `${partner.name} yeniden aktif.` : `${partner.name} pasif: panele giremez, yeni iş verilemez.`;
+		} else if ((intent === "approve" || intent === "reject") && canApprove) {
+			const id = text(form, "driver_id", 40);
+			const driver = await db.selectFrom("sd_drivers").select(["id", "name"]).where("id", "=", id).where("org_id", "is not", null).executeTakeFirst();
+			if (!driver) throw new Error("Sürücü bulunamadı.");
+			await db.updateTable("sd_drivers").set({ approval: intent === "approve" ? "approved" : "rejected" }).where("id", "=", driver.id).execute();
+			if (intent === "reject") await revokeAccess(db, driver.id);
+			await audit(db, user, `partner.driver.${intent}`, "driver", driver.id);
+			notice = intent === "approve" ? `${driver.name} onaylandı; partner artık PIN verip iş atayabilir.` : `${driver.name} onaylanmadı.`;
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const partners = await listPartners(db);
+const pending = await db
+	.selectFrom("sd_drivers as d")
+	.innerJoin("sd_orgs as o", "o.id", "d.org_id")
+	.leftJoin("sd_vehicle_classes as c", "c.key", "d.class_key")
+	.select(["d.id", "d.name", "d.phone", "d.plate", "d.vehicle", "d.languages", "o.name as partner_name", "c.name as class_name"])
+	.where("d.approval", "=", "pending")
+	.orderBy("d.created_at")
+	.execute();
+const stats = new Map<string, { drivers: number; open: number; done: number }>();
+for (const p of partners) {
+	const [drivers, open, done] = await Promise.all([
+		db.selectFrom("sd_drivers").select((eb) => eb.fn.countAll<number>().as("n")).where("org_id", "=", p.id).where("approval", "=", "approved").executeTakeFirst(),
+		db
+			.selectFrom("sd_bookings")
+			.select((eb) => eb.fn.countAll<number>().as("n"))
+			.where("carrier_org_id", "=", p.id)
+			.where("status", "not in", ["completed", "cancelled", "no_show"])
+			.executeTakeFirst(),
+		db.selectFrom("sd_bookings").select((eb) => eb.fn.countAll<number>().as("n")).where("carrier_org_id", "=", p.id).where("status", "=", "completed").executeTakeFirst(),
+	]);
+	stats.set(p.id, { drivers: Number(drivers?.n ?? 0), open: Number(open?.n ?? 0), done: Number(done?.n ?? 0) });
+}
+const panelUrl = new URL("/partner", Astro.url.origin).href;
+---
+
+<OpsLayout title="Partner filolar" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	{
+		credentials && (
+			<div class="notice">
+				<strong>{credentials.name}</strong> partner paneli girişi: <a href={panelUrl}>{panelUrl}</a>
+				<br />
+				Kullanıcı: <strong>{credentials.login}</strong> · Şifre: <strong style="letter-spacing:0.05em">{credentials.password}</strong>
+				<br />
+				Şifre bir daha gösterilmez; partnere güvenli bir yoldan iletin.
+			</div>
+		)
+	}
+	<p class="muted">
+		Partner filolar kendi sürücü ve araçlarıyla iş alan firmalardır. Rezervasyon sayfasından işi bir partnere, partnerin alacağı tutarla verirsiniz; partner
+		<a href="/partner">/partner</a> panelinden kabul eder ve kendi sürücüsünü atar. Partner yolcunun ödediği fiyatı, telefonunu ve e-postasını görmez.
+	</p>
+
+	{
+		pending.length > 0 && (
+			<div class="card">
+				<h2 style="margin-top:0">Onay bekleyen partner sürücüleri</h2>
+				<table class="data">
+					<tbody>
+						{pending.map((d) => (
+							<tr>
+								<td>
+									<strong>{d.name}</strong>
+									<div class="muted">{d.partner_name}</div>
+								</td>
+								<td>
+									{d.phone}
+									<div class="muted">{[d.plate, d.vehicle, d.class_name, d.languages].filter(Boolean).join(" · ")}</div>
+								</td>
+								<td>
+									{canApprove && (
+										<form method="post" class="actions" style="margin:0">
+											<input type="hidden" name="driver_id" value={d.id} />
+											<button class="btn" type="submit" name="intent" value="approve">Onayla</button>
+											<button class="btn secondary" type="submit" name="intent" value="reject">Onaylama</button>
+										</form>
+									)}
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		)
+	}
+
+	<div class="card">
+		<h2 style="margin-top:0">Partnerler</h2>
+		<table class="data">
+			<thead>
+				<tr><th>Firma</th><th>Onaylı sürücü</th><th>Açık iş</th><th>Tamamlanan</th><th></th></tr>
+			</thead>
+			<tbody>
+				{partners.map((p) => (
+					<tr>
+						<td>
+							<strong>{p.name}</strong>
+							{p.status !== "active" && <span class="badge off">Pasif</span>}
+							<div class="muted">{[p.legal_name, p.tax_no && `VKN ${p.tax_no}`].filter(Boolean).join(" · ")}</div>
+						</td>
+						<td>{stats.get(p.id)?.drivers ?? 0}</td>
+						<td>{stats.get(p.id)?.open ?? 0}</td>
+						<td>{stats.get(p.id)?.done ?? 0}</td>
+						<td>
+							{canManage && (
+								<form method="post" class="actions" style="margin:0">
+									<input type="hidden" name="id" value={p.id} />
+									<button class="btn secondary" type="submit" name="intent" value="reset">Yeni şifre</button>
+									<button class="btn secondary" type="submit" name="intent" value="toggle">{p.status === "active" ? "Pasife al" : "Aktif et"}</button>
+								</form>
+							)}
+						</td>
+					</tr>
+				))}
+				{partners.length === 0 && <tr><td colspan="5" class="muted">Henüz partner yok.</td></tr>}
+			</tbody>
+		</table>
+	</div>
+
+	{
+		canManage && (
+			<form class="card form-grid" method="post">
+				<input type="hidden" name="intent" value="create" />
+				<strong style="grid-column:1/-1">Yeni partner</strong>
+				<label>
+					Firma adı
+					<input type="text" name="name" required />
+				</label>
+				<label>
+					Ticari unvan
+					<input type="text" name="legal_name" />
+				</label>
+				<label>
+					Vergi no
+					<input type="text" name="tax_no" inputmode="numeric" />
+				</label>
+				<label>
+					Yetkili adı soyadı
+					<input type="text" name="contact_name" required />
+				</label>
+				<label>
+					Panel girişi (e-posta ya da kullanıcı adı)
+					<input type="text" name="login" required autocomplete="off" />
+				</label>
+				<div><button class="btn" type="submit">Partner ekle</button></div>
+			</form>
+		)
+	}
+</OpsLayout>

@@ -391,4 +391,29 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		name: "0010_partners",
+		statements: [
+			// Partner fleets (sd_orgs kind 'carrier'): their drivers carry the org and wait for our approval.
+			`ALTER TABLE sd_drivers ADD COLUMN org_id TEXT`,
+			`ALTER TABLE sd_drivers ADD COLUMN approval TEXT NOT NULL DEFAULT 'approved'`,
+			// The partner a booking is given to; the partner then picks one of its drivers.
+			`ALTER TABLE sd_bookings ADD COLUMN carrier_org_id TEXT`,
+			`CREATE TABLE IF NOT EXISTS sd_carrier_jobs (
+				id TEXT PRIMARY KEY,
+				booking_id TEXT NOT NULL REFERENCES sd_bookings(id),
+				org_id TEXT NOT NULL REFERENCES sd_orgs(id),
+				payout_minor INTEGER NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('offered','accepted','declined','released')),
+				note TEXT,
+				offered_by TEXT,
+				offered_at TEXT NOT NULL,
+				responded_at TEXT,
+				responded_by TEXT
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_carrier_jobs_booking ON sd_carrier_jobs(booking_id, status)`,
+			`CREATE INDEX IF NOT EXISTS sd_carrier_jobs_org ON sd_carrier_jobs(org_id, status)`,
+			`CREATE INDEX IF NOT EXISTS sd_bookings_carrier ON sd_bookings(carrier_org_id)`,
+		],
+	},
 ];
