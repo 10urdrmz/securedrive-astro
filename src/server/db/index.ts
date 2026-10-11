@@ -13,19 +13,21 @@ import { MIGRATIONS } from "./migrations";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Db = Kysely<any>;
 
-let ready: Promise<void> | null = null;
+// A flag, not a shared promise: on Workers a promise started by one request never
+// settles if that request is cancelled, and every later request awaiting it would hang.
+let migrated = false;
 
 /** The request's database, with our schema guaranteed to be up to date. */
 export async function getDb(locals: App.Locals): Promise<Db> {
 	// locals.emdash is only populated on admin routes; elsewhere EmDash's own getDb()
 	// returns the request-scoped (D1 replica-aware) or shared instance.
 	const db = ((locals.emdash?.db as unknown) ?? (await getEmDashDb())) as Db;
-	// Once per isolate. A failure is not cached, so the next request retries.
-	ready ??= migrate(db).catch((error) => {
-		ready = null;
-		throw error;
-	});
-	await ready;
+	// Once per isolate. Concurrent first requests may both migrate; every statement is
+	// idempotent. A failure leaves the flag unset, so the next request retries.
+	if (!migrated) {
+		await migrate(db);
+		migrated = true;
+	}
 	return db;
 }
 

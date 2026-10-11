@@ -9,7 +9,9 @@
  */
 import { getDb } from "emdash/runtime";
 
-let ready: Promise<void> | undefined;
+// A flag, not a shared promise: on Workers a promise started by one request never
+// settles if that request is cancelled, and later requests awaiting it would hang.
+let ready = false;
 
 /** "2610" for October 2026, in the company's own time zone. */
 function period(now: Date): string {
@@ -22,17 +24,15 @@ function period(now: Date): string {
 export async function nextReference(now = new Date()): Promise<string> {
 	// The counter table is not part of EmDash's typed schema.
 	const db: any = await getDb();
-	ready ??= db.schema
-		.createTable("sd_counters")
-		.ifNotExists()
-		.addColumn("key", "text", (c: any) => c.primaryKey())
-		.addColumn("value", "integer", (c: any) => c.notNull())
-		.execute()
-		.catch((error: unknown) => {
-			ready = undefined;
-			throw error;
-		});
-	await ready;
+	if (!ready) {
+		await db.schema
+			.createTable("sd_counters")
+			.ifNotExists()
+			.addColumn("key", "text", (c: any) => c.primaryKey())
+			.addColumn("value", "integer", (c: any) => c.notNull())
+			.execute();
+		ready = true;
+	}
 
 	const yymm = period(now);
 	const row = await db
