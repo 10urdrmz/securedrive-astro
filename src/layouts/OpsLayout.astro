@@ -115,7 +115,7 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 				)
 			}
 		</header>
-		<div class="ops-shell">
+		<div class:list={["ops-shell", NAV.length === 0 && "no-nav"]}>
 			{
 				NAV.length > 0 && (
 					<nav class="ops-nav" aria-label="Operasyon menüsü">
@@ -195,6 +195,17 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		display: grid;
 		grid-template-columns: 200px 1fr;
 		min-height: calc(100vh - 48px);
+	}
+	/* Signed out (login, setup): no menu, so the page gets the whole width. */
+	.ops-shell.no-nav {
+		grid-template-columns: 1fr;
+	}
+	.ops-shell.no-nav .ops-main h1 {
+		max-width: 380px;
+		margin: 40px auto 16px;
+	}
+	.ops-shell.no-nav .auth-card {
+		margin-top: 0;
 	}
 	.ops-nav {
 		display: flex;
