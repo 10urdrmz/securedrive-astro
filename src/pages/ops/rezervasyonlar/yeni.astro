@@ -51,7 +51,7 @@ if (form) {
 		else if (!option && override === null) error = "Bu güzergâh ve araç için tarife yok. Fiyatı elle yazın.";
 		else if (v.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(v.phone)) error = "Yolcu adı ve geçerli telefon gerekli.";
 		else if (!METHODS.includes(v.payment as PaymentMethod)) error = "Ödeme yöntemi seçin.";
-		else if (v.intent !== "save") {
+		else if (v.intent !== "save" && v.intent !== "quote") {
 			preview = option ? `Tarife fiyatı: ${formatMoney(option.total_minor)} TL` : "Tarife yok; yazdığınız fiyat kullanılacak.";
 		} else {
 			const cls = classes.find((c) => c.key === v.class_key)!;
@@ -87,12 +87,13 @@ if (form) {
 					// A request sent by a signed-in member shows up among their bookings.
 					memberId: inquiry?.memberId ?? null,
 					priceOverrideMinor: override,
+					asQuote: v.intent === "quote",
 				},
 				{ kind: "ops", userId: user.id },
 			);
-			if (inquiry) await markInquiryBooked(db, inquiry.id, booking.code);
-			await audit(db, user, "booking.create", "booking", booking.id, { code: booking.code, inquiry: inquiry?.reference });
-			return Astro.redirect(`/ops/rezervasyonlar/${booking.code}`, 303);
+			if (inquiry) await markInquiryBooked(db, inquiry.id, booking.code, v.intent === "quote" ? "quoted" : "booked");
+			await audit(db, user, v.intent === "quote" ? "booking.quote" : "booking.create", "booking", booking.id, { code: booking.code, inquiry: inquiry?.reference });
+			return Astro.redirect(`/ops/rezervasyonlar/${booking.code}${v.intent === "quote" ? "?teklif=1" : ""}`, 303);
 		}
 	}
 }
@@ -100,11 +101,15 @@ const airports = zones.filter((z) => z.kind === "airport");
 const districts = zones.filter((z) => z.kind !== "airport");
 ---
 
-<OpsLayout title={inquiry ? `Talepten rezervasyon · ${inquiry.reference}` : "Telefonla rezervasyon"} user={user} active={inquiry ? "/ops/talepler" : "/ops/rezervasyonlar"}>
+<OpsLayout title={inquiry ? `Talebe teklif · ${inquiry.reference}` : "Telefonla rezervasyon"} user={user} active={inquiry ? "/ops/talepler" : "/ops/rezervasyonlar"}>
 	{inquiry && !v.from && <p class="notice error">Talepteki kalkış noktası bölgelerle eşleşmedi; lütfen seçin.</p>}
-	{inquiry?.bookingCode && <p class="notice error">Bu talepten zaten rezervasyon yapılmış: <a href={`/ops/rezervasyonlar/${inquiry.bookingCode}`}>{inquiry.bookingCode}</a></p>}
+	{inquiry?.bookingCode && inquiry.status !== "closed" && <p class="notice error">Bu talepten zaten teklif ya da rezervasyon yapılmış: <a href={`/ops/rezervasyonlar/${inquiry.bookingCode}`}>{inquiry.bookingCode}</a></p>}
 	{error && <p class="notice error">{error}</p>}
-	{preview && <p class="notice">{preview}. Bilgileri kontrol edip "Rezervasyonu oluştur"a basın.</p>}
+	{preview && <p class="notice">{preview}. Bilgileri kontrol edip teklifi gönderin ya da rezervasyonu oluşturun.</p>}
+	<p class="muted lead">
+		<strong>Müşteriye teklif gönder</strong>: müşteri linkten fiyatı görür, onaylarsa rezervasyon kesinleşir, reddederse kapanır.
+		<strong>Onaylı rezervasyon oluştur</strong>: müşteri fiyatı telefonda zaten kabul ettiyse.
+	</p>
 	<form class="card" method="post">
 		<div class="form-grid">
 			<label>
@@ -149,11 +154,12 @@ const districts = zones.filter((z) => z.kind !== "airport");
 				Yöntem
 				<select name="payment">{METHODS.map((m) => <option value={m} selected={v.payment === m}>{PAYMENT_METHOD_LABELS[m]}</option>)}</select>
 			</label>
-			<label>Anlaşılan fiyat (TL, boşsa tarife) <input type="text" class="money" name="price" value={v.price} inputmode="decimal" /></label>
+			<label>Teklif / anlaşılan fiyat (TL, boşsa tarife) <input type="text" class="money" name="price" value={v.price} inputmode="decimal" /></label>
 		</div>
 		<div class="actions">
 			<button class="btn secondary" type="submit" name="intent" value="preview">Fiyatı hesapla</button>
-			<button class="btn" type="submit" name="intent" value="save">Rezervasyonu oluştur</button>
+			<button class="btn" type="submit" name="intent" value="quote">Müşteriye teklif gönder</button>
+			<button class="btn secondary" type="submit" name="intent" value="save">Onaylı rezervasyon oluştur</button>
 		</div>
 	</form>
 </OpsLayout>

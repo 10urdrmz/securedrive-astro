@@ -35,7 +35,7 @@ export interface OpsInquiry {
 export const INQUIRY_STATUS_LABELS: Record<string, string> = {
 	new: "Yeni",
 	contacted: "İletişime geçildi",
-	quoted: "Fiyat verildi",
+	quoted: "Teklif gönderildi",
 	booked: "Rezervasyon yapıldı",
 	closed: "Kapandı",
 };
@@ -129,12 +129,15 @@ export function bookingPrefill(inquiry: OpsInquiry, zones: { id: string; name: s
 	};
 }
 
-/** Link the request to its booking and move it to "booked" on the admin's request board. */
-export async function markInquiryBooked(db: Db, inquiryId: string, bookingCode: string) {
+/**
+ * Link the request to its booking. A booking moves it to "booked"; a quote sent to the
+ * customer moves it to "quoted" until they answer (see answerQuote).
+ */
+export async function markInquiryBooked(db: Db, inquiryId: string, bookingCode: string, status: "booked" | "quoted" = "booked") {
 	await db
 		.insertInto("sd_inquiry_bookings")
 		.values({ inquiry_id: inquiryId, booking_code: bookingCode, created_at: new Date().toISOString() })
 		.onConflict((oc) => oc.column("inquiry_id").doUpdateSet({ booking_code: bookingCode }))
 		.execute();
-	await db.updateTable("ec_inquiries").set({ status_label: "booked" }).where("id", "=", inquiryId).execute();
+	await db.updateTable("ec_inquiries").set({ status_label: status }).where("id", "=", inquiryId).execute();
 }

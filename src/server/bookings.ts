@@ -11,6 +11,7 @@ import { randomToken, ulid } from "./ids";
 import type { ClassQuote, Quote } from "./pricing";
 
 export const BOOKING_STATUSES = [
+	"quoted",
 	"pending_payment",
 	"confirmed",
 	"assigned",
@@ -24,6 +25,7 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const STATUS_LABELS: Record<BookingStatus, string> = {
+	quoted: "Teklif, müşteri onayı bekleniyor",
 	pending_payment: "Ödeme bekleniyor",
 	confirmed: "Onaylandı",
 	assigned: "Sürücü atandı",
@@ -40,6 +42,8 @@ export const FINAL_STATUSES: BookingStatus[] = ["completed", "no_show", "cancell
 
 /** What ops may move a booking to from each status (assignment has its own action). */
 export const OPS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+	// A quote becomes a booking only when the customer accepts it; ops can withdraw it.
+	quoted: ["cancelled"],
 	pending_payment: ["confirmed", "cancelled"],
 	confirmed: ["cancelled"],
 	assigned: ["driver_en_route", "driver_arrived", "on_board", "completed", "cancelled"],
@@ -149,6 +153,8 @@ export interface NewBooking {
 	/** Ops may agree a different price on the phone. */
 	priceOverrideMinor?: number | null;
 	internalNotes?: string | null;
+	/** Send it to the customer as a quote: it becomes a booking when they accept it. */
+	asQuote?: boolean;
 }
 
 export async function createBooking(db: Db, input: NewBooking, actor: Actor): Promise<Booking> {
@@ -162,7 +168,7 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 			: lines;
 	const now = new Date().toISOString();
 	// Online payments confirm the booking only when iyzico reports the money taken.
-	const status: BookingStatus = input.paymentMethod === "online" ? "pending_payment" : "confirmed";
+	const status: BookingStatus = input.asQuote ? "quoted" : input.paymentMethod === "online" ? "pending_payment" : "confirmed";
 	const row = {
 		id,
 		code,
@@ -290,6 +296,7 @@ export async function transition(
 /** Manual assignment by ops. Re-assigning ends the previous driver's assignment. */
 export async function assignDriver(db: Db, booking: Booking, driverId: string | null, actor: Actor) {
 	if (FINAL_STATUSES.includes(booking.status)) throw new Error("Kapanmış bir rezervasyona atama yapılamaz.");
+	if (booking.status === "quoted") throw new Error("Müşteri teklifi onaylamadan sürücü atanamaz.");
 	const now = new Date().toISOString();
 	await updateBooking(db, booking, {
 		driver_id: driverId,
@@ -409,4 +416,23 @@ export async function confirmOnlinePayment(
 	});
 	booking = (await db.selectFrom("sd_bookings").selectAll().where("id", "=", bookingId).executeTakeFirst()) as Booking;
 	return booking;
+}
+
+/** The status a quote moves to when the customer accepts it. */
+export const acceptedStatus = (booking: Booking): BookingStatus => (booking.payment_method === "online" ? "pending_payment" : "confirmed");
+
+/** The customer accepts or declines a quote from their booking page. */
+export async function answerQuote(db: Db, booking: Booking, accept: boolean) {
+	if (booking.status !== "quoted") throw new Error("not_a_quote");
+	const actor: Actor = { kind: "passenger" };
+	if (accept) {
+		if (Date.parse(booking.pickup_at) < Date.now()) throw new Error("expired");
+		await transition(db, booking, acceptedStatus(booking), actor);
+		await addEvent(db, booking.id, actor, "quote_accepted", "quoted", acceptedStatus(booking), { price_minor: booking.price_minor });
+	} else {
+		await transition(db, booking, "cancelled", actor, { reason: "Müşteri teklifi reddetti", refundPct: 0 });
+		await addEvent(db, booking.id, actor, "quote_declined", "quoted", "cancelled", { price_minor: booking.price_minor });
+	}
+	const link = await db.selectFrom("sd_inquiry_bookings").select("inquiry_id").where("booking_code", "=", booking.code).executeTakeFirst();
+	if (link) await db.updateTable("ec_inquiries").set({ status_label: accept ? "booked" : "closed" }).where("id", "=", link.inquiry_id).execute();
 }

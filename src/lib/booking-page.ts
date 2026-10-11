@@ -14,6 +14,7 @@ import type { UiKey } from "../i18n/ui";
 import { getDb, type Db } from "../server/db";
 import {
 	addEvent,
+	answerQuote,
 	ConflictError,
 	createBooking,
 	getBookingByCode,
@@ -75,7 +76,7 @@ export interface BookingDetail {
 	/** Hours before pickup until which the passenger may cancel online, free of charge. */
 	freeCancelHours: number;
 	canCancel: boolean;
-	notice?: "created" | "cancelled" | "paid" | "paymentFailed" | "reviewed";
+	notice?: "created" | "cancelled" | "paid" | "paymentFailed" | "reviewed" | "quoteAccepted" | "quoteDeclined";
 	/** Where "pay now" leads, while a booking waits for its online payment. */
 	payHref: string | null;
 	/** The passenger's review, once given; reviews open when the trip is completed. */
@@ -256,7 +257,8 @@ async function bookingDetail(
 	page.review = (await db.selectFrom("sd_reviews").select(["rating", "comment"]).where("booking_id", "=", booking.id).executeTakeFirst()) ?? null;
 	page.canReview = booking.status === "completed" && !page.review;
 	const ok = Astro.url.searchParams.get("ok");
-	if (ok === "created" || ok === "cancelled" || ok === "paid" || ok === "paymentFailed" || ok === "reviewed") page.notice = ok;
+	if (ok === "created" || ok === "cancelled" || ok === "paid" || ok === "paymentFailed" || ok === "reviewed" || ok === "quoteAccepted" || ok === "quoteDeclined")
+		page.notice = ok;
 
 	if (Astro.request.method === "POST") {
 		if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
@@ -271,6 +273,20 @@ async function bookingDetail(
 				.execute();
 			await addEvent(db, booking.id, { kind: "passenger" }, "review", null, null, { rating });
 			return redirect(Astro, `${self}&ok=reviewed`);
+		}
+		if (form.get("intent") === "quote_accept" || form.get("intent") === "quote_decline") {
+			const accept = form.get("intent") === "quote_accept";
+			if (booking.status !== "quoted") return redirect(Astro, self);
+			try {
+				await answerQuote(db, booking, accept);
+			} catch (error) {
+				if (error instanceof Error && error.message === "expired") {
+					Astro.response.status = 422;
+					return { ...page, error: "book.error.quoteExpired" };
+				}
+				if (!(error instanceof ConflictError)) throw error;
+			}
+			return redirect(Astro, `${self}&ok=${accept ? "quoteAccepted" : "quoteDeclined"}`);
 		}
 		if (form.get("intent") !== "cancel") return redirect(Astro, self);
 		if (!canCancel) {
