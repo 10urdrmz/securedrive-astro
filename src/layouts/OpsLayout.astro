@@ -8,7 +8,8 @@ import type { SessionUser } from "../server/auth/rbac";
 import { can, ROLE_LABELS } from "../server/auth/rbac";
 import { getDb } from "../server/db";
 import { opsCounts, opsFeed, type OpsCounts, type OpsFeedItem } from "../server/ops-alerts";
-import "../styles/global.css";
+import Icon from "../components/Icon.astro";
+import "../styles/tailwind.css";
 
 interface Props {
 	title: string;
@@ -34,22 +35,25 @@ const ago = (iso: string) => {
 	return `${Math.floor(minutes / 1440)} gün önce`;
 };
 
-const NAV: { href: string; label: string; show: boolean; count?: keyof OpsCounts; hint?: string }[] = user
+type IconName = Parameters<typeof Icon>[0]["name"];
+type NavItem = { href: string; label: string; icon: IconName; show: boolean; count?: keyof OpsCounts; hint?: string };
+const NAV_ALL: NavItem[] = user
 	? [
-			{ href: "/ops", label: "Pano", show: true },
-			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", show: can(user, "bookings.read"), count: "bookings" as const, hint: "sürücü bekleyen" },
-			{ href: "/ops/talepler", label: "Fiyat talepleri", show: can(user, "bookings.read"), count: "requests" as const, hint: "yeni talep" },
-			{ href: "/ops/harita", label: "Canlı harita", show: can(user, "bookings.read") },
-			{ href: "/ops/suruculer", label: "Sürücüler", show: can(user, "bookings.read") },
-			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", show: can(user, "catalog.read") },
-			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", show: can(user, "catalog.read") },
-			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", show: can(user, "catalog.read") },
-			{ href: "/ops/yonetim/ekstralar", label: "Ekstralar", show: can(user, "catalog.read") },
-			{ href: "/ops/yonetim/ayarlar", label: "Kurallar", show: can(user, "catalog.read") },
-			{ href: "/ops/yonetim/kullanicilar", label: "Ekip", show: can(user, "users.manage") },
-			{ href: "/ops/yonetim/denetim", label: "Denetim kaydı", show: can(user, "audit.read") },
-		].filter((item) => item.show)
+			{ href: "/ops", label: "Pano", icon: "dashboard", show: true },
+			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", icon: "calendar", show: can(user, "bookings.read"), count: "bookings" as const, hint: "sürücü bekleyen" },
+			{ href: "/ops/talepler", label: "Fiyat talepleri", icon: "inbox", show: can(user, "bookings.read"), count: "requests" as const, hint: "yeni talep" },
+			{ href: "/ops/harita", label: "Canlı harita", icon: "map", show: can(user, "bookings.read") },
+			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read") },
+			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", icon: "pin", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", icon: "car", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/ekstralar", label: "Ekstralar", icon: "gift", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/ayarlar", label: "Kurallar", icon: "sliders", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/kullanicilar", label: "Ekip", icon: "users", show: can(user, "users.manage") },
+			{ href: "/ops/yonetim/denetim", label: "Denetim kaydı", icon: "file", show: can(user, "audit.read") },
+		]
 	: [];
+const NAV = NAV_ALL.filter((item) => item.show);
 
 Astro.response.headers.set("Cache-Control", "no-store");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
@@ -121,6 +125,7 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 					<nav class="ops-nav" aria-label="Operasyon menüsü">
 						{NAV.map((item) => (
 							<a href={item.href} aria-current={active === item.href || (item.href !== "/ops" && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
+								<Icon name={item.icon} size={18} class="ops-nav-icon" />
 								<span>{item.label}</span>
 								{item.count && (
 									<span class="ops-count" data-ops-count={item.count} title={item.hint} hidden={counts[item.count] === 0}>
@@ -143,6 +148,7 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 </html>
 
 <style is:global>
+	@layer legacy {
 	body.ops {
 		margin: 0;
 		background: var(--gray-100);
@@ -218,20 +224,35 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 	.ops-nav a {
 		display: flex;
 		align-items: center;
-		justify-content: space-between;
-		gap: 8px;
-		padding: 8px 12px;
-		border-radius: 6px;
-		color: var(--ink-800);
+		gap: 10px;
+		padding: 9px 12px;
+		border-radius: 10px;
+		color: var(--gray-600);
+		font-weight: 500;
 		text-decoration: none;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+	.ops-nav a > span:first-of-type {
+		flex: 1;
+	}
+	.ops-nav-icon {
+		flex-shrink: 0;
+		color: var(--gray-500);
 	}
 	.ops-nav a:hover {
 		background: var(--gray-100);
+		color: var(--ink-900);
 	}
 	.ops-nav a[aria-current="page"] {
-		background: var(--navy-100);
+		background: var(--navy-50);
 		color: var(--navy-800);
 		font-weight: 600;
+		box-shadow: inset 3px 0 0 var(--navy-700);
+	}
+	.ops-nav a[aria-current="page"] .ops-nav-icon {
+		color: var(--navy-700);
 	}
 	.ops-main {
 		padding: 24px 28px 48px;
@@ -251,9 +272,18 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		}
 		.ops-nav {
 			flex-direction: row;
-			flex-wrap: wrap;
+			overflow-x: auto;
+			padding: 8px;
 			border-right: 0;
 			border-bottom: 1px solid var(--gray-200);
+			scrollbar-width: none;
+		}
+		.ops-nav a {
+			flex-shrink: 0;
+			white-space: nowrap;
+		}
+		.ops-nav a[aria-current="page"] {
+			box-shadow: inset 0 -3px 0 var(--navy-700);
 		}
 		.ops-main {
 			padding: 16px;
@@ -589,5 +619,6 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 	}
 	@keyframes ops-toast-in {
 		from { transform: translateY(12px); opacity: 0; }
+	}
 	}
 </style>

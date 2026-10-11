@@ -1,5 +1,7 @@
 ---
 import OpsLayout from "../../layouts/OpsLayout.astro";
+import Icon from "../../components/Icon.astro";
+import { STATUS_LABELS, type BookingStatus } from "../../server/bookings";
 import { can } from "../../server/auth/rbac";
 import { requireOps } from "../../server/ops";
 import { isoToIstanbul, istanbulToIso } from "../../server/pricing";
@@ -75,53 +77,238 @@ const openRequests = showBookings
 			)?.n ?? 0,
 		)
 	: 0;
+const quotesWaiting = showBookings
+	? Number(
+			(await db.selectFrom("sd_bookings").select((eb) => eb.fn.countAll<number>().as("n")).where("status", "=", "quoted").executeTakeFirst())?.n ?? 0,
+		)
+	: 0;
+
+// The next day and a half of work: what dispatch looks at first.
+const upcoming = showBookings
+	? await db
+			.selectFrom("sd_bookings as b")
+			.leftJoin("sd_zones as f", "f.id", "b.from_zone_id")
+			.leftJoin("sd_zones as t", "t.id", "b.to_zone_id")
+			.leftJoin("sd_drivers as d", "d.id", "b.driver_id")
+			.select(["b.code", "b.status", "b.pickup_at", "b.pax", "b.contact_name", "b.flight_no", "f.name as from_name", "f.kind as from_kind", "t.name as to_name", "t.kind as to_kind", "d.name as driver_name"])
+			.where("b.pickup_at", ">=", new Date(Date.now() - 2 * 3600_000).toISOString())
+			.where("b.pickup_at", "<", new Date(Date.now() + 36 * 3600_000).toISOString())
+			.where("b.status", "not in", ["cancelled", "completed", "no_show", "quoted"])
+			.orderBy("b.pickup_at")
+			.limit(8)
+			.execute()
+	: [];
+const STATUS_PILL: Record<string, string> = {
+	pending_payment: "bg-amber-50 text-amber-800 ring-amber-200",
+	confirmed: "bg-sky-50 text-sky-800 ring-sky-200",
+	assigned: "bg-indigo-50 text-indigo-800 ring-indigo-200",
+	driver_en_route: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+	driver_arrived: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+	on_board: "bg-emerald-50 text-emerald-800 ring-emerald-200",
+};
+const clock = (iso: string) => isoToIstanbul(iso);
+const dayLabel = (iso: string) => {
+	const d = clock(iso).date;
+	if (d === today) return "Bugün";
+	if (d === isoToIstanbul(new Date(Date.now() + 86400_000).toISOString()).date) return "Yarın";
+	return d.slice(8, 10) + "." + d.slice(5, 7);
+};
+const longDate = new Intl.DateTimeFormat("tr-TR", { weekday: "long", day: "numeric", month: "long", timeZone: "Europe/Istanbul" }).format(new Date());
+const tariffPct = expected > 0 ? Math.min(100, Math.round((tariffs / expected) * 100)) : 0;
+const rating = ratings && Number(ratings.n) > 0 ? Number(ratings.avg).toFixed(1) : "–";
+
+type Kpi = { label: string; value: string | number; hint: string; href?: string; icon: Parameters<typeof Icon>[0]["name"]; tone: string; alert?: boolean; live?: boolean };
+const kpis: Kpi[] = showBookings
+	? [
+			{ label: "Bugünkü transfer", value: todayCount, hint: "İstanbul saatiyle bugün", href: `/ops/rezervasyonlar?from=${today}&to=${today}`, icon: "plane", tone: "bg-sky-50 text-sky-700" },
+			{ label: "Sürücü bekleyen", value: unassigned, hint: "48 saat içinde, atanmamış", href: "/ops/rezervasyonlar?unassigned=1", icon: "alert", tone: unassigned ? "bg-red-50 text-red-700" : "bg-gray-100 text-gray-500", alert: unassigned > 0 },
+			{ label: "Şu an yolda", value: active, hint: "Canlı haritada izle", href: "/ops/harita", icon: "car", tone: "bg-emerald-50 text-emerald-700", live: active > 0 },
+			{ label: "Açık fiyat talebi", value: openRequests, hint: quotesWaiting ? `${quotesWaiting} teklif müşteri onayında` : "Teklif bekleyen talepler", href: "/ops/talepler", icon: "inbox", tone: "bg-violet-50 text-violet-700" },
+			{ label: "Yolcu puanı", value: rating, hint: `Son 30 gün · ${Number(ratings?.n ?? 0)} değerlendirme`, icon: "star", tone: "bg-amber-50 text-amber-700" },
+		]
+	: [];
 ---
 
 <OpsLayout title={`Merhaba, ${user.name.split(" ")[0]}`} user={user}>
+	<div class="-mt-3 mb-6 flex flex-wrap items-center justify-between gap-3">
+		<p class="m-0 text-sm text-gray-500 first-letter:uppercase">{longDate}</p>
+		{
+			can(user, "bookings.write") && (
+				<div class="flex flex-wrap gap-2">
+					<a
+						href="/ops/talepler"
+						class="inline-flex items-center gap-2 rounded-xl border border-solid border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-800 no-underline shadow-sm transition hover:border-gray-400 hover:bg-gray-50"
+					>
+						<Icon name="inbox" size={16} /> Fiyat talepleri
+					</a>
+					<a
+						href="/ops/rezervasyonlar/yeni"
+						class="inline-flex items-center gap-2 rounded-xl bg-navy-700 px-4 py-2 text-sm font-semibold text-white no-underline shadow-sm transition hover:bg-navy-800"
+					>
+						<Icon name="plus" size={16} /> Yeni rezervasyon
+					</a>
+				</div>
+			)
+		}
+	</div>
+
 	{
-		showBookings && (
-			<div class="stats">
-				<a class="stat" href={`/ops/rezervasyonlar?from=${today}&to=${today}`} style="color:inherit;text-decoration:none">
-					<strong>{todayCount}</strong>
-					<span class="muted">bugünkü transfer</span>
-				</a>
-				<a class="stat" href="/ops/rezervasyonlar?unassigned=1" style="color:inherit;text-decoration:none">
-					<strong style={unassigned ? "color:var(--red-600)" : undefined}>{unassigned}</strong>
-					<span class="muted">48 saat içinde, sürücüsü atanmamış</span>
-				</a>
-				<div class="stat">
-					<strong>{active}</strong>
-					<span class="muted">şu an yolda</span>
-				</div>
-				<a class="stat" href="/ops/talepler" style="color:inherit;text-decoration:none">
-					<strong>{openRequests}</strong>
-					<span class="muted">açık fiyat talebi</span>
-				</a>
-				<div class="stat">
-					<strong>{ratings && Number(ratings.n) > 0 ? Number(ratings.avg).toFixed(1) : "–"}</strong>
-					<span class="muted">son 30 gün puan ortalaması ({Number(ratings?.n ?? 0)} değerlendirme)</span>
-				</div>
-			</div>
+		kpis.length > 0 && (
+			<section class="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5" aria-label="Özet">
+				{kpis.map((k) => {
+					const Tag = k.href ? "a" : "div";
+					return (
+						<Tag
+							href={k.href}
+							class:list={[
+								"group relative flex flex-col gap-3 rounded-2xl border border-solid bg-white p-4 text-gray-900 no-underline shadow-sm transition",
+								k.alert ? "border-red-200 ring-1 ring-red-100" : "border-gray-200",
+								k.href && "hover:-translate-y-0.5 hover:shadow-md",
+							]}
+						>
+							<div class="flex items-center justify-between">
+								<span class:list={["grid size-10 place-items-center rounded-xl", k.tone]}>
+									<Icon name={k.icon} size={20} />
+								</span>
+								{k.live && (
+									<span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+										<span class="relative flex size-2">
+											<span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75 motion-reduce:animate-none" />
+											<span class="relative inline-flex size-2 rounded-full bg-emerald-500" />
+										</span>
+										Canlı
+									</span>
+								)}
+								{k.href && !k.live && <Icon name="arrow" size={16} class="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-gray-500" />}
+							</div>
+							<div>
+								<div class:list={["font-display text-3xl font-bold tabular-nums leading-none", k.alert && "text-red-700"]}>{k.value}</div>
+								<div class="mt-1.5 text-sm font-semibold text-gray-800">{k.label}</div>
+								<div class="mt-0.5 text-xs text-gray-500">{k.hint}</div>
+							</div>
+						</Tag>
+					);
+				})}
+			</section>
 		)
 	}
-	<div class="stats">
-		<div class="stat"><strong>{zones}</strong><span class="muted">hizmet verilen bölge</span></div>
-		<div class="stat"><strong>{classes}</strong><span class="muted">aktif araç sınıfı</span></div>
-		<div class="stat">
-			<strong>{tariffs} / {expected}</strong><span class="muted">havalimanı tarifesi girildi</span>
-		</div>
-		<div class="stat"><strong>{team}</strong><span class="muted">iç ekip rolü</span></div>
-	</div>
-	<div class="card">
-		<h2 style="margin-top:0">Sırada ne var</h2>
-		<p class="muted">
-			Online rezervasyon yalnızca tarifesi girilmiş güzergâhlarda fiyat gösterir; tarifesi olmayan güzergâhta site "fiyat talebi"
-			formuna yönlendirir. Sürücüleri ekleyin, rezervasyonlara elle atayın ve işi WhatsApp ile gönderin.
-		</p>
-		<div class="actions">
-			<a class="btn" href="/ops/yonetim/tarifeler">Tarifeleri gir</a>
-			<a class="btn secondary" href="/ops/yonetim/ayarlar">Kuralları ayarla</a>
-			<a class="btn secondary" href="/ops/suruculer">Sürücü ekle</a>
-		</div>
+
+	<div class="grid gap-6 lg:grid-cols-3">
+		{
+			showBookings && (
+				<section class="rounded-2xl border border-solid border-gray-200 bg-white shadow-sm lg:col-span-2">
+					<header class="flex items-center justify-between gap-3 border-0 border-b border-solid border-gray-100 px-5 py-4">
+						<div class="flex items-center gap-2">
+							<Icon name="calendar" size={18} class="text-gray-400" />
+							<h2 class="m-0 text-base font-semibold">Sıradaki transferler</h2>
+							<span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600">36 saat</span>
+						</div>
+						<a href="/ops/rezervasyonlar" class="inline-flex items-center gap-1 text-sm font-semibold text-navy-700 no-underline hover:underline">
+							Tümü <Icon name="arrow" size={14} />
+						</a>
+					</header>
+					{upcoming.length > 0 ? (
+						<ul class="m-0 list-none divide-y divide-gray-100 p-0">
+							{upcoming.map((b) => {
+								const at = clock(b.pickup_at);
+								const fromAirport = b.from_kind === "airport";
+								return (
+									<li>
+										<a href={`/ops/rezervasyonlar/${b.code}`} class="flex items-center gap-4 px-5 py-3.5 text-gray-900 no-underline transition hover:bg-gray-50">
+											<div class="w-14 shrink-0 text-center">
+												<div class="text-lg font-bold tabular-nums leading-tight">{at.time}</div>
+												<div class="text-xs font-medium text-gray-500">{dayLabel(b.pickup_at)}</div>
+											</div>
+											<span class:list={["grid size-9 shrink-0 place-items-center rounded-full", fromAirport ? "bg-sky-50 text-sky-700" : "bg-navy-50 text-navy-700"]}>
+												<Icon name={fromAirport ? "plane" : "car"} size={18} />
+											</span>
+											<div class="min-w-0 flex-1">
+												<div class="flex items-center gap-1.5 truncate text-sm font-semibold">
+													<span class="truncate">{b.from_name}</span>
+													<Icon name="arrow" size={14} class="shrink-0 text-gray-400" />
+													<span class="truncate">{b.to_name}</span>
+												</div>
+												<div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+													<span class="font-mono">{b.code}</span>
+													<span class="inline-flex items-center gap-1"><Icon name="users" size={12} /> {b.pax}</span>
+													{b.flight_no && <span class="inline-flex items-center gap-1"><Icon name="plane" size={12} /> {b.flight_no}</span>}
+													{b.driver_name ? (
+														<span class="inline-flex items-center gap-1"><Icon name="user" size={12} /> {b.driver_name}</span>
+													) : (
+														<span class="inline-flex items-center gap-1 font-semibold text-red-600"><Icon name="alert" size={12} /> Sürücü yok</span>
+													)}
+												</div>
+											</div>
+											<span class:list={["hidden shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset sm:inline-flex", STATUS_PILL[b.status] ?? "bg-gray-100 text-gray-700 ring-gray-200"]}>
+												{STATUS_LABELS[b.status as BookingStatus] ?? b.status}
+											</span>
+										</a>
+									</li>
+								);
+							})}
+						</ul>
+					) : (
+						<div class="grid place-items-center gap-2 px-5 py-12 text-center">
+							<span class="grid size-12 place-items-center rounded-full bg-gray-100 text-gray-400">
+								<Icon name="plane" size={22} />
+							</span>
+							<p class="m-0 font-semibold text-gray-700">Önümüzdeki 36 saatte transfer yok</p>
+							<p class="m-0 text-sm text-gray-500">Yeni rezervasyonlar geldikçe burada sıralanır.</p>
+						</div>
+					)}
+				</section>
+			)
+		}
+
+		<aside class="grid content-start gap-6">
+			<section class="rounded-2xl border border-solid border-gray-200 bg-white p-5 shadow-sm">
+				<div class="mb-4 flex items-center gap-2">
+					<Icon name="activity" size={18} class="text-gray-400" />
+					<h2 class="m-0 text-base font-semibold">Kurulum durumu</h2>
+				</div>
+				<div class="mb-1 flex items-baseline justify-between text-sm">
+					<span class="font-medium text-gray-700">Havalimanı tarifeleri</span>
+					<span class="tabular-nums text-gray-500">{tariffs} / {expected}</span>
+				</div>
+				<div class="h-2 overflow-hidden rounded-full bg-gray-100" role="progressbar" aria-valuenow={tariffPct} aria-valuemin={0} aria-valuemax={100} aria-label="Tarife doluluğu">
+					<div class:list={["h-full rounded-full", tariffPct >= 100 ? "bg-emerald-500" : "bg-navy-600"]} style={`width:${tariffPct}%`} />
+				</div>
+				<p class="mb-4 mt-2 text-xs text-gray-500">Tarifesi olmayan güzergâhta site fiyat talebi formuna yönlendirir.</p>
+				<dl class="m-0 grid grid-cols-3 gap-2 text-center">
+					<div class="rounded-xl bg-gray-50 p-3">
+						<dt class="text-xs text-gray-500">Bölge</dt>
+						<dd class="m-0 text-xl font-bold tabular-nums">{zones}</dd>
+					</div>
+					<div class="rounded-xl bg-gray-50 p-3">
+						<dt class="text-xs text-gray-500">Araç sınıfı</dt>
+						<dd class="m-0 text-xl font-bold tabular-nums">{classes}</dd>
+					</div>
+					<div class="rounded-xl bg-gray-50 p-3">
+						<dt class="text-xs text-gray-500">Ekip rolü</dt>
+						<dd class="m-0 text-xl font-bold tabular-nums">{team}</dd>
+					</div>
+				</dl>
+			</section>
+
+			<section class="rounded-2xl border border-solid border-gray-200 bg-white p-5 shadow-sm">
+				<h2 class="m-0 mb-3 text-base font-semibold">Hızlı erişim</h2>
+				<nav class="grid gap-1">
+					{[
+						{ href: "/ops/harita", label: "Canlı harita", icon: "map" as const },
+						{ href: "/ops/suruculer", label: "Sürücüler ve PIN", icon: "user" as const },
+						{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag" as const },
+						{ href: "/ops/yonetim/ayarlar", label: "Kurallar", icon: "sliders" as const },
+					].map((l) => (
+						<a href={l.href} class="group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-700 no-underline transition hover:bg-gray-50 hover:text-gray-900">
+							<span class="grid size-8 place-items-center rounded-lg bg-gray-100 text-gray-500 transition group-hover:bg-navy-50 group-hover:text-navy-700">
+								<Icon name={l.icon} size={16} />
+							</span>
+							<span class="flex-1">{l.label}</span>
+							<Icon name="arrow" size={14} class="text-gray-300 transition group-hover:translate-x-0.5 group-hover:text-gray-500" />
+						</a>
+					))}
+				</nav>
+			</section>
+		</aside>
 	</div>
 </OpsLayout>
