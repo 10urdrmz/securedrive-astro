@@ -1,0 +1,205 @@
+---
+/**
+ * Agencies and hotels: they book for guests on account at a net price, or send guests
+ * through their link and widget and earn commission. Ops opens the account with its
+ * terms and first admin login.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { can } from "../../server/auth/rbac";
+import { agencyMonth, agencyUsers, createAgency, getAgency, listAgencies, saveAgencySettings, REF_PATTERN } from "../../server/agencies";
+import { currentMonth, monthName } from "../../server/companies";
+import { LOGIN_PATTERN, resetLogin } from "../../server/org-accounts";
+import { audit, formatMoney, readForm, requireOps, text } from "../../server/ops";
+
+const ctx = await requireOps(Astro, "bookings.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+const canManage = can(user, "agencies.manage");
+
+const percent = (form: FormData, key: string, label: string) => {
+	const value = Number(text(form, key, 6).replace(",", ".") || "0");
+	if (!(value >= 0 && value <= 50)) throw new Error(`${label} 0 ile 50 arasında olmalı.`);
+	return value;
+};
+
+let notice = "";
+let error = "";
+let credentials: { name: string; login: string; password: string } | null = null;
+const form = await readForm(Astro);
+if (form && canManage) {
+	const intent = text(form, "intent", 20);
+	try {
+		if (intent === "create") {
+			const name = text(form, "name", 120);
+			const adminName = text(form, "admin_name", 80);
+			const login = text(form, "login", 120).toLowerCase();
+			if (name.length < 2 || adminName.length < 2) throw new Error("Acente adı ve yönetici adı gerekli.");
+			if (!LOGIN_PATTERN.test(login)) throw new Error("Giriş için e-posta ya da harf, rakam ve . _ - içeren bir kullanıcı adı yazın.");
+			const created = await createAgency(db, {
+				name,
+				legalName: text(form, "legal_name", 160) || null,
+				taxNo: text(form, "tax_no", 20) || null,
+				discountPct: percent(form, "discount", "İndirim"),
+				commissionPct: percent(form, "commission", "Komisyon"),
+				adminName,
+				login,
+			});
+			await audit(db, user, "agency.create", "org", created.id, { name, ref: created.refCode });
+			credentials = { name, login, password: created.password };
+		} else {
+			const agency = await getAgency(db, text(form, "id", 40));
+			if (!agency) throw new Error("Acente bulunamadı.");
+			if (intent === "settings") {
+				const refCode = text(form, "ref", 40).toLowerCase();
+				if (!REF_PATTERN.test(refCode)) throw new Error("Referans kodu 3-40 karakter: küçük harf, rakam ve tire.");
+				const clash = (await listAgencies(db)).find((a) => a.id !== agency.id && a.settings.refCode === refCode);
+				if (clash) throw new Error(`Bu referans kodu ${clash.name} acentesinde.`);
+				const settings = { discountPct: percent(form, "discount", "İndirim"), commissionPct: percent(form, "commission", "Komisyon"), refCode };
+				await saveAgencySettings(db, agency.id, settings);
+				await audit(db, user, "agency.settings", "org", agency.id, settings);
+				notice = `${agency.name} koşulları kaydedildi.${refCode !== agency.settings.refCode ? " Eski linkler artık bu acenteye yazılmaz." : ""}`;
+			} else if (intent === "reset") {
+				const admin = (await agencyUsers(db, agency.id)).find((u) => u.role === "agency_admin");
+				const reset = admin ? await resetLogin(db, admin.id) : null;
+				if (!admin || !reset) throw new Error("Acentenin yöneticisi bulunamadı.");
+				await audit(db, user, "agency.password_reset", "org", agency.id, { user: admin.id });
+				credentials = { name: `${agency.name} · ${admin.name}`, ...reset };
+			} else if (intent === "toggle") {
+				const status = agency.status === "active" ? "inactive" : "active";
+				await db.updateTable("sd_orgs").set({ status }).where("id", "=", agency.id).execute();
+				await audit(db, user, `agency.${status}`, "org", agency.id);
+				notice = status === "active" ? `${agency.name} yeniden aktif.` : `${agency.name} pasif: panele giremez, linkleri artık rezervasyon getirmez.`;
+			}
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const agencies = await listAgencies(db);
+const month = currentMonth();
+const summaries = new Map(await Promise.all(agencies.map(async (a) => [a.id, await agencyMonth(db, a, month)] as const)));
+const panelUrl = new URL("/acente", Astro.url.origin).href;
+---
+
+<OpsLayout title="Acenteler ve oteller" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	{
+		credentials && (
+			<div class="notice">
+				<strong>{credentials.name}</strong> acente paneli girişi: <a href={panelUrl}>{panelUrl}</a>
+				<br />
+				Kullanıcı: <strong>{credentials.login}</strong> · Şifre: <strong style="letter-spacing:0.05em">{credentials.password}</strong>
+				<br />
+				Şifre bir daha gösterilmez; acenteye güvenli bir yoldan iletin.
+			</div>
+		)
+	}
+	<p class="muted" style="margin-top:0">
+		Acente ve oteller <a href="/acente">/acente</a> panelinden misafirleri için transfer ayırır: kendi cari hesaplarına net fiyatla (tarife eksi indirim) ya da
+		misafir araçta öder. Misafirin ödediği ve tamamlanan yolculuklardan komisyon kazanırlar; referans linki ve sitelerine koydukları widget'tan gelen
+		rezervasyonlar da 30 gün boyunca onlara yazılır.
+	</p>
+
+	{
+		agencies.map((a) => {
+			const s = summaries.get(a.id)!;
+			return (
+				<details class="card agency">
+					<summary>
+						<span>
+							<strong>{a.name}</strong>
+							{a.status !== "active" && <span class="badge off">Pasif</span>}
+							<span class="muted">
+								{" "}
+								· ref {a.settings.refCode} · net %{a.settings.discountPct} · komisyon %{a.settings.commissionPct}
+							</span>
+						</span>
+						<span>
+							{monthName(month)}: {s.trips} rezervasyon · komisyon <strong>{formatMoney(s.commission)} ₺</strong> · cari {formatMoney(s.account)} ₺
+						</span>
+					</summary>
+					{canManage && (
+						<form method="post" class="form-grid" style="margin-top:14px">
+							<input type="hidden" name="id" value={a.id} />
+							<label>
+								Net fiyat indirimi (%)
+								<input type="number" name="discount" min="0" max="50" step="0.5" value={a.settings.discountPct} />
+							</label>
+							<label>
+								Komisyon (%)
+								<input type="number" name="commission" min="0" max="50" step="0.5" value={a.settings.commissionPct} />
+							</label>
+							<label>
+								Referans kodu
+								<input type="text" name="ref" value={a.settings.refCode} />
+							</label>
+							<div class="actions" style="grid-column:1/-1">
+								<button class="btn" type="submit" name="intent" value="settings">Kaydet</button>
+								<button class="btn secondary" type="submit" name="intent" value="reset" formnovalidate>Yöneticiye yeni şifre</button>
+								<button class="btn secondary" type="submit" name="intent" value="toggle" formnovalidate>{a.status === "active" ? "Pasife al" : "Aktif et"}</button>
+								<a class="btn secondary" href={`/ops/rezervasyonlar?acente=${a.id}`}>Rezervasyonları</a>
+							</div>
+						</form>
+					)}
+				</details>
+			);
+		})
+	}
+	{agencies.length === 0 && <p class="muted">Henüz acente yok.</p>}
+
+	{
+		canManage && (
+			<form class="card form-grid" method="post">
+				<input type="hidden" name="intent" value="create" />
+				<strong style="grid-column:1/-1">Yeni acente / otel</strong>
+				<label>
+					Acente ya da otel adı
+					<input type="text" name="name" required />
+				</label>
+				<label>
+					Ticari unvan
+					<input type="text" name="legal_name" />
+				</label>
+				<label>
+					Vergi no
+					<input type="text" name="tax_no" inputmode="numeric" />
+				</label>
+				<label>
+					Net fiyat indirimi (%)
+					<input type="number" name="discount" min="0" max="50" step="0.5" value="0" />
+				</label>
+				<label>
+					Komisyon (%)
+					<input type="number" name="commission" min="0" max="50" step="0.5" value="10" />
+				</label>
+				<label>
+					Yönetici adı soyadı
+					<input type="text" name="admin_name" required />
+				</label>
+				<label>
+					Panel girişi (e-posta ya da kullanıcı adı)
+					<input type="text" name="login" required autocomplete="off" />
+				</label>
+				<div>
+					<button class="btn" type="submit">Acente ekle</button>
+				</div>
+			</form>
+		)
+	}
+</OpsLayout>
+
+<style>
+	.agency summary {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
+		cursor: pointer;
+		list-style: none;
+	}
+	.agency summary::-webkit-details-marker {
+		display: none;
+	}
+</style>

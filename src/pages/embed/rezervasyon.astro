@@ -1,0 +1,159 @@
+---
+/**
+ * Booking widget agencies and hotels put on their own sites (iframe). A compact trip
+ * form whose prices open on our site in a new tab, carrying the agency's ref code;
+ * the first step of the normal wizard. No framework JS, no cookies set inside the frame.
+ */
+import { bookPath, LOCALE_META, LOCALES, type Locale } from "../../i18n/locales";
+import { useTranslations } from "../../i18n/ui";
+import { getAgencyByRef, REF_PATTERN } from "../../server/agencies";
+import { getDb } from "../../server/db";
+import { isoToIstanbul } from "../../server/pricing";
+
+const params = Astro.url.searchParams;
+const asked = params.get("lang") ?? "tr";
+const locale: Locale = (LOCALES as readonly string[]).includes(asked) ? (asked as Locale) : "tr";
+const t = useTranslations(locale);
+const db = await getDb(Astro.locals);
+const ref = (params.get("ref") ?? "").toLowerCase();
+const agency = REF_PATTERN.test(ref) ? await getAgencyByRef(db, ref) : null;
+const zones = await db.selectFrom("sd_zones").select(["id", "name", "kind"]).where("serviceable", "=", 1).orderBy("sort").execute();
+const airports = zones.filter((z) => z.kind === "airport");
+const districts = zones.filter((z) => z.kind !== "airport");
+const tomorrow = isoToIstanbul(new Date(Date.now() + 27 * 3600_000).toISOString());
+
+// Any site may frame this page (EmDash would otherwise send X-Frame-Options: SAMEORIGIN).
+Astro.response.headers.set("Content-Security-Policy", "frame-ancestors *");
+Astro.response.headers.set("Cache-Control", "no-store");
+Astro.response.headers.set("X-Robots-Tag", "noindex");
+const action = new URL(bookPath(locale), Astro.url.origin).href;
+---
+
+<!doctype html>
+<html lang={locale} dir={LOCALE_META[locale].dir}>
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="robots" content="noindex" />
+		<title>SecureDrive · {t("quick.title")}</title>
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+			body {
+				margin: 0;
+				font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+				color: #101828;
+				background: #fff;
+			}
+			.w {
+				padding: 18px;
+				border: 1px solid #e4e7ec;
+				border-radius: 12px;
+				min-height: 100vh;
+			}
+			.brand {
+				display: flex;
+				justify-content: space-between;
+				align-items: baseline;
+				gap: 8px;
+				margin-bottom: 14px;
+			}
+			.brand strong {
+				font-size: 17px;
+				color: #0a2540;
+			}
+			.brand span {
+				color: #5b6470;
+				font-size: 12px;
+			}
+			label {
+				display: grid;
+				gap: 4px;
+				font-size: 13px;
+				font-weight: 600;
+				color: #344054;
+			}
+			select,
+			input {
+				width: 100%;
+				font: inherit;
+				padding: 9px 10px;
+				border: 1px solid #d0d5dd;
+				border-radius: 8px;
+				background: #fff;
+			}
+			.grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 10px;
+			}
+			.full {
+				grid-column: 1 / -1;
+			}
+			button {
+				width: 100%;
+				margin-top: 14px;
+				padding: 12px;
+				font: inherit;
+				font-weight: 700;
+				color: #fff;
+				background: #0a2540;
+				border: 0;
+				border-radius: 8px;
+				cursor: pointer;
+			}
+			small {
+				display: block;
+				margin-top: 8px;
+				color: #5b6470;
+				font-size: 12px;
+			}
+		</style>
+	</head>
+	<body>
+		<form class="w" method="get" action={action} target="_blank">
+			<div class="brand">
+				<strong>SecureDrive</strong>
+				<span>{t("quick.title")}</span>
+			</div>
+			{agency && <input type="hidden" name="ref" value={agency.settings.refCode} />}
+			<div class="grid">
+				<label class="full">
+					{t("quick.from")}
+					<select name="from" required>
+						<option value="" disabled selected>{t("form.choose")}</option>
+						<optgroup label={t("book.airports")}>{airports.map((z) => <option value={z.id}>{z.name}</option>)}</optgroup>
+						<optgroup label={t("book.districts")}>{districts.map((z) => <option value={z.id}>{z.name}</option>)}</optgroup>
+					</select>
+				</label>
+				<label class="full">
+					{t("quick.to")}
+					<select name="to" required>
+						<option value="" disabled selected>{t("form.choose")}</option>
+						<optgroup label={t("book.districts")}>{districts.map((z) => <option value={z.id}>{z.name}</option>)}</optgroup>
+						<optgroup label={t("book.airports")}>{airports.map((z) => <option value={z.id}>{z.name}</option>)}</optgroup>
+					</select>
+				</label>
+				<label>
+					{t("quick.date")}
+					<input type="date" name="date" value={tomorrow.date} required />
+				</label>
+				<label>
+					{t("quick.time")}
+					<input type="time" name="time" value="12:00" required />
+				</label>
+				<label>
+					{t("quick.passengers")}
+					<input type="number" name="pax" min="1" max="60" value="2" required />
+				</label>
+				<label>
+					{t("form.luggage")}
+					<input type="number" name="bags" min="0" max="60" value="2" required />
+				</label>
+			</div>
+			<button type="submit">{t("book.showPrices")}</button>
+			<small>{t("book.timeHint")}</small>
+		</form>
+	</body>
+</html>

@@ -121,12 +121,12 @@ export const monthName = (month: string) =>
 	new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
 
 /** What the company has booked for trips in a month, cancellations left out. */
-export async function monthSpend(db: Db, orgId: string, month = currentMonth()): Promise<{ total: number; trips: number }> {
+export async function monthSpend(db: Db, orgId: string, month = currentMonth(), by: "org_id" | "agency_id" = "org_id"): Promise<{ total: number; trips: number }> {
 	const { start, end } = monthRange(month);
 	const row = await db
 		.selectFrom("sd_bookings")
 		.select((eb) => [eb.fn.coalesce(eb.fn.sum<number>("price_minor"), eb.lit(0)).as("total"), eb.fn.countAll<number>().as("trips")])
-		.where("org_id", "=", orgId)
+		.where(by, "=", orgId)
 		.where("status", "not in", ["cancelled", "quoted"])
 		.where("pickup_at", ">=", start)
 		.where("pickup_at", "<", end)
@@ -162,9 +162,17 @@ export interface CompanyTrip {
 	tracking_token: string;
 	booked_by: string | null;
 	pax: number;
+	payment_method: string;
+	source: string;
 }
 
-export async function companyTrips(db: Db, orgId: string, filter: { month?: string; upcoming?: boolean; limit?: number } = {}): Promise<CompanyTrip[]> {
+/** Trips billed to a company (org_id), or brought by an agency (agency_id). */
+export async function companyTrips(
+	db: Db,
+	orgId: string,
+	filter: { month?: string; upcoming?: boolean; limit?: number } = {},
+	by: "org_id" | "agency_id" = "org_id",
+): Promise<CompanyTrip[]> {
 	let query = db
 		.selectFrom("sd_bookings as b")
 		.innerJoin("sd_zones as f", "f.id", "b.from_zone_id")
@@ -187,8 +195,10 @@ export async function companyTrips(db: Db, orgId: string, filter: { month?: stri
 			"b.tracking_token",
 			"u.name as booked_by",
 			"b.pax",
+			"b.payment_method",
+			"b.source",
 		])
-		.where("b.org_id", "=", orgId);
+		.where(`b.${by}`, "=", orgId);
 	if (filter.month) {
 		const { start, end } = monthRange(filter.month);
 		query = query.where("b.pickup_at", ">=", start).where("b.pickup_at", "<", end).orderBy("b.pickup_at");

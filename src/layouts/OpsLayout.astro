@@ -17,7 +17,7 @@ interface Props {
 	/** Current path, to highlight the menu entry. */
 	active?: string;
 	/** The same shell serves partner fleets (/partner) and company accounts (/firma) with their own menus. */
-	panel?: "ops" | "partner" | "company";
+	panel?: "ops" | "partner" | "company" | "agency";
 }
 
 const { title, user, active = Astro.url.pathname, panel = "ops" } = Astro.props;
@@ -26,6 +26,7 @@ const PANEL = {
 	ops: { home: "/ops", name: "Operasyon", logout: "/ops/cikis" },
 	partner: { home: "/partner", name: "Partner", logout: "/partner/cikis" },
 	company: { home: "/firma", name: "Firma", logout: "/firma/cikis" },
+	agency: { home: "/acente", name: "Acente", logout: "/acente/cikis" },
 }[panel];
 
 const watch = !!user && can(user, "bookings.read");
@@ -47,7 +48,16 @@ type IconName = Parameters<typeof Icon>[0]["name"];
 type NavItem = { href: string; label: string; icon: IconName; show: boolean; count?: keyof OpsCounts; hint?: string };
 const NAV_ALL: NavItem[] = !user
 	? []
-	: panel === "company"
+	: panel === "agency"
+		? [
+				{ href: "/acente", label: "Pano", icon: "dashboard", show: true },
+				{ href: "/acente/yeni", label: "Misafir transferi", icon: "plus", show: true },
+				{ href: "/acente/rezervasyonlar", label: "Rezervasyonlar", icon: "calendar", show: true },
+				{ href: "/acente/linkler", label: "Link ve widget", icon: "globe", show: true },
+				{ href: "/acente/ekstre", label: "Komisyon ve ekstre", icon: "wallet", show: true },
+				{ href: "/acente/ekip", label: "Ekip", icon: "users", show: can(user, "agency.manage") },
+			]
+		: panel === "company"
 		? [
 				{ href: "/firma", label: "Pano", icon: "dashboard", show: true },
 				{ href: "/firma/yeni", label: "Yeni transfer", icon: "plus", show: true },
@@ -69,6 +79,7 @@ const NAV_ALL: NavItem[] = !user
 			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read") },
 			{ href: "/ops/partnerler", label: "Partner filolar", icon: "building", show: can(user, "bookings.read") },
 			{ href: "/ops/firmalar", label: "Kurumsal firmalar", icon: "card", show: can(user, "bookings.read") },
+			{ href: "/ops/acenteler", label: "Acenteler ve oteller", icon: "globe", show: can(user, "bookings.read") },
 			{ href: "/ops/hakedis", label: "Hakediş", icon: "wallet", show: can(user, "settlements.manage") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", icon: "pin", show: can(user, "catalog.read") },

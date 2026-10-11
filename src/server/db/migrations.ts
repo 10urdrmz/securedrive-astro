@@ -454,4 +454,13 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_bookings_org ON sd_bookings(org_id, pickup_at)`,
 		],
 	},
+	{
+		name: "0013_agencies",
+		statements: [
+			// Agencies and hotels (sd_orgs kind 'agency'): the one that brought or made the
+			// booking, for its list and its commission. Billing still follows org_id.
+			`ALTER TABLE sd_bookings ADD COLUMN agency_id TEXT`,
+			`CREATE INDEX IF NOT EXISTS sd_bookings_agency ON sd_bookings(agency_id, pickup_at)`,
+		],
+	},
 ];

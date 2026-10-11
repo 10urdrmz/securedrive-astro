@@ -1,0 +1,47 @@
+---
+/** Agency dashboard: today's and upcoming guest transfers, this month's commission and account. */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Trips from "../../components/CompanyTrips.astro";
+import { agencyMonth, requireAgency } from "../../server/agencies";
+import { companyTrips, currentMonth, monthName } from "../../server/companies";
+import { formatMoney } from "../../server/ops";
+
+const ctx = await requireAgency(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, agency } = ctx;
+
+const month = currentMonth();
+const summary = await agencyMonth(db, agency, month);
+const upcoming = await companyTrips(db, agency.id, { upcoming: true, limit: 30 }, "agency_id");
+---
+
+<OpsLayout title="Pano" user={user} panel="agency">
+	<p class="muted" style="margin-top:0">{agency.name}</p>
+	<div class="stats">
+		<div class="stat">
+			<span class="muted">{monthName(month)} rezervasyon</span>
+			<strong>{summary.trips}</strong>
+		</div>
+		{
+			agency.settings.commissionPct > 0 && (
+				<div class="stat">
+					<span class="muted">Bu ay komisyon (%{agency.settings.commissionPct})</span>
+					<strong>{formatMoney(summary.commission)} ₺</strong>
+					<span class="muted">tamamlanan yolculuklardan</span>
+				</div>
+			)
+		}
+		<div class="stat">
+			<span class="muted">Bu ay cari hesap</span>
+			<strong>{formatMoney(summary.account)} ₺</strong>
+		</div>
+	</div>
+	<div class="actions" style="margin-bottom:16px">
+		<a class="btn" href="/acente/yeni">Misafir transferi ayır</a>
+		<a class="btn secondary" href="/acente/linkler">Rezervasyon linkiniz ve widget</a>
+	</div>
+	<div class="card">
+		<h2 style="margin-top:0">Yaklaşan transferler</h2>
+		<Trips trips={upcoming} agency />
+	</div>
+</OpsLayout>
