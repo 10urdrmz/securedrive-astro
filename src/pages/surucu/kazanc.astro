@@ -1,0 +1,117 @@
+---
+/**
+ * The driver's earnings: completed trips not yet on a statement and the weekly
+ * statements SecureDrive cut, net of the cash the driver kept. Our own drivers only;
+ * a partner's drivers are paid by their partner.
+ */
+import DriverLayout from "../../layouts/DriverLayout.astro";
+import { getDb } from "../../server/db";
+import { sessionDriver } from "../../server/driver-app";
+import { formatMoney } from "../../server/ops";
+import { isoToIstanbul } from "../../server/pricing";
+import { partySummary, SETTLEMENT_LABELS, weekLabel } from "../../server/settlements";
+
+const db = await getDb(Astro.locals);
+const driver = await sessionDriver(db, Astro.cookies);
+if (!driver) return Astro.redirect("/surucu/giris");
+if (driver.org_id) return Astro.redirect("/surucu");
+
+const { current, statements } = await partySummary(db, "driver", driver.id);
+const netText = (net: number) => (net > 0 ? `Alacağınız ${formatMoney(net)} ₺` : net < 0 ? `Teslim edeceğiniz nakit ${formatMoney(-net)} ₺` : "0 ₺");
+const short = (iso: string) => {
+	const { date, time } = isoToIstanbul(iso);
+	return `${date.slice(8, 10)}.${date.slice(5, 7)} ${time}`;
+};
+---
+
+<DriverLayout title="Kazancım" driver={driver} back>
+	<h1>Kazancım</h1>
+	<section>
+		<h2>Henüz dökülmemiş</h2>
+		{
+			current ? (
+				<div class="drv-card">
+					<p class="net">{netText(current.net)}</p>
+					<p class="drv-muted" style="margin:0 0 12px">
+						{current.jobs} iş · hakediş {formatMoney(current.payout)} ₺ · elinizdeki nakit {formatMoney(current.cash)} ₺
+					</p>
+					<ul class="lines">
+						{current.lines.map((l) => (
+							<li>
+								<span>
+									<strong>{short(l.pickup_at)}</strong> {l.from_name} → {l.to_name}
+								</span>
+								<span class="amt">
+									{l.payout_minor != null ? `${formatMoney(l.payout_minor)} ₺` : "—"}
+									{l.cash_minor > 0 && <small>nakit {formatMoney(l.cash_minor)} ₺</small>}
+								</span>
+							</li>
+						))}
+					</ul>
+				</div>
+			) : (
+				<p class="drv-muted">Dökülmeyi bekleyen iş yok.</p>
+			)
+		}
+	</section>
+	<section>
+		<h2>Haftalık dökümler</h2>
+		{statements.length === 0 && <p class="drv-muted">Henüz döküm yok.</p>}
+		{
+			statements.map((s) => (
+				<div class="drv-card week">
+					<div>
+						<strong>{weekLabel(s.period_start, s.period_end)}</strong>
+						<div class="drv-muted">
+							{s.jobs} iş · {netText(s.net_minor)}
+						</div>
+					</div>
+					<span class:list={["drv-pill", s.status === "paid" ? "ok" : "warn"]}>{SETTLEMENT_LABELS[s.status]}</span>
+				</div>
+			))
+		}
+	</section>
+	<p class="drv-muted">Hakediş, nakit tahsilat düşülerek haftalık hesaplanır. Ödeme veya nakit teslimi için operasyonla görüşün.</p>
+</DriverLayout>
+
+<style>
+	.net {
+		font-size: 22px;
+		font-weight: 700;
+		margin: 0 0 4px;
+	}
+	.lines {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: grid;
+		gap: 8px;
+		font-size: 14px;
+	}
+	.lines li {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		border-top: 1px solid var(--drv-line);
+		padding-top: 8px;
+	}
+	.amt {
+		text-align: right;
+		white-space: nowrap;
+		font-weight: 600;
+	}
+	.amt small {
+		display: block;
+		color: var(--drv-muted);
+		font-weight: 500;
+	}
+	.week .drv-pill {
+		white-space: nowrap;
+	}
+	.week {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+	}
+</style>

@@ -212,7 +212,7 @@ const flight = b.flight_no ? flightView(await getFlight(db, b.id)) : null;
 				<p class="money ok">Tahsilat yok · {b.payment_status === "paid" ? "ödendi" : PAYMENT_METHOD_LABELS[b.payment_method]}</p>
 			)
 		}
-		{b.payout_minor != null && <p class="drv-muted" style="margin:6px 0 0">Sizin payınız: {formatMoney(b.payout_minor)} ₺</p>}
+		{b.payout_minor != null && !driver.org_id && <p class="drv-muted" style="margin:6px 0 0">Sizin payınız: {formatMoney(b.payout_minor)} ₺</p>}
 	</section>
 	<ChatBox
 		messages={messages}

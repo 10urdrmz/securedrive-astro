@@ -1,0 +1,356 @@
+---
+/**
+ * Hakediş: weekly statements of what we owe drivers and partner fleets for completed
+ * trips, net of the cash their drivers collected. Ops cuts a statement per party for
+ * a week, pays it outside the system and marks it paid here.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Lines from "../../components/SettlementLines.astro";
+import { audit, formatMoney, readForm, requireOps, text } from "../../server/ops";
+import { isoToIstanbul } from "../../server/pricing";
+import {
+	balances,
+	createSettlement,
+	getSettlement,
+	istanbulWeek,
+	listSettlements,
+	markPaid,
+	SETTLEMENT_LABELS,
+	settlementLines,
+	voidSettlement,
+	weekLabel,
+	type PartyKind,
+} from "../../server/settlements";
+
+const ctx = await requireOps(Astro, "settlements.manage");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+
+const offset = Math.max(-26, Math.min(0, Number.parseInt(Astro.url.searchParams.get("hafta") ?? "-1", 10) || 0));
+const week = istanbulWeek(offset);
+
+let notice = "";
+let error = "";
+const form = await readForm(Astro);
+if (form) {
+	const intent = text(form, "intent", 20);
+	try {
+		if (intent === "create" || intent === "create_all") {
+			const pending = await balances(db, week.end);
+			const targets =
+				intent === "create_all" ? pending : pending.filter((b) => b.kind === text(form, "kind", 10) && b.id === text(form, "party_id", 40));
+			if (targets.length === 0) throw new Error("Bu hafta için döküm kesilecek iş yok.");
+			for (const t of targets) {
+				const { id } = await createSettlement(db, { kind: t.kind, id: t.id }, week, user.id);
+				await audit(db, user, "settlement.create", "settlement", id, { party: t.name, net: t.net, jobs: t.jobs });
+			}
+			notice = targets.length === 1 ? `${targets[0].name} için döküm kesildi.` : `${targets.length} döküm kesildi.`;
+		} else if (intent === "paid" || intent === "void") {
+			const settlement = await getSettlement(db, text(form, "id", 40));
+			if (!settlement) throw new Error("Döküm bulunamadı.");
+			if (intent === "paid") {
+				await markPaid(db, settlement, user.id, text(form, "note", 200) || null);
+				notice = `${settlement.party_name} dökümü ödendi olarak işaretlendi.`;
+			} else {
+				await voidSettlement(db, settlement);
+				notice = `${settlement.party_name} dökümü geri alındı; işleri yeniden bekleyenler listesinde.`;
+			}
+			await audit(db, user, `settlement.${intent}`, "settlement", settlement.id, { party: settlement.party_name, net: settlement.net_minor });
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const detailId = Astro.url.searchParams.get("dokum");
+const detail = detailId ? await getSettlement(db, detailId) : null;
+const detailLines = detail ? await settlementLines(db, detail.id) : [];
+
+const pending = await balances(db, week.end);
+const settlements = await listSettlements(db, { limit: 100 });
+const open = settlements.filter((s) => s.status === "open");
+const paid = settlements.filter((s) => s.status === "paid").slice(0, 20);
+const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
+const toPay = sum(open.filter((s) => s.net_minor > 0).map((s) => s.net_minor)) + sum(pending.filter((b) => b.net > 0).map((b) => b.net));
+const toCollect = -(sum(open.filter((s) => s.net_minor < 0).map((s) => s.net_minor)) + sum(pending.filter((b) => b.net < 0).map((b) => b.net)));
+
+const KIND: Record<PartyKind, string> = { driver: "Sürücü", partner: "Partner filo" };
+const netText = (net: number) => (net > 0 ? `Ödenecek ${formatMoney(net)} ₺` : net < 0 ? `Tahsil edilecek ${formatMoney(-net)} ₺` : "Sıfır");
+const stamp = (iso: string) => {
+	const { date, time } = isoToIstanbul(iso);
+	return `${date.split("-").reverse().join(".")} ${time}`;
+};
+const weekOptions = Array.from({ length: 13 }, (_, i) => ({ offset: -i, label: i === 0 ? "Bu hafta" : i === 1 ? "Geçen hafta" : istanbulWeek(-i).label }));
+---
+
+<OpsLayout title="Hakediş" user={user}>
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+
+	{
+		detail ? (
+			<>
+				<p>
+					<a href={`/ops/hakedis?hafta=${offset}`}>← Hakediş</a>
+				</p>
+				<div class="card">
+					<div class="head">
+						<div>
+							<h2 style="margin:0">{detail.party_name}</h2>
+							<p class="muted" style="margin:4px 0 0">
+								{KIND[detail.party_kind]} · {weekLabel(detail.period_start, detail.period_end)} · kesim {stamp(detail.created_at)}
+							</p>
+						</div>
+						<span class:list={["badge", detail.status === "paid" && "ok", detail.status === "open" && "off"]}>{SETTLEMENT_LABELS[detail.status]}</span>
+					</div>
+					<div class="stats" style="margin:16px 0">
+						<div class="stat">
+							<span class="muted">İş</span>
+							<strong>{detail.jobs}</strong>
+						</div>
+						<div class="stat">
+							<span class="muted">Hakediş</span>
+							<strong>{formatMoney(detail.payout_minor)} ₺</strong>
+						</div>
+						<div class="stat">
+							<span class="muted">Sürücüde kalan nakit</span>
+							<strong>{formatMoney(detail.cash_minor)} ₺</strong>
+						</div>
+						<div class="stat">
+							<span class="muted">Net</span>
+							<strong>{netText(detail.net_minor)}</strong>
+						</div>
+					</div>
+					{detail.paid_at && (
+						<p class="muted">
+							Ödendi: {stamp(detail.paid_at)}
+							{detail.paid_note && ` · ${detail.paid_note}`}
+						</p>
+					)}
+					<Lines lines={detailLines} showDriver={detail.party_kind === "partner"} />
+					<div class="actions no-print">
+						<button class="btn secondary" type="button" onclick="print()">Yazdır / PDF</button>
+					</div>
+				</div>
+			</>
+		) : (
+			<>
+				<p class="muted" style="margin-top:0">
+					Tamamlanan işlerin sürücü ve partner hakedişleri, sürücünün yolcudan aldığı nakit düşülerek haftalık dökülür. Döküm kestiğinizde o haftaya kadarki
+					işler dondurulur; ödemeyi yaptıktan sonra "Ödendi" ile kapatın. Partnerler kendi dökümlerini <a href="/partner/finans">partner panelinde</a>,
+					sürücüler sürücü uygulamasında görür.
+				</p>
+				<div class="stats">
+					<div class="stat">
+						<span class="muted">Ödenecek toplam</span>
+						<strong>{formatMoney(toPay)} ₺</strong>
+					</div>
+					<div class="stat">
+						<span class="muted">Sürücülerden tahsil edilecek nakit</span>
+						<strong>{formatMoney(toCollect)} ₺</strong>
+					</div>
+					<div class="stat">
+						<span class="muted">Açık döküm</span>
+						<strong>{open.length}</strong>
+					</div>
+				</div>
+
+				<div class="card">
+					<div class="head">
+						<h2 style="margin:0">Döküm kesilmemiş işler</h2>
+						<form method="get" class="week">
+							<label>
+								Hafta sonuna kadar
+								<select name="hafta" onchange="this.form.submit()">
+									{weekOptions.map((w) => (
+										<option value={w.offset} selected={w.offset === offset}>
+											{w.label}
+										</option>
+									))}
+								</select>
+							</label>
+							<noscript>
+								<button class="btn secondary" type="submit">Göster</button>
+							</noscript>
+						</form>
+					</div>
+					<p class="muted">{week.label} haftasının sonuna kadar tamamlanan, henüz dökümü kesilmemiş işler (önceki haftalardan kalanlar dahil).</p>
+					{pending.length === 0 ? (
+						<p class="muted">Bekleyen iş yok.</p>
+					) : (
+						<>
+							<div class="table-wrap">
+								<table class="data">
+									<thead>
+										<tr>
+											<th>Kime</th>
+											<th class="num">İş</th>
+											<th class="num">Hakediş</th>
+											<th class="num">Nakit</th>
+											<th class="num">Net</th>
+											<th />
+										</tr>
+									</thead>
+									<tbody>
+										{pending.map((b) => (
+											<tr>
+												<td>
+													<strong>{b.name}</strong> <span class="badge">{KIND[b.kind]}</span>
+													{b.missingPayout > 0 && <div class="warn">{b.missingPayout} işte hakediş tutarı yok; rezervasyonda "Sürücü payı" boş.</div>}
+													<details>
+														<summary class="muted">İşleri göster</summary>
+														<Lines lines={b.lines} showDriver={b.kind === "partner"} />
+													</details>
+												</td>
+												<td class="num">{b.jobs}</td>
+												<td class="num">{formatMoney(b.payout)} ₺</td>
+												<td class="num">{formatMoney(b.cash)} ₺</td>
+												<td class:list={["num", b.net < 0 && "neg"]}>
+													<strong>{netText(b.net)}</strong>
+												</td>
+												<td>
+													<form method="post" style="margin:0">
+														<input type="hidden" name="intent" value="create" />
+														<input type="hidden" name="kind" value={b.kind} />
+														<input type="hidden" name="party_id" value={b.id} />
+														<button class="btn secondary" type="submit">Dökümü kes</button>
+													</form>
+												</td>
+											</tr>
+										))}
+									</tbody>
+								</table>
+							</div>
+							{pending.length > 1 && (
+								<form method="post" class="actions">
+									<input type="hidden" name="intent" value="create_all" />
+									<button class="btn" type="submit">Hepsinin dökümünü kes ({pending.length})</button>
+								</form>
+							)}
+						</>
+					)}
+				</div>
+
+				<div class="card">
+					<h2 style="margin-top:0">Açık dökümler</h2>
+					{open.length === 0 ? (
+						<p class="muted">Açık döküm yok.</p>
+					) : (
+						<div class="table-wrap">
+							<table class="data">
+								<thead>
+									<tr>
+										<th>Kime</th>
+										<th>Dönem</th>
+										<th class="num">İş</th>
+										<th class="num">Net</th>
+										<th />
+									</tr>
+								</thead>
+								<tbody>
+									{open.map((s) => (
+										<tr>
+											<td>
+												<a href={`/ops/hakedis?hafta=${offset}&dokum=${s.id}`}>
+													<strong>{s.party_name}</strong>
+												</a>{" "}
+												<span class="badge">{KIND[s.party_kind]}</span>
+											</td>
+											<td>{weekLabel(s.period_start, s.period_end)}</td>
+											<td class="num">{s.jobs}</td>
+											<td class:list={["num", s.net_minor < 0 && "neg"]}>
+												<strong>{netText(s.net_minor)}</strong>
+											</td>
+											<td>
+												<form method="post" class="actions" style="margin:0">
+													<input type="hidden" name="id" value={s.id} />
+													<input type="text" name="note" placeholder="Not (ör. EFT, dekont no)" style="max-width:200px" />
+													<button class="btn" type="submit" name="intent" value="paid">
+														{s.net_minor < 0 ? "Teslim alındı" : "Ödendi"}
+													</button>
+													<button class="btn secondary" type="submit" name="intent" value="void">Geri al</button>
+												</form>
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					)}
+				</div>
+
+				{paid.length > 0 && (
+					<div class="card">
+						<h2 style="margin-top:0">Son kapanan dökümler</h2>
+						<div class="table-wrap">
+							<table class="data">
+								<thead>
+									<tr>
+										<th>Kime</th>
+										<th>Dönem</th>
+										<th class="num">Net</th>
+										<th>Kapanış</th>
+									</tr>
+								</thead>
+								<tbody>
+									{paid.map((s) => (
+										<tr>
+											<td>
+												<a href={`/ops/hakedis?hafta=${offset}&dokum=${s.id}`}>{s.party_name}</a> <span class="badge">{KIND[s.party_kind]}</span>
+											</td>
+											<td>{weekLabel(s.period_start, s.period_end)}</td>
+											<td class="num">{netText(s.net_minor)}</td>
+											<td>
+												{s.paid_at && stamp(s.paid_at)}
+												{s.paid_note && <div class="muted">{s.paid_note}</div>}
+											</td>
+										</tr>
+									))}
+								</tbody>
+							</table>
+						</div>
+					</div>
+				)}
+			</>
+		)
+	}
+</OpsLayout>
+
+<style>
+	.head {
+		display: flex;
+		justify-content: space-between;
+		align-items: flex-start;
+		gap: 12px;
+		flex-wrap: wrap;
+	}
+	.week label {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin: 0;
+	}
+	td.num {
+		white-space: nowrap;
+	}
+	td.neg strong {
+		color: #b54708;
+	}
+	.warn {
+		color: #b54708;
+		font-size: 13px;
+		margin-top: 4px;
+	}
+	details summary {
+		cursor: pointer;
+		font-size: 13px;
+		margin-top: 4px;
+	}
+	@media print {
+		:global(.ops-side),
+		:global(.ops-top),
+		.no-print {
+			display: none !important;
+		}
+	}
+</style>

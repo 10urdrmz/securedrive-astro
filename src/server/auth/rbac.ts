@@ -33,6 +33,7 @@ export type Permission =
 	| "drivers.manage"
 	| "payments.write"
 	| "partners.manage"
+	| "settlements.manage"
 	| "partner.access";
 
 const GRANTS: Record<Role, Permission[]> = {
@@ -49,11 +50,12 @@ const GRANTS: Record<Role, Permission[]> = {
 		"drivers.manage",
 		"payments.write",
 		"partners.manage",
+		"settlements.manage",
 	],
-	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write", "partners.manage"],
+	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write", "partners.manage", "settlements.manage"],
 	ops_agent: ["ops.access", "catalog.read", "bookings.read", "bookings.write"],
 	support_agent: ["ops.access", "catalog.read", "bookings.read"],
-	finance: ["ops.access", "catalog.read", "bookings.read", "payments.write"],
+	finance: ["ops.access", "catalog.read", "bookings.read", "payments.write", "settlements.manage"],
 	carrier_admin: ["partner.access"],
 	passenger: [],
 };

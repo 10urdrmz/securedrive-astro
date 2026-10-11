@@ -1,57 +1,99 @@
 ---
-/** What SecureDrive owes this partner: completed jobs and their payouts, by month. */
+/**
+ * What SecureDrive owes this partner: completed jobs not yet on a statement, and the
+ * weekly statements ("döküm") SecureDrive cut, with their paid state.
+ */
 import OpsLayout from "../../layouts/OpsLayout.astro";
+import Lines from "../../components/SettlementLines.astro";
 import { formatMoney } from "../../server/ops";
-import { partnerEarnings, requirePartner } from "../../server/partners";
+import { requirePartner } from "../../server/partners";
 import { isoToIstanbul } from "../../server/pricing";
+import { getSettlement, partySummary, SETTLEMENT_LABELS, settlementLines, weekLabel } from "../../server/settlements";
 
 const ctx = await requirePartner(Astro);
 if (ctx instanceof Response) return ctx;
 const { db, user, org } = ctx;
 
-const { rows, months } = await partnerEarnings(db, org.id);
-const monthName = (month: string) => new Intl.DateTimeFormat("tr-TR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${month}-01T00:00:00Z`));
-const total = months.reduce((sum, m) => sum + m.total, 0);
+const { current, statements } = await partySummary(db, "partner", org.id);
+const detailId = Astro.url.searchParams.get("dokum");
+const found = detailId ? await getSettlement(db, detailId) : null;
+// Only this partner's own statements, whatever the URL says.
+const detail = found && found.party_kind === "partner" && found.party_id === org.id && found.status !== "void" ? found : null;
+const detailLines = detail ? await settlementLines(db, detail.id) : [];
+const netText = (net: number) => (net > 0 ? `SecureDrive ödeyecek: ${formatMoney(net)} ₺` : net < 0 ? `SecureDrive'a teslim: ${formatMoney(-net)} ₺` : "0 ₺");
+const day = (iso: string) => isoToIstanbul(iso).date.split("-").reverse().join(".");
 ---
 
 <OpsLayout title="Hakediş" user={user} panel="partner">
-	<p class="muted">Tamamlanan işleriniz ve her biri için SecureDrive'dan alacağınız tutar. Ödemeler ve faturalama SecureDrive finans ekibiyle yapılır.</p>
-	<div class="card">
-		<table class="data">
-			<thead>
-				<tr><th>Ay</th><th>İş</th><th>Tutar</th></tr>
-			</thead>
-			<tbody>
-				{months.map((m) => <tr><td>{monthName(m.month)}</td><td>{m.count}</td><td><strong>{formatMoney(m.total)} ₺</strong></td></tr>)}
-				{months.length === 0 && <tr><td colspan="3" class="muted">Henüz tamamlanan iş yok.</td></tr>}
-				{months.length > 1 && <tr><th>Toplam</th><th>{rows.length}</th><th>{formatMoney(total)} ₺</th></tr>}
-			</tbody>
-		</table>
-	</div>
 	{
-		rows.length > 0 && (
-			<div class="card">
-				<h2 style="margin-top:0">Tamamlanan işler</h2>
-				<table class="data">
-					<thead>
-						<tr><th>Tarih</th><th>İş</th><th>Güzergâh</th><th>Sürücü</th><th>Tutar</th></tr>
-					</thead>
-					<tbody>
-						{rows.map((r) => {
-							const { date, time } = isoToIstanbul(r.pickup_at);
-							return (
+		detail ? (
+			<>
+				<p>
+					<a href="/partner/finans">← Hakediş</a>
+				</p>
+				<div class="card">
+					<h2 style="margin:0">{weekLabel(detail.period_start, detail.period_end)}</h2>
+					<p class="muted" style="margin:4px 0 12px">
+						{detail.jobs} iş · {SETTLEMENT_LABELS[detail.status]}
+						{detail.paid_at && ` · ${day(detail.paid_at)}`}
+					</p>
+					<table class="data">
+						<tbody>
+							<tr><th>Hakediş</th><td>{formatMoney(detail.payout_minor)} ₺</td></tr>
+							<tr><th>Sürücülerinizin aldığı nakit</th><td>{formatMoney(detail.cash_minor)} ₺</td></tr>
+							<tr><th>Net</th><td><strong>{netText(detail.net_minor)}</strong></td></tr>
+						</tbody>
+					</table>
+					<Lines lines={detailLines} showDriver link={false} />
+					<div class="actions">
+						<button class="btn secondary" type="button" onclick="print()">Yazdır / PDF</button>
+					</div>
+				</div>
+			</>
+		) : (
+			<>
+				<p class="muted" style="margin-top:0">
+					Tamamlanan işleriniz haftalık dökülür. Sürücünüz yolcudan nakit aldıysa bu tutar hakedişten düşülür. Ödeme ve faturalama SecureDrive finans ekibiyle
+					yapılır.
+				</p>
+				<div class="card">
+					<h2 style="margin-top:0">Henüz dökülmemiş işler</h2>
+					{current ? (
+						<>
+							<table class="data">
+								<tbody>
+									<tr><th>İş</th><td>{current.jobs}</td></tr>
+									<tr><th>Hakediş</th><td>{formatMoney(current.payout)} ₺</td></tr>
+									<tr><th>Sürücülerinizin aldığı nakit</th><td>{formatMoney(current.cash)} ₺</td></tr>
+									<tr><th>Net</th><td><strong>{netText(current.net)}</strong></td></tr>
+								</tbody>
+							</table>
+							<Lines lines={current.lines} showDriver link={false} />
+						</>
+					) : (
+						<p class="muted">Dökülmeyi bekleyen iş yok.</p>
+					)}
+				</div>
+				<div class="card">
+					<h2 style="margin-top:0">Dökümler</h2>
+					<table class="data">
+						<thead>
+							<tr><th>Hafta</th><th>İş</th><th>Net</th><th>Durum</th></tr>
+						</thead>
+						<tbody>
+							{statements.map((s) => (
 								<tr>
-									<td>{date} {time}</td>
-									<td>{r.code}</td>
-									<td>{r.from_name} → {r.to_name}</td>
-									<td>{r.driver_name ?? "—"}</td>
-									<td>{formatMoney(r.payout_minor)} ₺</td>
+									<td><a href={`/partner/finans?dokum=${s.id}`}>{weekLabel(s.period_start, s.period_end)}</a></td>
+									<td>{s.jobs}</td>
+									<td>{netText(s.net_minor)}</td>
+									<td><span class:list={["badge", s.status === "paid" && "ok"]}>{SETTLEMENT_LABELS[s.status]}</span></td>
 								</tr>
-							);
-						})}
-					</tbody>
-				</table>
-			</div>
+							))}
+							{statements.length === 0 && <tr><td colspan="4" class="muted">Henüz döküm yok.</td></tr>}
+						</tbody>
+					</table>
+				</div>
+			</>
 		)
 	}
 </OpsLayout>

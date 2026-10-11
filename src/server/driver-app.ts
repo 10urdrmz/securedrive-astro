@@ -26,9 +26,11 @@ export interface Driver {
 	vehicle: string | null;
 	class_key: string | null;
 	status: string;
+	/** Set for a partner fleet's driver; the partner, not us, pays them. */
+	org_id: string | null;
 }
 
-const DRIVER_FIELDS = ["d.id", "d.name", "d.phone", "d.plate", "d.vehicle", "d.class_key", "d.status"] as const;
+const DRIVER_FIELDS = ["d.id", "d.name", "d.phone", "d.plate", "d.vehicle", "d.class_key", "d.status", "d.org_id"] as const;
 
 /** Arabic-Indic, Persian and full-width digits as ASCII, so a phone keyboard in any language works. */
 export const asciiDigits = (value: string) =>

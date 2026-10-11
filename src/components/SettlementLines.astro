@@ -1,0 +1,62 @@
+---
+/** The trips behind a hakediş statement or balance: payout, cash kept by the driver. */
+import { PAYMENT_METHOD_LABELS, type PaymentMethod } from "../server/bookings";
+import { formatMoney } from "../server/ops";
+import { isoToIstanbul } from "../server/pricing";
+import type { SettlementLine } from "../server/settlements";
+
+interface Props {
+	lines: SettlementLine[];
+	/** Partner statements list which of the partner's drivers drove. */
+	showDriver?: boolean;
+	/** Ops links each trip to its booking page. */
+	link?: boolean;
+}
+const { lines, showDriver = false, link = true } = Astro.props;
+const method = (m: string) => PAYMENT_METHOD_LABELS[m as PaymentMethod] ?? m;
+---
+
+<div class="table-wrap">
+	<table class="data lines">
+		<thead>
+			<tr>
+				<th>Tarih</th>
+				<th>İş</th>
+				<th>Güzergâh</th>
+				{showDriver && <th>Sürücü</th>}
+				<th>Ödeme</th>
+				<th class="num">Hakediş</th>
+				<th class="num">Nakit</th>
+			</tr>
+		</thead>
+		<tbody>
+			{
+				lines.map((l) => {
+					const { date, time } = isoToIstanbul(l.pickup_at);
+					return (
+						<tr>
+							<td>
+								{date.split("-").reverse().join(".")} {time}
+							</td>
+							<td>{link ? <a href={`/ops/rezervasyonlar/${l.code}`}>{l.code}</a> : l.code}</td>
+							<td>
+								{l.from_name} → {l.to_name}
+							</td>
+							{showDriver && <td>{l.driver_name ?? "—"}</td>}
+							<td>{method(l.payment_method)}</td>
+							<td class="num">{l.payout_minor == null ? "—" : `${formatMoney(l.payout_minor)} ₺`}</td>
+							<td class="num">{l.cash_minor ? `${formatMoney(l.cash_minor)} ₺` : "—"}</td>
+						</tr>
+					);
+				})
+			}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	.lines {
+		font-size: 13px;
+		margin-top: 8px;
+	}
+</style>

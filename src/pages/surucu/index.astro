@@ -72,6 +72,14 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 			</div>
 		)
 	}
+	{
+		!driver.org_id && (
+			<a class="drv-card earn" href="/surucu/kazanc">
+				<strong>Kazancım</strong>
+				<span class="drv-muted">Hakediş ve haftalık dökümler ›</span>
+			</a>
+		)
+	}
 </DriverLayout>
 
 <style>
@@ -125,5 +133,12 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 	}
 	.job-meta {
 		font-size: 14px;
+	}
+	.earn {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		margin-top: 20px;
 	}
 </style>
