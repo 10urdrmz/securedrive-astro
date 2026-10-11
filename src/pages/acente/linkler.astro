@@ -1,0 +1,57 @@
+---
+/**
+ * The agency's referral link and booking widget. A guest who books through either within
+ * 30 days counts as the agency's guest: the agency sees the booking and earns commission.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { requireAgency } from "../../server/agencies";
+
+const ctx = await requireAgency(Astro);
+if (ctx instanceof Response) return ctx;
+const { user, agency } = ctx;
+
+const code = agency.settings.refCode;
+const origin = Astro.url.origin;
+const links = [
+	{ label: "Türkçe", url: `${origin}/rezervasyon?ref=${code}` },
+	{ label: "English", url: `${origin}/en/rezervasyon?ref=${code}` },
+	{ label: "العربية", url: `${origin}/ar/rezervasyon?ref=${code}` },
+	{ label: "Русский", url: `${origin}/ru/rezervasyon?ref=${code}` },
+];
+const embed = `<iframe src="${origin}/embed/rezervasyon?ref=${code}&lang=en" title="SecureDrive transfer" style="width:100%;max-width:420px;height:470px;border:0;border-radius:12px" loading="lazy"></iframe>`;
+---
+
+<OpsLayout title="Link ve widget" user={user} panel="agency">
+	<p class="muted" style="margin-top:0">
+		Referans kodunuz <strong>{code}</strong>. Bu linklerden ya da widget'tan gelen misafir 30 gün içinde rezervasyon yaparsa rezervasyon size yazılır
+		{agency.settings.commissionPct > 0 && `, yolculuk tamamlanınca %${agency.settings.commissionPct} komisyon kazanırsınız`}.
+	</p>
+	<div class="card">
+		<h2 style="margin-top:0">Rezervasyon linkleri</h2>
+		<p class="muted">Misafire WhatsApp ile gönderin, sitenize ya da e-postalarınıza koyun.</p>
+		<table class="data">
+			<tbody>
+				{
+					links.map((l) => (
+						<tr>
+							<th style="width:110px">{l.label}</th>
+							<td>
+								<input type="text" readonly value={l.url} onfocus="this.select()" style="width:100%" />
+							</td>
+						</tr>
+					))
+				}
+			</tbody>
+		</table>
+	</div>
+	<div class="card">
+		<h2 style="margin-top:0">Web siteniz için widget</h2>
+		<p class="muted">
+			Bu kodu sitenize yapıştırın. Misafir güzergâhı ve saati seçince fiyatlar SecureDrive'da yeni sekmede açılır. Dili değiştirmek için <code>lang=en</code>
+			yerine tr, ar ya da ru yazın.
+		</p>
+		<textarea readonly rows="4" style="width:100%;font-family:monospace;font-size:13px" onfocus="this.select()">{embed}</textarea>
+		<p class="muted">Önizleme:</p>
+		<Fragment set:html={embed.replace("&lang=en", "&lang=tr")} />
+	</div>
+</OpsLayout>

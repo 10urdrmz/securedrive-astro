@@ -1,0 +1,81 @@
+---
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { getDb } from "../../server/db";
+import { verifyPassword } from "../../server/auth/password";
+import { createSession, getSessionUser } from "../../server/auth/session";
+import { can } from "../../server/auth/rbac";
+import { audit, readForm, text } from "../../server/ops";
+
+const MAX_FAILURES = 5;
+const LOCK_MINUTES = 15;
+
+const db = await getDb(Astro.locals);
+const rawNext = Astro.url.searchParams.get("next") ?? "/acente";
+// Only same-site panel paths; never an open redirect.
+const next = rawNext.startsWith("/acente") && !rawNext.startsWith("//") ? rawNext : "/acente";
+
+const current = await getSessionUser(db, Astro.cookies, "agency");
+if (current && can(current, "agency.access")) return Astro.redirect(next);
+
+let error = "";
+let email = "";
+const form = await readForm(Astro);
+if (form) {
+	email = text(form, "email", 200).toLowerCase();
+	const password = String(form.get("password") ?? "");
+	const user = await db
+		.selectFrom("sd_users")
+		.select(["id", "name", "email", "password_hash", "status", "failed_logins", "locked_until"])
+		.where((eb) => eb.or([eb("email", "=", email), eb("username", "=", email)]))
+		.executeTakeFirst();
+	const now = new Date();
+	if (user?.locked_until && user.locked_until > now.toISOString()) {
+		error = "Çok fazla hatalı deneme. Biraz sonra tekrar deneyin.";
+	} else if (!user || user.status !== "active" || !(await verifyPassword(password, user.password_hash))) {
+		if (user) {
+			const failures = (user.failed_logins ?? 0) + 1;
+			await db
+				.updateTable("sd_users")
+				.set({
+					failed_logins: failures >= MAX_FAILURES ? 0 : failures,
+					locked_until: failures >= MAX_FAILURES ? new Date(now.getTime() + LOCK_MINUTES * 60_000).toISOString() : null,
+				})
+				.where("id", "=", user.id)
+				.execute();
+		}
+		error = "E-posta veya şifre hatalı.";
+	} else {
+		const roles = await db.selectFrom("sd_memberships").select("role").where("user_id", "=", user.id).execute();
+		if (!can({ id: user.id, name: user.name, email: user.email, roles: roles.map((r) => r.role) }, "agency.access")) {
+			error = "Bu hesap bir acente hesabı değil.";
+		} else {
+			await db
+				.updateTable("sd_users")
+				.set({ failed_logins: 0, locked_until: null, last_login_at: now.toISOString() })
+				.where("id", "=", user.id)
+				.execute();
+			await createSession(db, Astro.cookies, user.id, "agency", Astro.request.headers.get("user-agent"));
+			await audit(db, { id: user.id, name: user.name, email: user.email, roles: [] }, "agency.login", "user", user.id);
+			return Astro.redirect(next);
+		}
+	}
+}
+---
+
+<OpsLayout title="Acente girişi" panel="agency">
+	<div class="card auth-card">
+		{error && <p class="notice error">{error}</p>}
+		<p class="muted" style="margin-top:0">SecureDrive acente ve otel paneli. Hesabınızı SecureDrive ekibi açar; ekibinize yeni kullanıcıyı acentenizin yöneticisi ekler.</p>
+		<form method="post">
+			<label>
+				E-posta veya kullanıcı adı
+				<input type="text" name="email" value={email} autocomplete="username" required />
+			</label>
+			<label>
+				Şifre
+				<input type="password" name="password" autocomplete="current-password" required />
+			</label>
+			<button class="btn" type="submit">Giriş yap</button>
+		</form>
+	</div>
+</OpsLayout>

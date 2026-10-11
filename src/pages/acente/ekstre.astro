@@ -1,0 +1,59 @@
+---
+/**
+ * The agency's monthly statement: commission earned on completed trips its guests
+ * paid for, and what its own account owes for trips booked at net price.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Trips from "../../components/CompanyTrips.astro";
+import { agencyMonth, requireAgency } from "../../server/agencies";
+import { companyTrips, currentMonth, monthName } from "../../server/companies";
+import { formatMoney } from "../../server/ops";
+
+const ctx = await requireAgency(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, agency } = ctx;
+
+const asked = Astro.url.searchParams.get("ay") ?? "";
+const month = /^\d{4}-\d{2}$/.test(asked) ? asked : currentMonth();
+const summary = await agencyMonth(db, agency, month);
+const trips = (await companyTrips(db, agency.id, { month }, "agency_id")).filter((t) => !["cancelled", "quoted"].includes(t.status));
+const months = Array.from({ length: 12 }, (_, i) => {
+	const [y, m] = currentMonth().split("-").map(Number);
+	return new Date(Date.UTC(y, m - 1 - i, 1)).toISOString().slice(0, 7);
+});
+---
+
+<OpsLayout title="Komisyon ve ekstre" user={user} panel="agency">
+	<form method="get" class="actions" style="margin-top:0;align-items:end">
+		<label>
+			Ay
+			<select name="ay" onchange="this.form.submit()">
+				{months.map((m) => <option value={m} selected={m === month}>{monthName(m)}</option>)}
+			</select>
+		</label>
+		<noscript><button class="btn secondary" type="submit">Göster</button></noscript>
+		<button class="btn secondary" type="button" onclick="print()">Yazdır / PDF</button>
+	</form>
+	<div class="stats">
+		<div class="stat">
+			<span class="muted">Misafirin ödediği, tamamlanan</span>
+			<strong>{formatMoney(summary.revenue)} ₺</strong>
+		</div>
+		<div class="stat">
+			<span class="muted">Komisyonunuz (%{agency.settings.commissionPct})</span>
+			<strong>{formatMoney(summary.commission)} ₺</strong>
+		</div>
+		<div class="stat">
+			<span class="muted">Cari hesap (net fiyat) borcu</span>
+			<strong>{formatMoney(summary.account)} ₺</strong>
+		</div>
+	</div>
+	<p class="muted">
+		Komisyon, misafirin SecureDrive'a ödediği ve tamamlanan yolculuklardan hesaplanır; ay sonunda cari hesap borcunuzdan düşülür ya da size ödenir. Faturalama
+		SecureDrive finans ekibiyle yapılır.
+	</p>
+	<div class="card">
+		<h2 style="margin-top:0">{monthName(month)} rezervasyonları</h2>
+		<Trips trips={trips} agency />
+	</div>
+</OpsLayout>

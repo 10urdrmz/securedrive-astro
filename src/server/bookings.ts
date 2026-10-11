@@ -107,6 +107,8 @@ export interface Booking {
 	settlement_id: string | null;
 	/** Company bookings: the cost centre or project code the company gave. */
 	cost_center: string | null;
+	/** The agency or hotel that brought or made the booking (commission, its list). */
+	agency_id: string | null;
 	cancel_reason: string | null;
 	refund_pct: number | null;
 	tracking_token: string;
@@ -116,7 +118,7 @@ export interface Booking {
 
 /** Who did it: an ops user, the passenger (through the site), the driver (through the driver app) or the system. */
 export interface Actor {
-	kind: "ops" | "passenger" | "driver" | "partner" | "company" | "system";
+	kind: "ops" | "passenger" | "driver" | "partner" | "company" | "agency" | "system";
 	userId?: string | null;
 }
 
@@ -154,11 +156,12 @@ export interface NewBooking {
 	pax: number;
 	bags: number;
 	paymentMethod: PaymentMethod;
-	source: "web" | "ops" | "company";
+	source: "web" | "ops" | "company" | "agency";
 	locale: string;
 	/** Company account the booking is billed to (cari hesap). */
 	orgId?: string | null;
 	costCenter?: string | null;
+	agencyId?: string | null;
 	memberId: string | null;
 	/** Ops may agree a different price on the phone. */
 	priceOverrideMinor?: number | null;
@@ -189,6 +192,7 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 		customer_member_id: input.memberId,
 		org_id: input.orgId ?? "",
 		cost_center: input.costCenter ?? null,
+		agency_id: input.agencyId ?? null,
 		from_zone_id: input.quote.from.id,
 		to_zone_id: input.quote.to.id,
 		pickup_address: input.pickupAddress,

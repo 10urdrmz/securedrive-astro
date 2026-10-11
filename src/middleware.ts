@@ -3,6 +3,7 @@ import { getDb } from "./server/db";
 import { PRIVATE_PATH, purgeEdgeCacheOnce } from "./server/edge-cache";
 import { dispatchIfDue } from "./server/dispatch";
 import { refreshFlightsIfDue } from "./server/flights";
+import { rememberReferral } from "./server/agencies";
 
 /**
  * Adds the SecureDrive theme to the EmDash admin.
@@ -40,6 +41,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
 	}
 	// Personal pages (and their redirects and 404s) never go to the edge cache.
 	if (PRIVATE_PATH.test(context.url.pathname)) {
+		// Agency referral links and widgets: the agency gets the booking for 30 days.
+		const ref = context.url.searchParams.get("ref");
+		if (ref && /^\/(?:[a-z]{2}\/)?(?:rezervasyon|embed)(?:\/|$)/.test(context.url.pathname)) {
+			rememberReferral(context.cookies, ref.toLowerCase(), context.url.protocol === "https:");
+		}
 		if (context.cache?.enabled) context.cache.set(false);
 		if (import.meta.env.PROD) await purgeEdgeCacheOnce(await getDb(context.locals));
 		// Automatic driver offers move on while ops or drivers have the panels open.

@@ -20,6 +20,7 @@ const status = (BOOKING_STATUSES as readonly string[]).includes(params.get("stat
 const q = (params.get("q") ?? "").trim().slice(0, 60);
 const unassigned = params.get("unassigned") === "1";
 const company = (params.get("firma") ?? "").slice(0, 40);
+const agencyFilter = (params.get("acente") ?? "").slice(0, 40);
 
 let query = db
 	.selectFrom("sd_bookings as b")
@@ -28,6 +29,7 @@ let query = db
 	.innerJoin("sd_vehicle_classes as c", "c.key", "b.class_key")
 	.leftJoin("sd_drivers as d", "d.id", "b.driver_id")
 	.leftJoin("sd_orgs as o", (join) => join.onRef("o.id", "=", "b.org_id").on("o.kind", "=", "company"))
+	.leftJoin("sd_orgs as a", "a.id", "b.agency_id")
 	.select([
 		"b.code",
 		"b.status",
@@ -44,10 +46,13 @@ let query = db
 		"c.name as class_name",
 		"d.name as driver_name",
 		"o.name as company_name",
+		"a.name as agency_name",
 	]);
 if (company) {
 	// A company's bookings, whatever the dates (from the company accounts page).
 	query = query.where("b.org_id", "=", company);
+} else if (agencyFilter) {
+	query = query.where("b.agency_id", "=", agencyFilter);
 } else if (q) {
 	const like = `%${q}%`;
 	query = query.where((eb) => eb.or([eb("b.code", "like", like), eb("b.contact_name", "like", like), eb("b.contact_phone", "like", like)]));
@@ -128,7 +133,8 @@ const rows = await query.orderBy("b.pickup_at").limit(300).execute();
 									{r.class_name} · {r.pax} kişi
 								</td>
 								<td>
-									{r.company_name && <span class="badge">{r.company_name}</span>} {r.contact_name}
+									{r.company_name && <span class="badge">{r.company_name}</span>}
+									{r.agency_name && <span class="badge">{r.agency_name}</span>} {r.contact_name}
 									<div class="muted">{r.contact_phone}</div>
 								</td>
 								<td>{r.driver_name ?? <span class="badge off">Atanmadı</span>}</td>

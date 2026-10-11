@@ -1,0 +1,222 @@
+---
+/**
+ * An agency or hotel books a transfer for its guest. Either on the agency's account at
+ * its net price (tariff less its discount), or the guest pays in the car at the public
+ * price and the agency earns its commission when the trip is done.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { createBooking, PAYMENT_METHOD_LABELS, type PaymentMethod } from "../../server/bookings";
+import { requireAgency } from "../../server/agencies";
+import { audit, formatMoney, readForm, text } from "../../server/ops";
+import { isoToIstanbul, quote, type ClassQuote } from "../../server/pricing";
+import { getSettings } from "../../server/settings";
+
+const ctx = await requireAgency(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, agency } = ctx;
+const { discountPct, commissionPct } = agency.settings;
+const METHODS: PaymentMethod[] = ["account", "cash", "card_in_vehicle"];
+const METHOD_TEXT: Record<string, string> = {
+	account: `Acente cari hesabı (net fiyat${discountPct ? `, %${discountPct} indirimli` : ""})`,
+	cash: "Misafir araçta nakit öder",
+	card_in_vehicle: "Misafir araçta kartla öder",
+};
+/** The agency's net price: the tariff less its discount, as a price line. */
+const net = (o: ClassQuote): ClassQuote => {
+	if (!discountPct) return o;
+	const discount = -Math.round((o.total_minor * discountPct) / 100);
+	return { ...o, lines: [...o.lines, { kind: "discount", label: `Acente indirimi (%${discountPct})`, amount_minor: discount }], total_minor: o.total_minor + discount };
+};
+
+const zones = await db.selectFrom("sd_zones").select(["id", "name", "kind"]).where("serviceable", "=", 1).orderBy("sort").execute();
+const settings = await getSettings(db);
+const QUOTE_ERRORS: Record<string, string> = {
+	invalidInput: "Güzergâh, tarih, saat, kişi ve bagaj bilgilerini kontrol edin.",
+	notServiceable: "Bu bölgeye hizmet verilmiyor.",
+	tooSoon: `Transferler en az ${settings.minLeadHours} saat önceden ayrılır. Daha yakın saatler için SecureDrive operasyonu arayın.`,
+	past: "Seçilen saat geçmişte.",
+};
+
+const soon = isoToIstanbul(new Date(Date.now() + (settings.minLeadHours + 1) * 3600_000).toISOString());
+const keys = ["from", "to", "date", "time", "pax", "bags", "class_key", "name", "phone", "email", "flight", "address", "sign", "notes", "room", "payment", "intent"];
+let v: Record<string, string> = { date: soon.date, time: soon.time.slice(0, 3) + "00", pax: "1", bags: "1", payment: "account" };
+let error = "";
+let options: ClassQuote[] = [];
+
+const form = await readForm(Astro);
+if (form) {
+	v = Object.fromEntries(keys.map((k) => [k, text(form, k, k === "notes" ? 500 : 120)]));
+	if (!METHODS.includes(v.payment as PaymentMethod)) v.payment = "account";
+	const result = await quote(db, { fromZoneId: v.from, toZoneId: v.to, date: v.date, time: v.time, pax: Number(v.pax) || 0, bags: Number(v.bags) || 0, orgId: agency.id });
+	if (!result.ok) {
+		error = QUOTE_ERRORS[result.error] ?? "Fiyat hesaplanamadı.";
+	} else {
+		options = result.quote.options.filter((o) => o.fits);
+		if (options.length === 0) error = "Bu kişi ve bagaj sayısına uygun araç yok. SecureDrive ile görüşün.";
+		if (!options.some((o) => o.classKey === v.class_key)) v.class_key = options[0]?.classKey ?? "";
+		if (!error && v.intent === "save") {
+			const picked = options.find((o) => o.classKey === v.class_key)!;
+			const onAccount = v.payment === "account";
+			const option = onAccount ? net(picked) : picked;
+			if (v.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(v.phone)) {
+				error = "Yolcunun adı soyadı ve sürücünün ulaşabileceği bir telefon gerekli (sürücü numarayı görmez, sistem üzerinden ulaşır).";
+			} else if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) {
+				error = "E-posta adresini kontrol edin.";
+			} else {
+				const addressOnPickup = result.quote.from.kind !== "airport";
+				const booking = await createBooking(
+					db,
+					{
+						quote: result.quote,
+						option,
+						contact: { name: v.name, phone: v.phone, email: v.email.toLowerCase() || null },
+						flightNo: v.flight.toUpperCase().replace(/\s+/g, "") || null,
+						signName: v.sign || v.name,
+						pickupAddress: addressOnPickup ? v.address || null : null,
+						dropoffAddress: addressOnPickup ? null : v.address || null,
+						notes: [v.room && `Oda ${v.room}`, v.notes].filter(Boolean).join(" · ") || null,
+						pax: Number(v.pax),
+						bags: Number(v.bags),
+						paymentMethod: v.payment as PaymentMethod,
+						source: "agency",
+						locale: "tr",
+						memberId: null,
+						orgId: onAccount ? agency.id : null,
+						agencyId: agency.id,
+						internalNotes: `${agency.name} · ${user.name} ayırdı`,
+					},
+					{ kind: "agency", userId: user.id },
+				);
+				await audit(db, user, "agency.booking", "booking", booking.id, { code: booking.code, org: agency.id });
+				return Astro.redirect(`/acente/rezervasyonlar?yeni=${booking.code}`, 303);
+			}
+		}
+	}
+}
+const airports = zones.filter((z) => z.kind === "airport");
+const districts = zones.filter((z) => z.kind !== "airport");
+---
+
+<OpsLayout title="Misafir transferi" user={user} panel="agency">
+	{error && <p class="notice error">{error}</p>}
+	<p class="muted" style="margin-top:0">
+		{agency.name}. Cari hesaba ayırırsanız net fiyatla ayda bir faturalanırsınız. Misafir araçta öderse genel fiyat geçerlidir
+		{commissionPct > 0 && ` ve yolculuk tamamlanınca %${commissionPct} komisyon kazanırsınız`}. Kayıttan sonra misafire takip linkini iletebilirsiniz.
+	</p>
+	<form class="card" method="post">
+		<h2 style="margin-top:0">Yolculuk</h2>
+		<div class="form-grid">
+			<label>
+				Nereden
+				<select name="from" required>
+					<option value="">Seçin</option>
+					<optgroup label="Havalimanları">{airports.map((z) => <option value={z.id} selected={v.from === z.id}>{z.name}</option>)}</optgroup>
+					<optgroup label="İlçeler">{districts.map((z) => <option value={z.id} selected={v.from === z.id}>{z.name}</option>)}</optgroup>
+				</select>
+			</label>
+			<label>
+				Nereye
+				<select name="to" required>
+					<option value="">Seçin</option>
+					<optgroup label="İlçeler">{districts.map((z) => <option value={z.id} selected={v.to === z.id}>{z.name}</option>)}</optgroup>
+					<optgroup label="Havalimanları">{airports.map((z) => <option value={z.id} selected={v.to === z.id}>{z.name}</option>)}</optgroup>
+				</select>
+			</label>
+			<label>Tarih <input type="date" name="date" value={v.date} required /></label>
+			<label>Alış saati (İstanbul) <input type="time" name="time" value={v.time} required /></label>
+			<label>Kişi <input type="number" name="pax" min="1" max="60" value={v.pax} required /></label>
+			<label>Bavul <input type="number" name="bags" min="0" max="60" value={v.bags} required /></label>
+			<label>Uçuş no (havalimanından alışta) <input type="text" name="flight" value={v.flight} placeholder="TK1234" /></label>
+			<label>Adres (otel / ev) <input type="text" name="address" value={v.address} placeholder="Boşsa otelinizin adresi yazın" /></label>
+		</div>
+
+		{
+			options.length > 0 && (
+				<>
+					<h2>Araç</h2>
+					<div class="classes">
+						{options.map((o) => (
+							<label class="class">
+								<input type="radio" name="class_key" value={o.classKey} checked={v.class_key === o.classKey} />
+								<span>
+									<strong>{o.name}</strong>
+									<span class="muted">en fazla {o.paxMax} kişi · {o.bagsMax} bavul</span>
+								</span>
+								<span class="price">
+									<strong>{formatMoney(net(o).total_minor)} ₺</strong> <small class="muted">net</small>
+									{discountPct > 0 && <small class="muted">misafir fiyatı {formatMoney(o.total_minor)} ₺</small>}
+								</span>
+							</label>
+						))}
+					</div>
+				</>
+			)
+		}
+
+		<h2>Yolcu</h2>
+		<div class="form-grid">
+			<label>Ad soyad <input type="text" name="name" value={v.name} /></label>
+			<label>Telefon <input type="text" name="phone" value={v.phone} placeholder="+90 5xx xxx xx xx" /></label>
+			<label>E-posta (isteğe bağlı) <input type="email" name="email" value={v.email} /></label>
+			<label>Karşılama tabelası <input type="text" name="sign" value={v.sign} placeholder="Boşsa yolcunun adı" /></label>
+			<label>Oda no <input type="text" name="room" value={v.room} /></label>
+			<label>Sürücüye not <input type="text" name="notes" value={v.notes} /></label>
+		</div>
+		<h2>Ödeme</h2>
+		<div class="pay">
+			{
+				METHODS.map((m) => (
+					<label class="inline">
+						<input type="radio" name="payment" value={m} checked={v.payment === m} /> {METHOD_TEXT[m] ?? PAYMENT_METHOD_LABELS[m]}
+					</label>
+				))
+			}
+		</div>
+		<div class="actions">
+			{
+				options.length > 0 ? (
+					<>
+						<button class="btn" type="submit" name="intent" value="save">Transferi ayır</button>
+						<button class="btn secondary" type="submit" name="intent" value="price">Fiyatı yeniden hesapla</button>
+					</>
+				) : (
+					<button class="btn" type="submit" name="intent" value="price">Araçları ve fiyatları göster</button>
+				)
+			}
+		</div>
+	</form>
+</OpsLayout>
+
+<style>
+	.classes {
+		display: grid;
+		gap: 8px;
+	}
+	.class {
+		display: flex !important;
+		flex-direction: row !important;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 14px;
+		border: 1px solid var(--gray-200);
+		border-radius: 10px;
+		cursor: pointer;
+	}
+	.class:has(input:checked) {
+		border-color: #144c7f;
+		background: #f0f6fc;
+	}
+	.class > span {
+		display: grid;
+		flex: 1;
+	}
+	.class .price {
+		display: grid;
+		text-align: right;
+		white-space: nowrap;
+	}
+	.pay {
+		display: grid;
+		gap: 6px;
+	}
+</style>

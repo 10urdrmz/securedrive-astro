@@ -206,7 +206,10 @@ const eventFlight = (data: unknown) => {
 const companyName = booking.org_id
 	? ((await db.selectFrom("sd_orgs").select("name").where("id", "=", booking.org_id).where("kind", "=", "company").executeTakeFirst())?.name ?? null)
 	: null;
-const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", partner: "Partner", company: "Firma", system: "Sistem" };
+const agencyName = booking.agency_id
+	? ((await db.selectFrom("sd_orgs").select("name").where("id", "=", booking.agency_id).executeTakeFirst())?.name ?? null)
+	: null;
+const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", partner: "Partner", company: "Firma", agency: "Acente", system: "Sistem" };
 const eventPartner = (data: unknown) => {
 	try {
 		const d = JSON.parse(String(data)) as { partnerName?: string; payoutMinor?: number };
@@ -289,8 +292,9 @@ const chatRoomName = await chatRoom(booking);
 				{booking.sign_name && <tr><th>Tabela</th><td>{booking.sign_name}</td></tr>}
 				{booking.notes && <tr><th>Yolcu notu</th><td>{booking.notes}</td></tr>}
 				{booking.cancel_reason && <tr><th>İptal</th><td>{booking.cancel_reason} · iade %{booking.refund_pct ?? 0}</td></tr>}
-				{companyName && <tr><th>Kurumsal</th><td><a href={`/ops/rezervasyonlar?firma=${booking.org_id}`}>{companyName}</a> · cari hesap{booking.cost_center && <> · masraf merkezi {booking.cost_center}</>}</td></tr>}
-				<tr><th>Kaynak</th><td>{booking.source === "company" ? "Firma paneli" : booking.source === "ops" ? (inquiryLink ? "Fiyat talebinden (operasyon)" : "Telefon (operasyon)") : "Web sitesi"} · dil {booking.locale} · {booking.customer_member_id ? "üye" : "misafir"}</td></tr>
+				{agencyName && <tr><th>Acente</th><td><a href={`/ops/rezervasyonlar?acente=${booking.agency_id}`}>{agencyName}</a>{booking.payment_method === "account" ? " · acente cari hesabı (net fiyat)" : " · misafir öder, acenteye komisyon"}</td></tr>}
+				{companyName && !agencyName && <tr><th>Kurumsal</th><td><a href={`/ops/rezervasyonlar?firma=${booking.org_id}`}>{companyName}</a> · cari hesap{booking.cost_center && <> · masraf merkezi {booking.cost_center}</>}</td></tr>}
+				<tr><th>Kaynak</th><td>{booking.source === "company" ? "Firma paneli" : booking.source === "agency" ? "Acente paneli" : booking.source === "ops" ? (inquiryLink ? "Fiyat talebinden (operasyon)" : "Telefon (operasyon)") : "Web sitesi"} · dil {booking.locale} · {booking.customer_member_id ? "üye" : "misafir"}</td></tr>
 				{review && <tr><th>Değerlendirme</th><td><strong>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</strong> {review.comment}</td></tr>}
 				<tr><th>Fiyat kırılımı</th><td>{info.lines.map((l) => <div>{l.label}{l.qty && l.qty > 1 ? ` × ${l.qty}` : ""}: {formatMoney(l.amount_minor)} ₺</div>)}</td></tr>
 				{booking.payout_minor != null && <tr><th>Sürücü payı</th><td>{formatMoney(booking.payout_minor)} ₺</td></tr>}

@@ -30,6 +30,7 @@ import { allowVisitor, currentMember, EMAIL, PHONE, type Member } from "./member
 import { canWrite, firstName, listMessages, markRead, postMessage, type ChatMessage } from "../server/messages";
 import { iyzicoEnabled, iyzicoIsSandbox } from "../server/payments/iyzico";
 import { flightView, getFlight, type FlightView } from "../server/flights";
+import { referringAgency } from "../server/agencies";
 
 export interface Zone {
 	id: string;
@@ -203,6 +204,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 
 	// The district side carries the hotel or home address; the airport side needs none.
 	const addressOnPickup = result.quote.from.kind !== "airport";
+	const agency = await referringAgency(db, Astro.cookies);
 	const booking = await createBooking(
 		db,
 		{
@@ -220,6 +222,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 			source: "web",
 			locale,
 			memberId: member?.id ?? null,
+			agencyId: agency?.id ?? null,
 		},
 		{ kind: "passenger" },
 	);

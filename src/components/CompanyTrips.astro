@@ -8,8 +8,17 @@ import { isoToIstanbul } from "../server/pricing";
 interface Props {
 	trips: CompanyTrip[];
 	highlight?: string | null;
+	/** Agencies see who pays instead of a cost centre. */
+	agency?: boolean;
 }
-const { trips, highlight = null } = Astro.props;
+const { trips, highlight = null, agency = false } = Astro.props;
+/** A guest who booked on our site through the agency's link: theirs is the trip page, not the agency's. */
+const ownBooking = (t: CompanyTrip) => t.source !== "web";
+const shortName = (name: string) => {
+	const [first, ...rest] = name.trim().split(/\s+/);
+	return rest.length ? `${first} ${rest[rest.length - 1][0]}.` : first;
+};
+const PAYER: Record<string, string> = { account: "Cari hesap", cash: "Misafir · nakit", card_in_vehicle: "Misafir · kart", online: "Misafir · online" };
 const when = (iso: string) => {
 	const { date, time } = isoToIstanbul(iso);
 	return `${date.split("-").reverse().join(".")} ${time}`;
@@ -24,7 +33,7 @@ const when = (iso: string) => {
 				<th>Kod</th>
 				<th>Yolcu</th>
 				<th>Güzergâh</th>
-				<th>Masraf merkezi</th>
+				<th>{agency ? "Ödeme" : "Masraf merkezi"}</th>
 				<th>Durum</th>
 				<th class="num">Tutar</th>
 			</tr>
@@ -35,13 +44,18 @@ const when = (iso: string) => {
 					<tr class:list={[highlight === t.code && "hl"]}>
 						<td style="white-space:nowrap">{when(t.pickup_at)}</td>
 						<td>
-							<a href={`/rezervasyon/${t.code}?t=${t.tracking_token}`} target="_blank" rel="noopener">
-								{t.code}
-							</a>
+							{ownBooking(t) ? (
+								<a href={`/rezervasyon/${t.code}?t=${t.tracking_token}`} target="_blank" rel="noopener">
+									{t.code}
+								</a>
+							) : (
+								t.code
+							)}
 						</td>
 						<td>
-							{t.contact_name}
+							{ownBooking(t) ? t.contact_name : shortName(t.contact_name)}
 							<div class="muted">
+								{!ownBooking(t) && "Linkinizden · "}
 								{t.pax} kişi{t.flight_no && ` · ${t.flight_no}`}
 								{t.booked_by && ` · ${t.booked_by} ayırdı`}
 							</div>
@@ -50,7 +64,7 @@ const when = (iso: string) => {
 							{t.from_name} → {t.to_name}
 							<div class="muted">{t.class_name}</div>
 						</td>
-						<td>{t.cost_center ?? "—"}</td>
+						<td>{agency ? (PAYER[t.payment_method] ?? t.payment_method) : (t.cost_center ?? "—")}</td>
 						<td>
 							<span class:list={["badge", t.status === "completed" && "ok", t.status === "cancelled" && "off"]}>{STATUS_LABELS[t.status as BookingStatus] ?? t.status}</span>
 						</td>
