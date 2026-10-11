@@ -16,7 +16,8 @@ if (ctx instanceof Response) return ctx;
 const { db, user, org } = ctx;
 const actor = { kind: "partner" as const, userId: user.id };
 
-let notice = "";
+const taken = (Astro.url.searchParams.get("alindi") ?? "").slice(0, 20);
+let notice = taken ? `${taken} artık sizin. Aşağıdan bir sürücü atayın.` : "";
 let error = "";
 const form = await readForm(Astro);
 if (form) {

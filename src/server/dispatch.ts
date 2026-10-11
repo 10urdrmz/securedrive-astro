@@ -78,6 +78,8 @@ export async function runDispatch(db: Db, now = Date.now()): Promise<DispatchRes
 		.where("status", "=", "confirmed")
 		.where("driver_id", "is", null)
 		.where("carrier_org_id", "is", null)
+		// Bookings out in the job pool wait for a partner to take or win them.
+		.where("id", "not in", db.selectFrom("sd_pool_jobs").select("booking_id").where("status", "=", "open"))
 		.where("pickup_at", ">", new Date(now).toISOString())
 		.where("pickup_at", "<=", new Date(now + settings.autoAssignHours * 3600_000).toISOString())
 		.orderBy("pickup_at")

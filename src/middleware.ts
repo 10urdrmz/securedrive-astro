@@ -4,6 +4,7 @@ import { PRIVATE_PATH, purgeEdgeCacheOnce } from "./server/edge-cache";
 import { dispatchIfDue } from "./server/dispatch";
 import { refreshFlightsIfDue } from "./server/flights";
 import { rememberReferral } from "./server/agencies";
+import { settlePoolsIfDue } from "./server/pool";
 
 /**
  * Adds the SecureDrive theme to the EmDash admin.
@@ -50,6 +51,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
 		if (import.meta.env.PROD) await purgeEdgeCacheOnce(await getDb(context.locals));
 		// Automatic driver offers move on while ops or drivers have the panels open.
 		if (/^\/(?:ops|surucu)(?:\/|$)/.test(context.url.pathname)) await dispatchIfDue(await getDb(context.locals));
+		// Job pool deadlines close while ops, partners or drivers have their panels open.
+		if (/^\/(?:ops|surucu|partner)(?:\/|$)/.test(context.url.pathname)) await settlePoolsIfDue(await getDb(context.locals));
 		// Flight status stays fresh while anyone follows a booking.
 		// On Cloudflare the check runs after the response, so nobody waits for the flight API.
 		if (/^\/(?:ops|surucu|(?:[a-z]{2}\/)?rezervasyon\/)/.test(context.url.pathname)) {
