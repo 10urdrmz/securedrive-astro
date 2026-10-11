@@ -128,7 +128,10 @@ const driverMessage = [
 	.filter(Boolean)
 	.join("\n");
 const assigned = drivers.find((d) => d.id === booking!.driver_id) ?? (booking.driver_id ? await db.selectFrom("sd_drivers").selectAll().where("id", "=", booking.driver_id).executeTakeFirst() : null);
-const passengerMessage = `SecureDrive rezervasyonunuz ${booking.code}: ${at.date} ${at.time}, ${info.fromName} → ${info.toName}. Detaylar: ${passengerLink}`;
+const isQuote = booking.status === "quoted";
+const passengerMessage = isQuote
+	? `SecureDrive transfer teklifiniz ${booking.code}: ${at.date} ${at.time}, ${info.fromName} → ${info.toName}, ${info.className}, ${formatMoney(booking.price_minor)} TL. Onaylamak için: ${passengerLink}`
+	: `SecureDrive rezervasyonunuz ${booking.code}: ${at.date} ${at.time}, ${info.fromName} → ${info.toName}. Detaylar: ${passengerLink}`;
 const EVENT_LABELS: Record<string, string> = {
 	created: "Oluşturuldu",
 	status_change: "Durum değişti",
@@ -140,6 +143,8 @@ const EVENT_LABELS: Record<string, string> = {
 	review: "Yolcu değerlendirdi",
 	driver_accepted: "Sürücü işi kabul etti",
 	driver_declined: "Sürücü işi reddetti",
+	quote_accepted: "Müşteri teklifi onayladı",
+	quote_declined: "Müşteri teklifi reddetti",
 };
 const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", system: "Sistem" };
 // The current driver's answer in the driver app (no row: not answered yet).
@@ -162,6 +167,20 @@ const driverHasApp = booking.driver_id
 <OpsLayout title={`Rezervasyon ${booking.code}`} user={user} active="/ops/rezervasyonlar">
 	{notice && <p class="notice">{notice}</p>}
 	{error && <p class="notice error">{error}</p>}
+	{
+		isQuote && (
+			<div class="notice warn quote">
+				<strong>{Astro.url.searchParams.has("teklif") ? "Teklif hazır." : "Teklif müşteri onayı bekliyor."}</strong> Müşteri linkten fiyatı görür ve onaylar ya da
+				reddeder. Onaylayınca rezervasyon kesinleşir ve sürücü atayabilirsiniz; cevap gelince zilde bildirim olarak görünür.
+				<div class="actions">
+					<a class="btn" href={`https://wa.me/${digits(booking.contact_phone)}?text=${encodeURIComponent(passengerMessage)}`} target="_blank" rel="noopener">
+						Teklifi WhatsApp ile gönder
+					</a>
+					<a class="btn secondary" href={passengerLink} target="_blank" rel="noopener noreferrer">Müşterinin göreceği sayfa</a>
+				</div>
+			</div>
+		)
+	}
 
 	<div class="stats">
 		<div class="stat"><span class="muted">Durum</span><strong style="font-size:20px">{STATUS_LABELS[booking.status]}</strong></div>
@@ -193,8 +212,8 @@ const driverHasApp = booking.driver_id
 			</tbody>
 		</table>
 		<div class="actions">
-			<a class="btn secondary" href={`https://wa.me/${digits(booking.contact_phone)}?text=${encodeURIComponent(passengerMessage)}`} target="_blank" rel="noopener">Yolcuya WhatsApp ile link gönder</a>
-			<a class="btn secondary" href={passengerLink} target="_blank" rel="noopener noreferrer">Yolcu sayfasını aç</a>
+			{!isQuote && <a class="btn secondary" href={`https://wa.me/${digits(booking.contact_phone)}?text=${encodeURIComponent(passengerMessage)}`} target="_blank" rel="noopener">Yolcuya WhatsApp ile link gönder</a>}
+			{!isQuote && <a class="btn secondary" href={passengerLink} target="_blank" rel="noopener noreferrer">Yolcu sayfasını aç</a>}
 		</div>
 	</div>
 
@@ -240,7 +259,8 @@ const driverHasApp = booking.driver_id
 				<a class="btn" href={`https://wa.me/${digits(assigned.phone)}?text=${encodeURIComponent(driverMessage)}`} target="_blank" rel="noopener">İşi sürücüye WhatsApp ile gönder</a>
 			</div>
 		)}
-		{canWrite && !isFinal && (
+		{isQuote && <p class="muted">Müşteri teklifi onaylayınca sürücü atanabilir.</p>}
+		{canWrite && !isFinal && !isQuote && (
 			<form method="post" class="form-grid" style="margin-top:16px">
 				<input type="hidden" name="intent" value="assign" />
 				<input type="hidden" name="version" value={booking.version} />

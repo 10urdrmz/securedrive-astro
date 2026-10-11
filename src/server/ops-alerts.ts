@@ -52,7 +52,7 @@ export async function opsCounts(db: Db, user: SessionUser): Promise<OpsCounts> {
 
 export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<OpsFeedItem[]> {
 	if (!can(user, "bookings.read")) return [];
-	const [requests, bookings, declines] = await Promise.all([
+	const [requests, bookings, events] = await Promise.all([
 		db
 			.selectFrom("ec_inquiries")
 			.select(["id", "reference", "name", "details", "created_at"])
@@ -73,8 +73,8 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 		db
 			.selectFrom("sd_booking_events as e")
 			.innerJoin("sd_bookings as b", "b.id", "e.booking_id")
-			.select(["e.id", "e.at", "e.data", "b.code"])
-			.where("e.type", "=", "driver_declined")
+			.select(["e.id", "e.at", "e.data", "e.type", "b.code", "b.contact_name"])
+			.where("e.type", "in", ["driver_declined", "quote_accepted", "quote_declined"])
 			.orderBy("e.at", "desc")
 			.limit(limit)
 			.execute(),
@@ -104,7 +104,18 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			href: `/ops/rezervasyonlar/${b.code}`,
 			at: String(b.created_at),
 		})),
-		...declines.map((d) => {
+		...events.map((d) => {
+			if (d.type === "quote_accepted" || d.type === "quote_declined") {
+				const accepted = d.type === "quote_accepted";
+				return {
+					key: `quote:${d.id}`,
+					kind: accepted ? ("booking" as const) : ("declined" as const),
+					title: `${accepted ? "Teklif onaylandı" : "Teklif reddedildi"} · ${d.code}`,
+					detail: [d.contact_name, accepted ? "sürücü atayın" : "rezervasyon kapandı"].filter(Boolean).join(" · "),
+					href: `/ops/rezervasyonlar/${d.code}`,
+					at: String(d.at),
+				};
+			}
 			let name = "";
 			try {
 				name = (JSON.parse(String(d.data)) as { driverName?: string }).driverName ?? "";

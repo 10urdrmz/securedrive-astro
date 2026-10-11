@@ -16,7 +16,7 @@ const { db, user } = ctx;
 const canBook = can(user, "bookings.write");
 
 // Quick status changes ops makes while working a request.
-const MANUAL_STATUSES = ["new", "contacted", "quoted", "closed"] as const;
+const MANUAL_STATUSES = ["new", "contacted", "closed"] as const;
 const form = canBook ? await readForm(Astro) : null;
 if (form && text(form, "intent") === "status") {
 	const id = text(form, "id", 40);
@@ -48,20 +48,18 @@ const ago = (iso: string) => {
 	return `${Math.floor(minutes / 1440)} gün önce`;
 };
 const tel = (phone: string) => phone.replace(/[^\d+]/g, "");
+// "Teklif gönderildi" is set by sending a quote, never by hand: the customer answers it.
 const NEXT: Record<string, { status: string; label: string }[]> = {
-	new: [
-		{ status: "contacted", label: "Arandı" },
-		{ status: "quoted", label: "Fiyat verildi" },
-	],
-	contacted: [{ status: "quoted", label: "Fiyat verildi" }],
+	new: [{ status: "contacted", label: "Arandı" }],
+	contacted: [],
 	quoted: [],
 };
 ---
 
 <OpsLayout title="Fiyat talepleri" user={user}>
 	<p class="muted lead">
-		Sitedeki fiyat talebi formundan gelen transfer talepleri. Müşteriyle fiyatta anlaşınca <strong>Rezervasyona çevir</strong> ile
-		bilgiler dolu gelir; rezervasyon oluşunca talep "Rezervasyon yapıldı" olur.
+		Sitedeki fiyat talebi formundan gelen transfer talepleri. <strong>Teklif hazırla</strong> ile bilgiler dolu gelir; fiyatı yazıp
+		müşteriye gönderirsiniz. Müşteri linkten onaylayınca talep "Rezervasyon yapıldı" olur, reddederse kapanır.
 	</p>
 
 	<nav class="tabs" aria-label="Filtre">
@@ -178,15 +176,20 @@ const NEXT: Record<string, { status: string; label: string }[]> = {
 										</button>
 									</form>
 								)}
+								{canBook && r.bookingCode && r.status === "closed" && (
+									<a class="btn ghost" href={`/ops/rezervasyonlar/yeni?talep=${r.id}`}>
+										Yeni teklif
+									</a>
+								)}
 								{r.bookingCode ? (
 									<a class="btn secondary" href={`/ops/rezervasyonlar/${r.bookingCode}`}>
-										{r.bookingCode}
+										{r.status === "quoted" ? `Teklif ${r.bookingCode}` : r.bookingCode}
 									</a>
 								) : (
 									canBook &&
 									r.status !== "closed" && (
 										<a class="btn" href={`/ops/rezervasyonlar/yeni?talep=${r.id}`}>
-											Rezervasyona çevir
+											Teklif hazırla
 										</a>
 									)
 								)}
