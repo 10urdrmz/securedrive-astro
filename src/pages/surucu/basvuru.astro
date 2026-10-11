@@ -1,0 +1,164 @@
+---
+/**
+ * Application form for independent drivers (own licensed vehicle). Ops reviews it on
+ * the Sürücüler page; once approved the driver signs in with this phone and a PIN.
+ */
+import DriverLayout from "../../layouts/DriverLayout.astro";
+import { getDb } from "../../server/db";
+import { phoneKey, sessionDriver } from "../../server/driver-app";
+import { submitApplication } from "../../server/driver-applications";
+import { readForm, text } from "../../server/ops";
+import { allowVisitor } from "../../lib/members";
+
+const db = await getDb(Astro.locals);
+if (await sessionDriver(db, Astro.cookies)) return Astro.redirect("/surucu");
+const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name"]).orderBy("sort").execute();
+
+let error = "";
+let done: "ok" | "pending" | "driver" | null = null;
+const values = { name: "", phone: "", class_key: "", plate: "", vehicle: "", languages: "", licence: "", note: "" };
+const form = await readForm(Astro);
+if (form) {
+	for (const key of Object.keys(values) as (keyof typeof values)[]) values[key] = text(form, key, key === "note" ? 500 : 120);
+	if (text(form, "website", 200)) {
+		// Bots fill the hidden field; pretend it worked.
+		done = "ok";
+	} else if (values.name.length < 3 || !values.name.includes(" ")) {
+		error = "Adınızı ve soyadınızı yazın.";
+	} else if (phoneKey(values.phone).length < 10 || !/^\+?[0-9 ()-]{10,20}$/.test(values.phone)) {
+		error = "Telefonunuzu alan koduyla yazın (05xx xxx xx xx).";
+	} else if (!classes.some((c) => c.key === values.class_key)) {
+		error = "Aracınızın sınıfını seçin.";
+	} else if (values.plate.length < 5) {
+		error = "Plakanızı yazın.";
+	} else if (form.get("consent") !== "on") {
+		error = "Devam etmek için bilgilerinizin başvurunuz için işlenmesini onaylayın.";
+	} else if (!(await allowVisitor(Astro, "driver-apply", 3, 60))) {
+		error = "Çok fazla başvuru denemesi. Bir saat sonra tekrar deneyin.";
+	} else {
+		done = await submitApplication(db, {
+			name: values.name,
+			phone: values.phone,
+			classKey: values.class_key,
+			plate: values.plate.toUpperCase(),
+			vehicle: values.vehicle || null,
+			languages: values.languages,
+			licence: values.licence || null,
+			note: values.note || null,
+		});
+	}
+}
+---
+
+<DriverLayout title="Sürücü başvurusu">
+	<h1>SecureDrive ile çalışın</h1>
+	{
+		done ? (
+			<div class="drv-card">
+				{done === "driver" ? (
+					<>
+						<strong>Bu telefon zaten kayıtlı.</strong>
+						<p class="drv-muted">
+							<a href="/surucu/giris">Sürücü girişinden</a> telefonunuz ve PIN'inizle girin. PIN'iniz yoksa operasyonu arayın.
+						</p>
+					</>
+				) : (
+					<>
+						<strong>Başvurunuz bize ulaştı.</strong>
+						<p class="drv-muted">
+							{done === "pending" ? "Bu telefonla açık bir başvurunuz zaten var. " : ""}
+							Operasyon ekibimiz belgelerinizi kontrol edip sizi bu telefondan arayacak. Onaylanınca giriş PIN'iniz size iletilir.
+						</p>
+					</>
+				)}
+			</div>
+		) : (
+			<>
+				<p class="drv-muted">
+					Ruhsatlı, sigortalı kendi aracınızla havalimanı ve şehir içi VIP transfer yapıyorsanız başvurun. Onaylanan sürücüler uygulamadaki iş havuzundan
+					sabit ücretli işleri alır ya da ihalelere teklif verir; kazançlar haftalık hesaplanır.
+				</p>
+				{error && <p class="drv-notice error" role="alert">{error}</p>}
+				<form method="post" class="drv-card">
+					<label class="drv-field">
+						Ad soyad
+						<input name="name" required autocomplete="name" value={values.name} />
+					</label>
+					<label class="drv-field">
+						Telefon
+						<input name="phone" type="tel" inputmode="tel" autocomplete="tel" required value={values.phone} placeholder="05xx xxx xx xx" />
+					</label>
+					<label class="drv-field">
+						Araç sınıfı
+						<select name="class_key" required>
+							<option value="">Seçin</option>
+							{classes.map((c) => <option value={c.key} selected={values.class_key === c.key}>{c.name}</option>)}
+						</select>
+					</label>
+					<label class="drv-field">
+						Plaka
+						<input name="plate" required value={values.plate} placeholder="34 ABC 123" style="text-transform:uppercase" />
+					</label>
+					<label class="drv-field">
+						Araç (marka, model, yıl, renk)
+						<input name="vehicle" value={values.vehicle} placeholder="Mercedes Vito 2023, siyah" />
+					</label>
+					<label class="drv-field">
+						Konuştuğunuz diller
+						<input name="languages" value={values.languages} placeholder="TR, EN" />
+					</label>
+					<label class="drv-field">
+						Belge (D2 / turizm belgesi, SRC)
+						<input name="licence" value={values.licence} placeholder="D2 yetki belgesi, SRC-2" />
+					</label>
+					<label class="drv-field">
+						Eklemek istedikleriniz
+						<textarea name="note" rows="3">{values.note}</textarea>
+					</label>
+					<div class="hp" aria-hidden="true">
+						<label>
+							Web sitesi <input name="website" tabindex="-1" autocomplete="off" />
+						</label>
+					</div>
+					<label class="consent">
+						<input type="checkbox" name="consent" required />
+						<span>
+							Bilgilerimin başvurumun değerlendirilmesi için işlenmesini onaylıyorum (<a href="/gizlilik-politikasi" target="_blank" rel="noopener">gizlilik politikası</a>).
+						</span>
+					</label>
+					<button type="submit" class="drv-btn">Başvur</button>
+				</form>
+			</>
+		)
+	}
+	<p class="drv-muted" style="font-size:14px">Zaten sürücümüz müsünüz? <a href="/surucu/giris">Giriş yapın</a>.</p>
+</DriverLayout>
+
+<style>
+	select,
+	textarea {
+		font: inherit;
+		font-size: 18px;
+		font-weight: 500;
+		padding: 14px;
+		border: 1px solid #d0d5dd;
+		border-radius: 12px;
+		background: #fff;
+	}
+	.hp {
+		position: absolute;
+		left: -9999px;
+	}
+	.consent {
+		display: flex;
+		gap: 10px;
+		align-items: flex-start;
+		margin-bottom: 16px;
+		font-size: 14px;
+	}
+	.consent input {
+		width: 20px;
+		height: 20px;
+		flex: none;
+	}
+</style>

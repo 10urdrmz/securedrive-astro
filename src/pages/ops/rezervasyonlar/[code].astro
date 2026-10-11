@@ -105,7 +105,7 @@ if (form) {
 			const mode = text(form, "mode", 10) === "auction" ? "auction" : "fixed";
 			const minutes = Math.max(10, Math.min(48 * 60, Number(text(form, "minutes", 6)) || 60));
 			await openPool(db, booking, { mode, payoutMinor: payout, deadlineMinutes: minutes, note: text(form, "pool_note", 300) || null }, actor);
-			notice = mode === "auction" ? "İş ihaleye açıldı. Partnerler tavan tutarın altında teklif verecek." : "İş havuza kondu. İlk alan partner işi alır.";
+			notice = mode === "auction" ? "İş ihaleye açıldı. Partnerler ve bağımsız sürücüler tavanın altında teklif verecek." : "İş havuza kondu. İlk alan partner ya da bağımsız sürücü işi alır.";
 		} else if ((intent === "pool_cancel" || intent === "pool_award") && canWrite) {
 			const pool = await currentPoolJob(db, booking.id);
 			if (!pool || pool.status !== "open") throw new Error("Bu iş havuzda değil.");
@@ -113,8 +113,8 @@ if (form) {
 				await cancelPool(db, pool, actor);
 				notice = "İş havuzdan çekildi.";
 			} else {
-				await awardBid(db, pool, text(form, "bid_id", 40), actor);
-				notice = "İhale verildi. İş partnerin, sürücüsünü partner atayacak.";
+				const winner = await awardBid(db, pool, text(form, "bid_id", 40), actor);
+				notice = winner === "driver" ? "İhale verildi. Bağımsız sürücü işe atandı." : "İhale verildi. İş partnerin, sürücüsünü partner atayacak.";
 			}
 		} else if (intent === "partner_back" && canWrite) {
 			await withdrawFromPartner(db, booking, actor);
@@ -150,6 +150,13 @@ const at = isoToIstanbul(booking.pickup_at);
 // Direct assignment is for our own fleet; partner drivers come through their partner.
 const drivers = await db.selectFrom("sd_drivers").selectAll().where("status", "=", "active").where("org_id", "is", null).orderBy("name").execute();
 const partners = (await listPartners(db)).filter((p) => p.status === "active");
+const independents = await db
+	.selectFrom("sd_drivers")
+	.select((eb) => eb.fn.countAll<number>().as("n"))
+	.where("kind", "=", "independent")
+	.where("status", "=", "active")
+	.executeTakeFirst();
+const poolBidders = partners.length + Number(independents?.n ?? 0);
 const carrierJob = await currentCarrierJob(db, booking.id);
 const pool = await currentPoolJob(db, booking.id);
 const bids = pool ? await poolBids(db, pool.id) : [];
@@ -205,7 +212,7 @@ const EVENT_LABELS: Record<string, string> = {
 	carrier_released: "İş partnerden geri alındı",
 	pool_opened: "İş havuza kondu",
 	pool_cancelled: "İş havuzdan çekildi",
-	pool_awarded: "Havuzdan partnere verildi",
+	pool_awarded: "Havuzdan verildi",
 	pool_expired: "Havuz süresi doldu, alan olmadı",
 };
 const eventDriver = (data: unknown) => {
@@ -236,9 +243,9 @@ const agencyName = booking.agency_id
 const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", partner: "Partner", company: "Firma", agency: "Acente", system: "Sistem" };
 const eventPartner = (data: unknown) => {
 	try {
-		const d = JSON.parse(String(data)) as { partnerName?: string; payoutMinor?: number; amount_minor?: number };
+		const d = JSON.parse(String(data)) as { partnerName?: string; driverName?: string; payoutMinor?: number; amount_minor?: number };
 		const amount = d.payoutMinor ?? d.amount_minor;
-		return [d.partnerName, amount ? `${formatMoney(amount)} ₺` : ""].filter(Boolean).join(" · ");
+		return [d.partnerName ?? d.driverName, amount ? `${formatMoney(amount)} ₺` : ""].filter(Boolean).join(" · ");
 	} catch {
 		return "";
 	}
@@ -401,7 +408,7 @@ const chatRoomName = await chatRoom(booking);
 		</div>
 	)}
 
-	{(pool?.status === "open" || (canWrite && !isFinal && !isQuote && !carrierJob && !booking.driver_id && partners.length > 0)) && (
+	{(pool?.status === "open" || (canWrite && !isFinal && !isQuote && !carrierJob && !booking.driver_id && poolBidders > 0)) && (
 		<div class="card" id="havuz">
 			<h2 style="margin-top:0">İş havuzu</h2>
 			{pool?.status === "open" ? (
@@ -415,12 +422,15 @@ const chatRoomName = await chatRoom(booking);
 					{pool.mode === "auction" && (
 						<table class="data">
 							<thead>
-								<tr><th>Partner</th><th class="num">Teklif</th><th>Not</th><th /></tr>
+								<tr><th>Teklif veren</th><th class="num">Teklif</th><th>Not</th><th /></tr>
 							</thead>
 							<tbody>
 								{bids.filter((b) => b.status === "active").map((b) => (
 									<tr>
-										<td>{b.bidder_name}</td>
+										<td>
+											{b.bidder_name}
+											{b.bidder_kind === "driver" && <span class="muted"> · bağımsız sürücü</span>}
+										</td>
 										<td class="num"><strong>{formatMoney(b.amount_minor)} ₺</strong></td>
 										<td class="muted">{b.note}</td>
 										<td>
@@ -451,7 +461,7 @@ const chatRoomName = await chatRoom(booking);
 				<>
 					{pool && <p class="muted">Son havuz: {POOL_STATUS_LABELS[pool.status]}{pool.winner_amount_minor ? ` · ${formatMoney(pool.winner_amount_minor)} ₺` : ""}</p>}
 					<p class="muted" style="margin-top:0">
-						İşi tüm partner filolara açın. <strong>Sabit</strong>: yazdığınız tutarla ilk alan partner alır. <strong>İhale</strong>: tutar tavandır, partnerler
+						İşi tüm partner filolara ve bağımsız sürücülere (aynı araç sınıfı) açın. <strong>Sabit</strong>: yazdığınız tutarla ilk alan alır. <strong>İhale</strong>: tutar tavandır, teklif verenler
 						altında teklif verir, süre bitince en düşük teklif kazanır. Havuz en geç alıştan 2 saat önce kapanır.
 					</p>
 					<form method="post" class="form-grid">

@@ -6,18 +6,24 @@
  *    and may change or withdraw their bid; at the deadline the lowest bid wins (ties:
  *    the earlier bid). Ops may also award any bid earlier by hand.
  *
- * Winning turns into the normal partner flow: the job is the partner's, accepted, at
- * the winning amount, and the partner puts one of its drivers on it. Partners never
- * see the passenger's price, phone or e-mail here either, nor each other's bids.
+ * Bidders are partner fleets and approved independent drivers (Faz 6.2). A partner's
+ * win turns into the normal partner flow: the job is the partner's, accepted, at the
+ * winning amount, and the partner puts one of its drivers on it. A driver's win assigns
+ * the driver directly, already accepted, with the winning amount as the payout. Bidders
+ * never see the passenger's price, phone or e-mail here, nor each other's bids.
  *
  * Deadlines are settled from the middleware at most once a minute, like dispatch.
  */
 import type { Db } from "./db";
-import { addEvent, FINAL_STATUSES, getBookingByCode, type Actor, type Booking } from "./bookings";
+import { addEvent, assignDriver, FINAL_STATUSES, getBookingByCode, updateBooking, type Actor, type Booking } from "./bookings";
 import { getPartner, offerToPartner } from "./partners";
 import { ulid } from "./ids";
 
 export type PoolMode = "fixed" | "auction";
+export interface Bidder {
+	kind: "partner" | "driver";
+	id: string;
+}
 
 export interface PoolJob {
 	id: string;
@@ -161,22 +167,68 @@ async function award(db: Db, job: PoolJob, winner: { kind: "partner" | "driver";
 			.execute();
 		const partner = await getPartner(db, winner.id);
 		await addEvent(db, booking.id, actor, "pool_awarded", null, null, { orgId: winner.id, partnerName: partner?.name ?? null, amount_minor: winner.amountMinor });
+	} else {
+		await updateBooking(db, booking, { payout_minor: winner.amountMinor });
+		const fresh = (await getBookingByCode(db, booking.code))!;
+		await assignDriver(db, fresh, winner.id, actor);
+		// The driver chose this job, so the assignment is already accepted.
+		const assignment = await db
+			.selectFrom("sd_assignments")
+			.select("id")
+			.where("booking_id", "=", booking.id)
+			.where("driver_id", "=", winner.id)
+			.where("status", "=", "accepted")
+			.orderBy("created_at", "desc")
+			.executeTakeFirst();
+		if (assignment) await db.insertInto("sd_assignment_acks").values({ assignment_id: assignment.id, response: "accepted", at: now }).execute();
+		const driver = await db.selectFrom("sd_drivers").select("name").where("id", "=", winner.id).executeTakeFirst();
+		await addEvent(db, booking.id, actor, "pool_awarded", null, null, { driverId: winner.id, driverName: driver?.name ?? null, amount_minor: winner.amountMinor });
 	}
 }
 
-/** A partner takes a fixed-payout job: first come, first served. */
-export async function takeFixed(db: Db, job: PoolJob, orgId: string, actor: Actor) {
+/** A driver busy this long either side of another job's pickup cannot take a pooled one. */
+const BUSY_WINDOW_MS = 3 * 3600_000;
+
+/**
+ * Why a bidder may not take this job, or null. Drivers must be active independents,
+ * drive the job's class and be free around its pickup.
+ */
+export async function bidderProblem(db: Db, job: PoolJob, bidder: Bidder): Promise<string | null> {
+	if (bidder.kind === "partner") return null;
+	const driver = await db.selectFrom("sd_drivers").select(["kind", "status", "org_id", "class_key"]).where("id", "=", bidder.id).executeTakeFirst();
+	if (!driver || driver.kind !== "independent" || driver.org_id || driver.status !== "active") return "İş havuzu yalnızca onaylı bağımsız sürücülere açık.";
+	const booking = await db.selectFrom("sd_bookings").select(["class_key", "pickup_at"]).where("id", "=", job.booking_id).executeTakeFirstOrThrow();
+	if (driver.class_key && driver.class_key !== booking.class_key) return "Bu iş başka bir araç sınıfı için.";
+	const pickup = Date.parse(booking.pickup_at);
+	const clash = await db
+		.selectFrom("sd_bookings")
+		.select("code")
+		.where("driver_id", "=", bidder.id)
+		.where("id", "!=", job.booking_id)
+		.where("status", "not in", ["cancelled", "completed", "no_show"])
+		.where("pickup_at", ">", new Date(pickup - BUSY_WINDOW_MS).toISOString())
+		.where("pickup_at", "<", new Date(pickup + BUSY_WINDOW_MS).toISOString())
+		.executeTakeFirst();
+	return clash ? `Bu saatlere yakın başka bir işiniz var (${clash.code}).` : null;
+}
+
+/** A partner or driver takes a fixed-payout job: first come, first served. */
+export async function takeFixed(db: Db, job: PoolJob, bidder: Bidder, actor: Actor) {
 	if (job.mode !== "fixed" || job.status !== "open") throw new Error("Bu iş artık havuzda değil.");
 	if (Date.parse(job.deadline_at) < Date.now()) throw new Error("Bu işin havuz süresi doldu.");
-	await award(db, job, { kind: "partner", id: orgId, amountMinor: job.payout_minor, bidId: null }, actor);
+	const problem = await bidderProblem(db, job, bidder);
+	if (problem) throw new Error(problem);
+	await award(db, job, { kind: bidder.kind, id: bidder.id, amountMinor: job.payout_minor, bidId: null }, actor);
 }
 
 /** A partner bids (or changes its bid) on an auction job. */
-export async function placeBid(db: Db, job: PoolJob, bidder: { kind: "partner" | "driver"; id: string }, amountMinor: number, note: string | null) {
+export async function placeBid(db: Db, job: PoolJob, bidder: Bidder, amountMinor: number, note: string | null) {
 	if (job.mode !== "auction" || job.status !== "open") throw new Error("Bu ihale kapandı.");
 	if (Date.parse(job.deadline_at) < Date.now()) throw new Error("Bu ihalenin süresi doldu.");
 	if (!(amountMinor > 0)) throw new Error("Teklif tutarını yazın.");
 	if (amountMinor > job.payout_minor) throw new Error("Teklif tavan tutarı geçemez.");
+	const problem = await bidderProblem(db, job, bidder);
+	if (problem) throw new Error(problem);
 	const now = new Date().toISOString();
 	await db
 		.insertInto("sd_pool_bids")
@@ -185,7 +237,7 @@ export async function placeBid(db: Db, job: PoolJob, bidder: { kind: "partner" |
 		.execute();
 }
 
-export async function withdrawBid(db: Db, job: PoolJob, bidder: { kind: "partner" | "driver"; id: string }) {
+export async function withdrawBid(db: Db, job: PoolJob, bidder: Bidder) {
 	if (job.status !== "open") throw new Error("Bu ihale kapandı.");
 	await db
 		.updateTable("sd_pool_bids")
@@ -198,12 +250,15 @@ export async function withdrawBid(db: Db, job: PoolJob, bidder: { kind: "partner
 }
 
 /** Ops awards an auction to a bid before the deadline. */
-export async function awardBid(db: Db, job: PoolJob, bidId: string, actor: Actor) {
+export async function awardBid(db: Db, job: PoolJob, bidId: string, actor: Actor): Promise<PoolBid["bidder_kind"]> {
 	const bid = (await db.selectFrom("sd_pool_bids").selectAll().where("id", "=", bidId).where("pool_job_id", "=", job.id).where("status", "=", "active").executeTakeFirst()) as
 		| PoolBid
 		| undefined;
 	if (!bid) throw new Error("Teklif bulunamadı ya da geri çekilmiş.");
+	const problem = await bidderProblem(db, job, { kind: bid.bidder_kind, id: bid.bidder_id });
+	if (problem) throw new Error(`Bu teklif verilemez: ${problem}`);
 	await award(db, job, { kind: bid.bidder_kind, id: bid.bidder_id, amountMinor: bid.amount_minor, bidId: bid.id }, actor);
+	return bid.bidder_kind;
 }
 
 /** Closes pools whose deadline passed: lowest bid wins; nobody, and ops is told. */
@@ -217,7 +272,14 @@ export async function settleDuePools(db: Db, now = Date.now()): Promise<number> 
 		.execute()) as PoolJob[];
 	for (const job of due) {
 		try {
-			const best = (await poolBids(db, job.id)).find((b) => b.status === "active");
+			let best: PoolBid | undefined;
+			// Lowest bid first; a driver who has since become busy is passed over.
+			for (const bid of (await poolBids(db, job.id)).filter((b) => b.status === "active")) {
+				if (!(await bidderProblem(db, job, { kind: bid.bidder_kind, id: bid.bidder_id }))) {
+					best = bid;
+					break;
+				}
+			}
 			if (job.mode === "auction" && best) {
 				await award(db, job, { kind: best.bidder_kind, id: best.bidder_id, amountMinor: best.amount_minor, bidId: best.id }, SYSTEM);
 			} else {
@@ -272,8 +334,8 @@ export interface PoolListing {
  * Open pool jobs as a bidder sees them: the trip, the payout or ceiling, its own bid
  * and how many bid. Never the passenger's details, price or other bidders' amounts.
  */
-export async function openPoolFor(db: Db, bidder: { kind: "partner" | "driver"; id: string }): Promise<PoolListing[]> {
-	const rows = await db
+export async function openPoolFor(db: Db, bidder: Bidder, classKey: string | null = null): Promise<PoolListing[]> {
+	let query = db
 		.selectFrom("sd_pool_jobs as j")
 		.innerJoin("sd_bookings as b", "b.id", "j.booking_id")
 		.innerJoin("sd_zones as f", "f.id", "b.from_zone_id")
@@ -302,10 +364,10 @@ export async function openPoolFor(db: Db, bidder: { kind: "partner" | "driver"; 
 			eb.selectFrom("sd_pool_bids as x").select(eb.fn.countAll<number>().as("n")).whereRef("x.pool_job_id", "=", "j.id").where("x.status", "=", "active").as("bids"),
 		])
 		.where("j.status", "=", "open")
-		.where("j.deadline_at", ">", new Date().toISOString())
-		.orderBy("j.deadline_at")
-		.limit(100)
-		.execute();
+		.where("j.deadline_at", ">", new Date().toISOString());
+	// A driver sees only jobs for the class they drive.
+	if (classKey) query = query.where("b.class_key", "=", classKey);
+	const rows = await query.orderBy("j.deadline_at").limit(100).execute();
 	return rows.map((r) => ({ ...r, bids: Number(r.bids ?? 0) })) as PoolListing[];
 }
 

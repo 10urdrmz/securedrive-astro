@@ -30,7 +30,7 @@ const PANEL = {
 }[panel];
 
 const watch = !!user && can(user, "bookings.read");
-let counts: OpsCounts = { requests: 0, bookings: 0 };
+let counts: OpsCounts = { requests: 0, bookings: 0, applications: 0 };
 let feed: OpsFeedItem[] = [];
 if (user && watch) {
 	const db = await getDb(Astro.locals);
@@ -77,7 +77,7 @@ const NAV_ALL: NavItem[] = !user
 			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", icon: "calendar", show: can(user, "bookings.read"), count: "bookings" as const, hint: "sürücü bekleyen" },
 			{ href: "/ops/talepler", label: "Fiyat talepleri", icon: "inbox", show: can(user, "bookings.read"), count: "requests" as const, hint: "yeni talep" },
 			{ href: "/ops/harita", label: "Canlı harita", icon: "map", show: can(user, "bookings.read") },
-			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read") },
+			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read"), count: "applications" as const, hint: "yeni başvuru" },
 			{ href: "/ops/partnerler", label: "Partner filolar", icon: "building", show: can(user, "bookings.read") },
 			{ href: "/ops/firmalar", label: "Kurumsal firmalar", icon: "card", show: can(user, "bookings.read") },
 			{ href: "/ops/acenteler", label: "Acenteler ve oteller", icon: "globe", show: can(user, "bookings.read") },

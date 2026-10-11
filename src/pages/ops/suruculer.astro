@@ -7,6 +7,7 @@ import OpsLayout from "../../layouts/OpsLayout.astro";
 import { can } from "../../server/auth/rbac";
 import { ulid } from "../../server/ids";
 import { audit, readForm, requireOps, text } from "../../server/ops";
+import { approveApplication, listApplications, rejectApplication } from "../../server/driver-applications";
 import { LOGIN_OUTCOME_LABELS, driversWithAccess, issuePin, phoneKey, recentLogins, revokeAccess } from "../../server/driver-app";
 
 const ctx = await requireOps(Astro, "bookings.read");
@@ -21,7 +22,28 @@ let error = "";
 const form = canWrite ? await readForm(Astro) : null;
 let issued: { name: string; phone: string; pin: string } | null = null;
 const intent = form ? text(form, "intent", 20) : "";
-if (form && (intent === "pin" || intent === "revoke")) {
+if (form && (intent === "app_approve" || intent === "app_reject")) {
+	const id = text(form, "app_id", 40);
+	try {
+		if (intent === "app_approve") {
+			const classKey = text(form, "class_key", 60);
+			const approved = await approveApplication(db, id, user.id, {
+				classKey: classes.some((c) => c.key === classKey) ? classKey : null,
+				plate: text(form, "plate", 16).toUpperCase() || null,
+				vehicle: text(form, "vehicle", 80) || null,
+			});
+			await audit(db, user, "driver.application_approve", "driver", approved.driverId, { application: id });
+			issued = { name: approved.name, phone: approved.phone, pin: approved.pin };
+			notice = `${approved.name} bağımsız sürücü olarak eklendi; iş havuzunu görür.`;
+		} else {
+			await rejectApplication(db, id, user.id, text(form, "review_note", 300) || null);
+			await audit(db, user, "driver.application_reject", "driver_application", id);
+			notice = "Başvuru reddedildi.";
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+} else if (form && (intent === "pin" || intent === "revoke")) {
 	const id = text(form, "id", 40);
 	const driver = await db.selectFrom("sd_drivers").select(["id", "name", "phone"]).where("id", "=", id).executeTakeFirst();
 	if (driver && intent === "pin") {
@@ -70,6 +92,7 @@ const drivers = await db
 	.orderBy("d.status")
 	.orderBy("d.name")
 	.execute();
+const applications = await listApplications(db);
 const withAccess = await driversWithAccess(db);
 const logins = await recentLogins(db);
 const lockedUntil = new Map(
@@ -125,8 +148,55 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 			</details>
 		)
 	}
+	{
+		applications.length > 0 && (
+			<section class="card" id="basvurular">
+				<h2 style="margin-top:0">Bağımsız sürücü başvuruları ({applications.length})</h2>
+				<p class="muted" style="margin-top:0">
+					<a href="/surucu/basvuru">/surucu/basvuru</a> formundan gelir. Sürücüyü arayıp ruhsat, sigorta ve belgelerini kontrol edin; onaylayınca PIN oluşur ve
+					sürücü uygulamadaki iş havuzundan kendi araç sınıfındaki işleri alabilir. Otomatik atamaya girmezler.
+				</p>
+				{applications.map((a) => (
+					<form method="post" class="form-grid app">
+						<input type="hidden" name="app_id" value={a.id} />
+						<div style="grid-column:1/-1">
+							<strong>{a.name}</strong> · <a href={`tel:${a.phone.replace(/[^0-9+]/g, "")}`}>{a.phone}</a>
+							<span class="muted"> · {clock(a.created_at)}</span>
+							<div class="muted">
+								{[a.languages && `Diller: ${a.languages}`, a.licence && `Belge: ${a.licence}`, a.note].filter(Boolean).join(" · ")}
+							</div>
+						</div>
+						<label>
+							Araç sınıfı
+							<select name="class_key" disabled={!canWrite}>
+								{classes.map((c) => <option value={c.key} selected={a.class_key === c.key}>{c.name}</option>)}
+							</select>
+						</label>
+						<label>
+							Plaka
+							<input type="text" name="plate" value={a.plate ?? ""} disabled={!canWrite} />
+						</label>
+						<label>
+							Araç
+							<input type="text" name="vehicle" value={a.vehicle ?? ""} disabled={!canWrite} />
+						</label>
+						<label>
+							Ret notu (isteğe bağlı)
+							<input type="text" name="review_note" disabled={!canWrite} />
+						</label>
+						{canWrite && (
+							<div class="actions" style="grid-column:1/-1">
+								<button class="btn" type="submit" name="intent" value="app_approve">Onayla ve PIN oluştur</button>
+								<button class="btn secondary" type="submit" name="intent" value="app_reject" formnovalidate>Reddet</button>
+							</div>
+						)}
+					</form>
+				))}
+			</section>
+		)
+	}
 	<p class="muted">
-		Atanabilir sürücüler. Sürücü uygulamasına (<a href="/surucu">/surucu</a>) girmesi için sürücüye PIN verin; işlerini görür,
+		Atanabilir sürücüler. Bağımsız sürücüler otomatik atamaya girmez, işlerini iş havuzundan alır. Sürücü uygulamasına (<a href="/surucu">/surucu</a>) girmesi için sürücüye PIN verin; işlerini görür,
 		kabul eder ve yolculuk adımlarını kendisi işaretler. Pasif sürücü atama listesinde görünmez ve uygulamaya giremez.
 	</p>
 	{
@@ -214,6 +284,11 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 	}
 	.logins td {
 		padding: 6px 8px 6px 0;
+		border-top: 1px solid var(--gray-200);
+	}
+	.app + .app {
+		margin-top: 14px;
+		padding-top: 14px;
 		border-top: 1px solid var(--gray-200);
 	}
 	.access {

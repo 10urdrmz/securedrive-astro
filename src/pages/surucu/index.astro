@@ -4,6 +4,7 @@ import DriverLayout from "../../layouts/DriverLayout.astro";
 import { getDb } from "../../server/db";
 import { driverJobs, jobBadge, sessionDriver, when, type DriverJob } from "../../server/driver-app";
 import { unreadCounts } from "../../server/messages";
+import { openPoolFor } from "../../server/pool";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
@@ -13,6 +14,8 @@ const { open, done } = await driverJobs(db, driver.id);
 const active = open.filter((j) => ["driver_en_route", "driver_arrived", "on_board"].includes(j.booking.status));
 const upcoming = open.filter((j) => !active.includes(j));
 const waiting = upcoming.filter((j) => !j.response).length;
+const independent = driver.kind === "independent" && !driver.org_id;
+const poolCount = independent ? (await openPoolFor(db, { kind: "driver", id: driver.id }, driver.class_key)).length : 0;
 const unread = await unreadCounts(db, open.map((j) => j.booking.id), "driver");
 const sections: { title: string; jobs: DriverJob[] }[] = [
 	{ title: "Şu an", jobs: active },
@@ -23,6 +26,14 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 
 <DriverLayout title="İşlerim" driver={driver} refresh={60}>
 	<h1>Merhaba, {driver.name.split(" ")[0]}</h1>
+	{
+		independent && (
+			<a class="drv-card earn pool-link" href="/surucu/havuz">
+				<strong>İş havuzu</strong>
+				<span class:list={["drv-pill", poolCount > 0 ? "warn" : "off"]}>{poolCount > 0 ? `${poolCount} açık iş` : "Şu an boş"} ›</span>
+			</a>
+		)
+	}
 	{waiting > 0 && <p class="drv-notice" style="background:#fffaeb;color:#b54708;border-color:#fedf89">{waiting} yeni iş onayınızı bekliyor.</p>}
 	{
 		sections.map(
@@ -68,7 +79,7 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 		open.length === 0 && done.length === 0 && (
 			<div class="drv-card" style="text-align:center;padding:32px 16px">
 				<strong>Şu an atanmış işiniz yok.</strong>
-				<p class="drv-muted" style="margin:6px 0 0">Operasyon size iş atadığında burada görünür. Sayfa dakikada bir yenilenir.</p>
+				<p class="drv-muted" style="margin:6px 0 0">{independent ? "İş havuzundan aldığınız ya da kazandığınız işler burada görünür." : "Operasyon size iş atadığında burada görünür."} Sayfa dakikada bir yenilenir.</p>
 			</div>
 		)
 	}
@@ -133,6 +144,9 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 	}
 	.job-meta {
 		font-size: 14px;
+	}
+	.earn.pool-link {
+		margin: 0 0 16px;
 	}
 	.earn {
 		display: flex;

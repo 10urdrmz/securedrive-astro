@@ -5,6 +5,7 @@
  *
  * Price requests are personal data: only /ops may call this.
  */
+import { countPendingApplications } from "./driver-applications";
 import type { Db } from "./db";
 import { can, type SessionUser } from "./auth/rbac";
 import { sql } from "kysely";
@@ -16,6 +17,8 @@ export interface OpsCounts {
 	requests: number;
 	/** Upcoming bookings still waiting for a driver. */
 	bookings: number;
+	/** Independent driver applications waiting for review. */
+	applications: number;
 }
 
 export interface OpsFeedItem {
@@ -27,11 +30,11 @@ export interface OpsFeedItem {
 	at: string;
 }
 
-const EMPTY: OpsCounts = { requests: 0, bookings: 0 };
+const EMPTY: OpsCounts = { requests: 0, bookings: 0, applications: 0 };
 
 export async function opsCounts(db: Db, user: SessionUser): Promise<OpsCounts> {
 	if (!can(user, "bookings.read")) return EMPTY;
-	const [requests, bookings] = await Promise.all([
+	const [requests, bookings, applications] = await Promise.all([
 		db
 			.selectFrom("ec_inquiries")
 			.select((eb) => eb.fn.countAll<number>().as("n"))
@@ -46,10 +49,12 @@ export async function opsCounts(db: Db, user: SessionUser): Promise<OpsCounts> {
 			.where("status", "in", ["confirmed", "pending_payment"])
 			.where("pickup_at", ">=", new Date(Date.now() - 6 * 3600_000).toISOString())
 			.executeTakeFirst(),
+		countPendingApplications(db),
 	]);
 	return {
 		requests: Number(requests?.n ?? 0),
 		bookings: Number(bookings?.n ?? 0),
+		applications,
 	};
 }
 
@@ -162,8 +167,11 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			if (d.type === "pool_expired" || d.type === "pool_awarded") {
 				const won = d.type === "pool_awarded";
 				let partner = "";
+				let driver = "";
 				try {
-					partner = (JSON.parse(String(d.data)) as { partnerName?: string }).partnerName ?? "";
+					const data = JSON.parse(String(d.data)) as { partnerName?: string; driverName?: string };
+					partner = data.partnerName ?? "";
+					driver = data.driverName ?? "";
 				} catch {
 					// The title alone is enough.
 				}
@@ -171,7 +179,7 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 					key: `pool:${d.id}`,
 					kind: won ? ("booking" as const) : ("declined" as const),
 					title: `${won ? "Havuzdaki iş verildi" : "Havuzda alan olmadı"} · ${d.code}`,
-					detail: won ? [partner, "partner sürücüsünü atayacak"].filter(Boolean).join(" · ") : "sürücü atayın ya da yeniden havuza koyun",
+					detail: won ? (driver ? `${driver} · bağımsız sürücü, atandı` : [partner, "partner sürücüsünü atayacak"].filter(Boolean).join(" · ")) : "sürücü atayın ya da yeniden havuza koyun",
 					href: `/ops/rezervasyonlar/${d.code}`,
 					at: String(d.at),
 				};
