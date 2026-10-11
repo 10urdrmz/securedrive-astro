@@ -10,6 +10,7 @@
 		const me = box.dataset.me;
 		const L = (key) => box.dataset[`l${key[0].toUpperCase()}${key.slice(1)}`] ?? key;
 		let lastKey = "";
+		let lastActivity = Date.now();
 
 		const time = (iso) => new Date(iso).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Istanbul" });
 		const who = (m) => {
@@ -25,6 +26,7 @@
 		const render = (messages) => {
 			const key = messages.length + ":" + (messages.at(-1)?.id ?? "");
 			if (key === lastKey) return;
+			if (lastKey) lastActivity = Date.now();
 			const stick = !lastKey || atBottom();
 			lastKey = key;
 			if (messages.length === 0) {
@@ -65,8 +67,26 @@
 
 		toBottom();
 		lastKey = list.querySelectorAll(".chat-msg").length + ":" + (list.querySelector(".chat-msg:last-child")?.dataset.id ?? "");
-		setInterval(() => !document.hidden && refresh(), 8000);
-		document.addEventListener("visibilitychange", () => !document.hidden && refresh());
+		// Poll fast while a conversation is going on, slower once it has gone quiet.
+		let timer = null;
+		const schedule = () => {
+			clearTimeout(timer);
+			if (document.hidden) return;
+			const quiet = Date.now() - lastActivity > 3 * 60000;
+			timer = setTimeout(async () => {
+				await refresh();
+				schedule();
+			}, quiet ? 8000 : 2500);
+		};
+		const wake = () => {
+			lastActivity = Date.now();
+			if (!document.hidden) refresh().then(schedule);
+		};
+		schedule();
+		document.addEventListener("visibilitychange", () => (document.hidden ? clearTimeout(timer) : wake()));
+		window.addEventListener("focus", wake);
+		window.addEventListener("online", wake);
+		field?.addEventListener("input", () => (lastActivity = Date.now()));
 
 		box.querySelectorAll("[data-chat-quick]").forEach((button) =>
 			button.addEventListener("click", () => {
@@ -80,17 +100,40 @@
 			event.preventDefault();
 			if (!field.value.trim()) return;
 			const send = form.querySelector("[type=submit]");
+			const data = new FormData(form);
+			const text = field.value.trim();
 			send.disabled = true;
+			// Show the message at once; the next refresh replaces it with the stored one.
+			list.querySelector(".chat-empty")?.remove();
+			const draft = document.createElement("li");
+			for (const attr of list.attributes) if (attr.name.startsWith("data-astro-cid")) draft.setAttribute(attr.name, "");
+			draft.className = "chat-msg mine";
+			draft.style.opacity = "0.6";
+			const head = document.createElement("span");
+			head.className = "chat-who";
+			head.textContent = `${L("you")} · ${time(new Date().toISOString())}`;
+			const body = document.createElement("span");
+			body.className = "chat-body";
+			body.textContent = text;
+			for (const attr of list.attributes) if (attr.name.startsWith("data-astro-cid")) head.setAttribute(attr.name, ""), body.setAttribute(attr.name, "");
+			draft.append(head, body);
+			list.append(draft);
+			field.value = "";
+			toBottom();
+			lastActivity = Date.now();
 			try {
-				const response = await fetch(location.pathname + location.search, { method: "POST", body: new FormData(form), credentials: "same-origin" });
-				if (response.ok) field.value = "";
+				const response = await fetch(location.pathname + location.search, { method: "POST", body: data, credentials: "same-origin", redirect: "manual" });
+				if (!response.ok && response.type !== "opaqueredirect") throw new Error(String(response.status));
 			} catch {
-				// Leave the text in the box so nothing is lost.
+				// Not sent: put the text back so nothing is lost.
+				draft.remove();
+				if (!field.value) field.value = text;
 			}
 			send.disabled = false;
 			lastKey = "";
 			await refresh();
 			toBottom();
+			schedule();
 		});
 		field?.addEventListener("keydown", (event) => {
 			if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) form.requestSubmit();
