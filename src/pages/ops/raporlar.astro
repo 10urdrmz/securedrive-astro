@@ -1,0 +1,180 @@
+---
+/**
+ * Reports: one month's revenue, cost and margin by channel, route, vehicle class,
+ * driver and partner, with the twelve-month trend. Read-only.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { currentMonth, monthName } from "../../server/companies";
+import { formatMoney, requireOps } from "../../server/ops";
+import { monthReport, trend, type Group } from "../../server/reports";
+
+const ctx = await requireOps(Astro, "reports.read");
+if (ctx instanceof Response) return ctx;
+const { db, user } = ctx;
+
+const now = currentMonth();
+const asked = Astro.url.searchParams.get("ay") ?? "";
+const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(asked) && asked <= now ? asked : now;
+const [report, points] = await Promise.all([monthReport(db, month), trend(db, now)]);
+const t = report.totals;
+const margin = t.revenue - t.cost;
+const pct = (part: number, whole: number) => (whole ? `%${Math.round((part / whole) * 100)}` : "—");
+const tl = (minor: number) => `${formatMoney(minor)} ₺`;
+const avg = (g: Group) => (g.ratings ? (g.ratingSum / g.ratings).toFixed(1).replace(".", ",") : "—");
+const peak = Math.max(1, ...points.map((p) => p.revenue));
+const short = (m: string) => new Intl.DateTimeFormat("tr-TR", { month: "short", timeZone: "UTC" }).format(new Date(`${m}-01T00:00:00Z`));
+
+const tables: { title: string; rows: Group[]; first: string; showCost: boolean; driver?: boolean }[] = [
+	{ title: "Kanallar", rows: report.channels, first: "Kanal", showCost: true },
+	{ title: "Araç sınıfları", rows: report.classes, first: "Sınıf", showCost: true },
+	{ title: "En çok kazandıran güzergâhlar", rows: report.routes, first: "Güzergâh", showCost: true },
+	{ title: "Sürücüler (kendi filo ve bağımsız)", rows: report.drivers, first: "Sürücü", showCost: true, driver: true },
+	{ title: "Partner filolar", rows: report.partners, first: "Partner", showCost: true },
+];
+---
+
+<OpsLayout title="Raporlar" user={user}>
+	<form method="get" class="period">
+		<label>
+			Ay
+			<select name="ay" onchange="this.form.submit()">
+				{[...points].reverse().map((p) => <option value={p.month} selected={p.month === month}>{monthName(p.month)}</option>)}
+			</select>
+		</label>
+		<noscript><button class="btn secondary" type="submit">Göster</button></noscript>
+		<span class="muted">Rezervasyonlar alış tarihine göre sayılır. Gelir ve maliyet yalnızca tamamlanan yolculuklardan.</span>
+	</form>
+
+	<div class="stats">
+		<div class="stat"><span class="muted">Tamamlanan yolculuk</span><strong>{t.completed}</strong><span class="muted">{t.trips} rezervasyon · {t.cancelled} iptal · {report.noShow} gelmedi</span></div>
+		<div class="stat"><span class="muted">Gelir</span><strong>{tl(t.revenue)}</strong><span class="muted">yolculuk başı {t.completed ? tl(Math.round(t.revenue / t.completed)) : "—"}</span></div>
+		<div class="stat"><span class="muted">Sürücü / partner maliyeti</span><strong>{tl(t.cost)}</strong><span class="muted">{report.missingPayout ? `${report.missingPayout} yolculukta hakediş tutarı yok` : "hakediş tutarları tam"}</span></div>
+		<div class="stat"><span class="muted">Brüt kâr</span><strong>{tl(margin)}</strong><span class="muted">marj {pct(margin, t.revenue)}</span></div>
+		<div class="stat"><span class="muted">Yolcu puanı</span><strong>{avg(t)}</strong><span class="muted">{t.ratings} değerlendirme</span></div>
+		<div class="stat"><span class="muted">Ayın kalanı</span><strong>{tl(report.upcoming.revenue)}</strong><span class="muted">{report.upcoming.trips} onaylı, henüz yapılmadı</span></div>
+	</div>
+
+	<div class="card">
+		<h2 style="margin-top:0">Son 12 ay</h2>
+		<div class="trend">
+			{
+				points.map((p) => (
+					<a class:list={["bar", p.month === month && "on"]} href={`?ay=${p.month}`} title={`${monthName(p.month)}: ${p.completed} yolculuk · gelir ${tl(p.revenue)} · kâr ${tl(p.revenue - p.cost)}`}>
+						<span class="fill" style={`height:${Math.round((p.revenue / peak) * 100)}%`}>
+							<span class="profit" style={`height:${p.revenue ? Math.max(0, Math.round(((p.revenue - p.cost) / p.revenue) * 100)) : 0}%`} />
+						</span>
+						<span class="lbl">{short(p.month)}</span>
+						<span class="n">{p.completed}</span>
+					</a>
+				))
+			}
+		</div>
+		<p class="muted" style="margin:8px 0 0">Sütun gelir, koyu kısım brüt kâr; altındaki sayı tamamlanan yolculuk. Aya tıklayınca o ayın raporu açılır.</p>
+	</div>
+
+	{
+		tables.map((table) => (
+			<div class="card">
+				<h2 style="margin-top:0">{table.title}</h2>
+				<div class="table-wrap">
+					<table class="data">
+						<thead>
+							<tr>
+								<th>{table.first}</th>
+								<th class="num">Rezervasyon</th>
+								<th class="num">Tamamlanan</th>
+								<th class="num">İptal</th>
+								{table.driver && <th class="num">Reddetti / cevapsız</th>}
+								<th class="num">Gelir</th>
+								<th class="num">Maliyet</th>
+								<th class="num">Kâr</th>
+								<th class="num">Puan</th>
+							</tr>
+						</thead>
+						<tbody>
+							{table.rows.map((g) => (
+								<tr>
+									<td>{g.label}</td>
+									<td class="num">{g.trips}</td>
+									<td class="num">{g.completed}</td>
+									<td class="num">{g.cancelled || ""}</td>
+									{table.driver && <td class="num">{g.extra || ""}</td>}
+									<td class="num">{tl(g.revenue)}</td>
+									<td class="num">{tl(g.cost)}</td>
+									<td class="num">
+										{tl(g.revenue - g.cost)} <span class="muted">{pct(g.revenue - g.cost, g.revenue)}</span>
+									</td>
+									<td class="num">{avg(g)}</td>
+								</tr>
+							))}
+							{table.rows.length === 0 && (
+								<tr>
+									<td colspan="9" class="muted">
+										Bu ayda kayıt yok.
+									</td>
+								</tr>
+							)}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		))
+	}
+</OpsLayout>
+
+<style>
+	.period {
+		display: flex;
+		align-items: end;
+		gap: 12px;
+		flex-wrap: wrap;
+		margin-bottom: 16px;
+	}
+	.period label {
+		display: grid;
+		gap: 4px;
+		font-weight: 600;
+	}
+	.stat strong {
+		font-size: 22px;
+	}
+	.trend {
+		display: grid;
+		grid-template-columns: repeat(12, minmax(0, 1fr));
+		gap: 6px;
+		align-items: end;
+		height: 180px;
+	}
+	.bar {
+		display: grid;
+		grid-template-rows: 1fr auto auto;
+		height: 100%;
+		text-decoration: none;
+		color: inherit;
+		text-align: center;
+		font-size: 12px;
+	}
+	.fill {
+		align-self: end;
+		display: flex;
+		align-items: end;
+		min-height: 2px;
+		border-radius: 6px 6px 0 0;
+		background: #c7d7ea;
+		overflow: hidden;
+	}
+	.bar.on .fill {
+		background: #9ab8dc;
+	}
+	.profit {
+		width: 100%;
+		background: #0a2540;
+	}
+	.lbl {
+		margin-top: 4px;
+		color: var(--gray-600, #475467);
+	}
+	.n {
+		font-weight: 600;
+	}
+</style>

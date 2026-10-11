@@ -50,7 +50,8 @@ export type Permission =
 	| "company.manage"
 	| "agencies.manage"
 	| "agency.access"
-	| "agency.manage";
+	| "agency.manage"
+	| "reports.read";
 
 const GRANTS: Record<Role, Permission[]> = {
 	super_admin: [
@@ -69,11 +70,12 @@ const GRANTS: Record<Role, Permission[]> = {
 		"settlements.manage",
 		"companies.manage",
 		"agencies.manage",
+		"reports.read",
 	],
-	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write", "partners.manage", "settlements.manage", "companies.manage", "agencies.manage"],
+	ops_manager: ["ops.access", "catalog.read", "catalog.write", "tariffs.write", "bookings.read", "bookings.write", "drivers.manage", "payments.write", "partners.manage", "settlements.manage", "companies.manage", "agencies.manage", "reports.read"],
 	ops_agent: ["ops.access", "catalog.read", "bookings.read", "bookings.write"],
 	support_agent: ["ops.access", "catalog.read", "bookings.read"],
-	finance: ["ops.access", "catalog.read", "bookings.read", "payments.write", "settlements.manage"],
+	finance: ["ops.access", "catalog.read", "bookings.read", "payments.write", "settlements.manage", "reports.read"],
 	carrier_admin: ["partner.access"],
 	company_admin: ["company.access", "company.manage"],
 	company_booker: ["company.access"],
