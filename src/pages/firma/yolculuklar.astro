@@ -1,0 +1,60 @@
+---
+/** All of the company's trips in a month, with a link to each trip's live page. */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import Trips from "../../components/CompanyTrips.astro";
+import { companyTrips, currentMonth, monthName, requireCompany } from "../../server/companies";
+
+const ctx = await requireCompany(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, company } = ctx;
+
+const fresh = (Astro.url.searchParams.get("yeni") ?? "").slice(0, 20);
+const asked = Astro.url.searchParams.get("ay") ?? "";
+const month = /^\d{4}-\d{2}$/.test(asked) ? asked : currentMonth();
+const trips = await companyTrips(db, company.id, { month });
+const freshTrip = fresh ? (await companyTrips(db, company.id, { upcoming: true, limit: 200 })).find((t) => t.code === fresh) : null;
+const shift = (m: string, by: number) => {
+	const [y, mo] = m.split("-").map(Number);
+	return new Date(Date.UTC(y, mo - 1 + by, 1)).toISOString().slice(0, 7);
+};
+const tripUrl = freshTrip ? new URL(`/rezervasyon/${freshTrip.code}?t=${freshTrip.tracking_token}`, Astro.url.origin).href : "";
+---
+
+<OpsLayout title="Yolculuklar" user={user} panel="company">
+	{
+		freshTrip && (
+			<div class="notice">
+				<strong>{freshTrip.code}</strong> ayrıldı. Yolcunun takip linki (sürücü, canlı konum ve mesajlaşma burada):
+				<br />
+				<a href={tripUrl} target="_blank" rel="noopener">{tripUrl}</a>
+				<div class="actions">
+					<a class="btn secondary" href={`https://wa.me/?text=${encodeURIComponent(`SecureDrive transferiniz ${freshTrip.code}: ${tripUrl}`)}`} target="_blank" rel="noopener">
+						Linki WhatsApp ile paylaş
+					</a>
+				</div>
+			</div>
+		)
+	}
+	<div class="card">
+		<div class="head">
+			<h2 style="margin:0">{monthName(month)}</h2>
+			<div class="actions" style="margin:0">
+				<a class="btn secondary" href={`/firma/yolculuklar?ay=${shift(month, -1)}`}>← Önceki ay</a>
+				{month < shift(currentMonth(), 3) && <a class="btn secondary" href={`/firma/yolculuklar?ay=${shift(month, 1)}`}>Sonraki ay →</a>}
+				<a class="btn" href="/firma/yeni">Yeni transfer</a>
+			</div>
+		</div>
+		<Trips trips={trips} highlight={fresh} />
+	</div>
+</OpsLayout>
+
+<style>
+	.head {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		gap: 12px;
+		flex-wrap: wrap;
+		margin-bottom: 12px;
+	}
+</style>

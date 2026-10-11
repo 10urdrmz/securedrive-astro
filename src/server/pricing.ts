@@ -25,7 +25,7 @@ export interface QuoteInput {
 	orgId?: string;
 }
 
-export type LineKind = "base" | "night" | "lastMinute" | "extra";
+export type LineKind = "base" | "night" | "lastMinute" | "extra" | "adjustment" | "discount";
 
 export interface QuoteLine {
 	kind: LineKind;

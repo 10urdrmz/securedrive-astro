@@ -1,0 +1,192 @@
+---
+/**
+ * A company books a transfer for an employee or guest, on account. Prices come from
+ * the tariff with the company's contract discount; only the classes its contract
+ * allows are offered, and the monthly limit is checked before the booking is made.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { createBooking } from "../../server/bookings";
+import { companyOptions, monthSpend, requireCompany, currentMonth } from "../../server/companies";
+import { audit, formatMoney, readForm, text } from "../../server/ops";
+import { isoToIstanbul, quote, type ClassQuote } from "../../server/pricing";
+import { getSettings } from "../../server/settings";
+
+const ctx = await requireCompany(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, company } = ctx;
+
+const zones = await db.selectFrom("sd_zones").select(["id", "name", "kind"]).where("serviceable", "=", 1).orderBy("sort").execute();
+const settings = await getSettings(db);
+const QUOTE_ERRORS: Record<string, string> = {
+	invalidInput: "Güzergâh, tarih, saat, kişi ve bagaj bilgilerini kontrol edin.",
+	notServiceable: "Bu bölgeye hizmet verilmiyor.",
+	tooSoon: `Transferler en az ${settings.minLeadHours} saat önceden ayrılır. Daha yakın saatler için SecureDrive operasyonu arayın.`,
+	past: "Seçilen saat geçmişte.",
+};
+
+const soon = isoToIstanbul(new Date(Date.now() + (settings.minLeadHours + 1) * 3600_000).toISOString());
+const keys = ["from", "to", "date", "time", "pax", "bags", "class_key", "name", "phone", "email", "flight", "address", "sign", "notes", "cost_center", "intent"];
+let v: Record<string, string> = { date: soon.date, time: soon.time.slice(0, 3) + "00", pax: "1", bags: "1" };
+let error = "";
+let options: ClassQuote[] = [];
+
+const form = await readForm(Astro);
+if (form) {
+	v = Object.fromEntries(keys.map((k) => [k, text(form, k, k === "notes" ? 500 : 120)]));
+	const result = await quote(db, { fromZoneId: v.from, toZoneId: v.to, date: v.date, time: v.time, pax: Number(v.pax) || 0, bags: Number(v.bags) || 0, orgId: company.id });
+	if (!result.ok) {
+		error = QUOTE_ERRORS[result.error] ?? "Fiyat hesaplanamadı.";
+	} else {
+		options = companyOptions(company, result.quote).filter((o) => o.fits);
+		if (options.length === 0) error = "Bu kişi ve bagaj sayısına uygun, sözleşmenizde izinli bir araç yok. SecureDrive ile görüşün.";
+		if (!options.some((o) => o.classKey === v.class_key)) v.class_key = options[0]?.classKey ?? "";
+		if (!error && v.intent === "save") {
+			const option = options.find((o) => o.classKey === v.class_key)!;
+			const limit = company.settings.monthlyLimitMinor;
+			const month = isoToIstanbul(result.quote.pickupAt).date.slice(0, 7);
+			const spent = limit ? (await monthSpend(db, company.id, month)).total : 0;
+			if (v.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(v.phone)) {
+				error = "Yolcunun adı soyadı ve sürücünün ulaşabileceği bir telefon gerekli (sürücü numarayı görmez, sistem üzerinden ulaşır).";
+			} else if (v.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email)) {
+				error = "E-posta adresini kontrol edin.";
+			} else if (limit && spent + option.total_minor > limit) {
+				error = `Bu transferle ${month === currentMonth() ? "bu ayki" : "o ayki"} harcamanız aylık limitinizi (${formatMoney(limit)} ₺) aşıyor. Limit artışı için SecureDrive ile görüşün.`;
+			} else {
+				const addressOnPickup = result.quote.from.kind !== "airport";
+				const booking = await createBooking(
+					db,
+					{
+						quote: result.quote,
+						option,
+						contact: { name: v.name, phone: v.phone, email: v.email.toLowerCase() || null },
+						flightNo: v.flight.toUpperCase().replace(/\s+/g, "") || null,
+						signName: v.sign || v.name,
+						pickupAddress: addressOnPickup ? v.address || null : null,
+						dropoffAddress: addressOnPickup ? null : v.address || null,
+						notes: v.notes || null,
+						pax: Number(v.pax),
+						bags: Number(v.bags),
+						paymentMethod: "account",
+						source: "company",
+						locale: "tr",
+						memberId: null,
+						orgId: company.id,
+						costCenter: v.cost_center || null,
+						internalNotes: `${company.name} · ${user.name} ayırdı`,
+					},
+					{ kind: "company", userId: user.id },
+				);
+				await audit(db, user, "company.booking", "booking", booking.id, { code: booking.code, org: company.id });
+				return Astro.redirect(`/firma/yolculuklar?yeni=${booking.code}`, 303);
+			}
+		}
+	}
+}
+const airports = zones.filter((z) => z.kind === "airport");
+const districts = zones.filter((z) => z.kind !== "airport");
+---
+
+<OpsLayout title="Yeni transfer" user={user} panel="company">
+	{error && <p class="notice error">{error}</p>}
+	<p class="muted" style="margin-top:0">
+		{company.name} cari hesabına. {company.settings.discountPct > 0 && `Fiyatlara %${company.settings.discountPct} kurumsal indirim uygulanır. `}Yolcuya SMS/e-posta yerine,
+		kayıttan sonra açılan takip linkini iletebilirsiniz.
+	</p>
+	<form class="card" method="post">
+		<h2 style="margin-top:0">Yolculuk</h2>
+		<div class="form-grid">
+			<label>
+				Nereden
+				<select name="from" required>
+					<option value="">Seçin</option>
+					<optgroup label="Havalimanları">{airports.map((z) => <option value={z.id} selected={v.from === z.id}>{z.name}</option>)}</optgroup>
+					<optgroup label="İlçeler">{districts.map((z) => <option value={z.id} selected={v.from === z.id}>{z.name}</option>)}</optgroup>
+				</select>
+			</label>
+			<label>
+				Nereye
+				<select name="to" required>
+					<option value="">Seçin</option>
+					<optgroup label="İlçeler">{districts.map((z) => <option value={z.id} selected={v.to === z.id}>{z.name}</option>)}</optgroup>
+					<optgroup label="Havalimanları">{airports.map((z) => <option value={z.id} selected={v.to === z.id}>{z.name}</option>)}</optgroup>
+				</select>
+			</label>
+			<label>Tarih <input type="date" name="date" value={v.date} required /></label>
+			<label>Alış saati (İstanbul) <input type="time" name="time" value={v.time} required /></label>
+			<label>Kişi <input type="number" name="pax" min="1" max="60" value={v.pax} required /></label>
+			<label>Bavul <input type="number" name="bags" min="0" max="60" value={v.bags} required /></label>
+			<label>Uçuş no (havalimanından alışta) <input type="text" name="flight" value={v.flight} placeholder="TK1234" /></label>
+			<label>Adres (otel / ofis / ev) <input type="text" name="address" value={v.address} /></label>
+		</div>
+
+		{
+			options.length > 0 && (
+				<>
+					<h2>Araç</h2>
+					<div class="classes">
+						{options.map((o) => (
+							<label class="class">
+								<input type="radio" name="class_key" value={o.classKey} checked={v.class_key === o.classKey} />
+								<span>
+									<strong>{o.name}</strong>
+									<span class="muted">en fazla {o.paxMax} kişi · {o.bagsMax} bavul</span>
+								</span>
+								<strong class="price">{formatMoney(o.total_minor)} ₺</strong>
+							</label>
+						))}
+					</div>
+				</>
+			)
+		}
+
+		<h2>Yolcu</h2>
+		<div class="form-grid">
+			<label>Ad soyad <input type="text" name="name" value={v.name} /></label>
+			<label>Telefon <input type="text" name="phone" value={v.phone} placeholder="+90 5xx xxx xx xx" /></label>
+			<label>E-posta (isteğe bağlı) <input type="email" name="email" value={v.email} /></label>
+			<label>Karşılama tabelası <input type="text" name="sign" value={v.sign} placeholder="Boşsa yolcunun adı" /></label>
+			<label>Masraf merkezi / proje kodu <input type="text" name="cost_center" value={v.cost_center} /></label>
+			<label>Sürücüye not <input type="text" name="notes" value={v.notes} /></label>
+		</div>
+		<div class="actions">
+			{
+				options.length > 0 ? (
+					<>
+						<button class="btn" type="submit" name="intent" value="save">Transferi ayır</button>
+						<button class="btn secondary" type="submit" name="intent" value="price">Fiyatı yeniden hesapla</button>
+					</>
+				) : (
+					<button class="btn" type="submit" name="intent" value="price">Araçları ve fiyatları göster</button>
+				)
+			}
+		</div>
+	</form>
+</OpsLayout>
+
+<style>
+	.classes {
+		display: grid;
+		gap: 8px;
+	}
+	.class {
+		display: flex !important;
+		flex-direction: row !important;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 14px;
+		border: 1px solid var(--gray-200);
+		border-radius: 10px;
+		cursor: pointer;
+	}
+	.class:has(input:checked) {
+		border-color: #144c7f;
+		background: #f0f6fc;
+	}
+	.class > span {
+		display: grid;
+		flex: 1;
+	}
+	.class .price {
+		white-space: nowrap;
+	}
+</style>

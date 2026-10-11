@@ -1,0 +1,47 @@
+---
+/** Contract terms of a company account, as form fields (ops company page). */
+import type { CompanySettings } from "../server/companies";
+import { formatMoney } from "../server/ops";
+
+interface Props {
+	settings: CompanySettings;
+	classes: { key: string; name: string }[];
+}
+const { settings, classes } = Astro.props;
+---
+
+<label>
+	İndirim (%)
+	<input type="number" name="discount" min="0" max="50" step="0.5" value={settings.discountPct} />
+</label>
+<label>
+	Aylık limit (₺, boş: limitsiz)
+	<input type="text" name="limit" inputmode="decimal" value={settings.monthlyLimitMinor ? formatMoney(settings.monthlyLimitMinor) : ""} placeholder="50.000" />
+</label>
+<fieldset class="classes">
+	<legend>İzinli araç sınıfları</legend>
+	{
+		classes.map((c) => (
+			<label class="inline">
+				<input type="checkbox" name="classes" value={c.key} checked={settings.classes.length === 0 || settings.classes.includes(c.key)} /> {c.name}
+			</label>
+		))
+	}
+</fieldset>
+
+<style>
+	.classes {
+		grid-column: 1 / -1;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px 18px;
+		border: 0;
+		padding: 0;
+		margin: 0;
+	}
+	.classes legend {
+		font-size: 13px;
+		font-weight: 600;
+		margin-bottom: 4px;
+	}
+</style>

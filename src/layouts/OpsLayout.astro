@@ -16,12 +16,17 @@ interface Props {
 	user?: SessionUser | null;
 	/** Current path, to highlight the menu entry. */
 	active?: string;
-	/** The same shell serves partner fleets (/partner) with their own menu. */
-	panel?: "ops" | "partner";
+	/** The same shell serves partner fleets (/partner) and company accounts (/firma) with their own menus. */
+	panel?: "ops" | "partner" | "company";
 }
 
 const { title, user, active = Astro.url.pathname, panel = "ops" } = Astro.props;
 const partner = panel === "partner";
+const PANEL = {
+	ops: { home: "/ops", name: "Operasyon", logout: "/ops/cikis" },
+	partner: { home: "/partner", name: "Partner", logout: "/partner/cikis" },
+	company: { home: "/firma", name: "Firma", logout: "/firma/cikis" },
+}[panel];
 
 const watch = !!user && can(user, "bookings.read");
 let counts: OpsCounts = { requests: 0, bookings: 0 };
@@ -42,7 +47,15 @@ type IconName = Parameters<typeof Icon>[0]["name"];
 type NavItem = { href: string; label: string; icon: IconName; show: boolean; count?: keyof OpsCounts; hint?: string };
 const NAV_ALL: NavItem[] = !user
 	? []
-	: partner
+	: panel === "company"
+		? [
+				{ href: "/firma", label: "Pano", icon: "dashboard", show: true },
+				{ href: "/firma/yeni", label: "Yeni transfer", icon: "plus", show: true },
+				{ href: "/firma/yolculuklar", label: "Yolculuklar", icon: "calendar", show: true },
+				{ href: "/firma/ekstre", label: "Ekstre", icon: "file", show: true },
+				{ href: "/firma/ekip", label: "Ekip", icon: "users", show: can(user, "company.manage") },
+			]
+		: partner
 		? [
 				{ href: "/partner", label: "İşler", icon: "calendar", show: true },
 				{ href: "/partner/suruculer", label: "Sürücüler", icon: "user", show: true },
@@ -55,6 +68,7 @@ const NAV_ALL: NavItem[] = !user
 			{ href: "/ops/harita", label: "Canlı harita", icon: "map", show: can(user, "bookings.read") },
 			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read") },
 			{ href: "/ops/partnerler", label: "Partner filolar", icon: "building", show: can(user, "bookings.read") },
+			{ href: "/ops/firmalar", label: "Kurumsal firmalar", icon: "card", show: can(user, "bookings.read") },
 			{ href: "/ops/hakedis", label: "Hakediş", icon: "wallet", show: can(user, "settlements.manage") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", icon: "pin", show: can(user, "catalog.read") },
@@ -77,12 +91,12 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="robots" content="noindex, nofollow" />
-		<title>{title} · SecureDrive {partner ? "Partner" : "Operasyon"}</title>
+		<title>{title} · SecureDrive {PANEL.name}</title>
 		<link rel="icon" href="/favicon.svg" />
 	</head>
 	<body class="ops">
 		<header class="ops-top">
-			<a class="ops-brand" href={partner ? "/partner" : "/ops"}>SecureDrive <span>{partner ? "Partner" : "Operasyon"}</span></a>
+			<a class="ops-brand" href={PANEL.home}>SecureDrive <span>{PANEL.name}</span></a>
 			{
 				user && (
 					<div class="ops-user">
@@ -123,7 +137,7 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 						<span>
 							{user.name} · {user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}
 						</span>
-						<form method="post" action={partner ? "/partner/cikis" : "/ops/cikis"}>
+						<form method="post" action={PANEL.logout}>
 							<button type="submit" class="ops-link">Çıkış</button>
 						</form>
 					</div>
@@ -133,9 +147,9 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		<div class:list={["ops-shell", NAV.length === 0 && "no-nav"]}>
 			{
 				NAV.length > 0 && (
-					<nav class="ops-nav" aria-label={partner ? "Partner menüsü" : "Operasyon menüsü"}>
+					<nav class="ops-nav" aria-label={`${PANEL.name} menüsü`}>
 						{NAV.map((item) => (
-							<a href={item.href} aria-current={active === item.href || (item.href !== "/ops" && item.href !== "/partner" && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
+							<a href={item.href} aria-current={active === item.href || (item.href !== PANEL.home && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
 								<Icon name={item.icon} size={18} class="ops-nav-icon" />
 								<span>{item.label}</span>
 								{item.count && (

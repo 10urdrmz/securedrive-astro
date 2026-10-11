@@ -9,7 +9,7 @@
 import type { Db } from "./db";
 
 /** Panels, personal pages and endpoints, in every language. */
-export const PRIVATE_PATH = /^\/(?:(?:en|ar|ru)\/)?(?:ops|surucu|partner|hesap|rezervasyon|sorgula|api)(?:\/|\.|$)|^\/_emdash(?:\/|$)/;
+export const PRIVATE_PATH = /^\/(?:(?:en|ar|ru)\/)?(?:ops|surucu|partner|firma|hesap|rezervasyon|sorgula|api)(?:\/|\.|$)|^\/_emdash(?:\/|$)/;
 
 const PURGE_KEY = "edge_cache_purged_v1";
 // A flag, not a shared promise: on Workers a promise started by one request never

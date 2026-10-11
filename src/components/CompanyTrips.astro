@@ -1,0 +1,78 @@
+---
+/** A company's trips as a table; each code opens the live trip page (status, driver, chat). */
+import { STATUS_LABELS, type BookingStatus } from "../server/bookings";
+import type { CompanyTrip } from "../server/companies";
+import { formatMoney } from "../server/ops";
+import { isoToIstanbul } from "../server/pricing";
+
+interface Props {
+	trips: CompanyTrip[];
+	highlight?: string | null;
+}
+const { trips, highlight = null } = Astro.props;
+const when = (iso: string) => {
+	const { date, time } = isoToIstanbul(iso);
+	return `${date.split("-").reverse().join(".")} ${time}`;
+};
+---
+
+<div class="table-wrap">
+	<table class="data">
+		<thead>
+			<tr>
+				<th>Alış</th>
+				<th>Kod</th>
+				<th>Yolcu</th>
+				<th>Güzergâh</th>
+				<th>Masraf merkezi</th>
+				<th>Durum</th>
+				<th class="num">Tutar</th>
+			</tr>
+		</thead>
+		<tbody>
+			{
+				trips.map((t) => (
+					<tr class:list={[highlight === t.code && "hl"]}>
+						<td style="white-space:nowrap">{when(t.pickup_at)}</td>
+						<td>
+							<a href={`/rezervasyon/${t.code}?t=${t.tracking_token}`} target="_blank" rel="noopener">
+								{t.code}
+							</a>
+						</td>
+						<td>
+							{t.contact_name}
+							<div class="muted">
+								{t.pax} kişi{t.flight_no && ` · ${t.flight_no}`}
+								{t.booked_by && ` · ${t.booked_by} ayırdı`}
+							</div>
+						</td>
+						<td>
+							{t.from_name} → {t.to_name}
+							<div class="muted">{t.class_name}</div>
+						</td>
+						<td>{t.cost_center ?? "—"}</td>
+						<td>
+							<span class:list={["badge", t.status === "completed" && "ok", t.status === "cancelled" && "off"]}>{STATUS_LABELS[t.status as BookingStatus] ?? t.status}</span>
+						</td>
+						<td class="num" style="white-space:nowrap">{formatMoney(t.price_minor)} ₺</td>
+					</tr>
+				))
+			}
+			{
+				trips.length === 0 && (
+					<tr>
+						<td colspan="7" class="muted">
+							Yolculuk yok.
+						</td>
+					</tr>
+				)
+			}
+		</tbody>
+	</table>
+</div>
+
+<style>
+	tr.hl td {
+		background: #f0f6fc;
+	}
+</style>
