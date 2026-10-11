@@ -370,4 +370,25 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		name: "0009_flights",
+		statements: [
+			// The arriving flight of each airport pickup, kept fresh by server/flights.ts or set by ops.
+			`CREATE TABLE IF NOT EXISTS sd_flights (
+				booking_id TEXT PRIMARY KEY REFERENCES sd_bookings(id),
+				flight_no TEXT NOT NULL,
+				status TEXT NOT NULL DEFAULT 'unknown',
+				scheduled_at TEXT,
+				estimated_at TEXT,
+				actual_at TEXT,
+				terminal TEXT,
+				gate TEXT,
+				belt TEXT,
+				source TEXT NOT NULL DEFAULT 'api' CHECK (source IN ('api','manual')),
+				checked_at TEXT,
+				error TEXT,
+				updated_at TEXT NOT NULL
+			)`,
+		],
+	},
 ];

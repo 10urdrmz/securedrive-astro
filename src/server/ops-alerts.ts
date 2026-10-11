@@ -7,7 +7,9 @@
  */
 import type { Db } from "./db";
 import { can, type SessionUser } from "./auth/rbac";
+import { sql } from "kysely";
 import { opsUnread } from "./messages";
+import { FLIGHT_STATUS_LABELS, type FlightStatus } from "./flights";
 
 export interface OpsCounts {
 	/** Transfer price requests nobody has picked up yet. */
@@ -18,7 +20,7 @@ export interface OpsCounts {
 
 export interface OpsFeedItem {
 	key: string;
-	kind: "request" | "booking" | "declined" | "message";
+	kind: "request" | "booking" | "declined" | "message" | "flight";
 	title: string;
 	detail: string;
 	href: string;
@@ -53,7 +55,7 @@ export async function opsCounts(db: Db, user: SessionUser): Promise<OpsCounts> {
 
 export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<OpsFeedItem[]> {
 	if (!can(user, "bookings.read")) return [];
-	const [requests, bookings, events, messages] = await Promise.all([
+	const [requests, bookings, events, messages, flights] = await Promise.all([
 		db
 			.selectFrom("ec_inquiries")
 			.select(["id", "reference", "name", "details", "created_at"])
@@ -80,6 +82,21 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			.limit(limit)
 			.execute(),
 		opsUnread(db, limit),
+		// Flights that change the plan: cancelled, diverted or 30+ minutes late.
+		db
+			.selectFrom("sd_booking_events as e")
+			.innerJoin("sd_bookings as b", "b.id", "e.booking_id")
+			.select(["e.id", "e.at", "e.data", "b.code", "b.contact_name"])
+			.where("e.type", "=", "flight_update")
+			.where((eb) =>
+				eb.or([
+					eb(sql`json_extract(e.data, '$.status')`, "in", ["cancelled", "diverted"]),
+					eb(sql`json_extract(e.data, '$.delayMin')`, ">=", 30),
+				]),
+			)
+			.orderBy("e.at", "desc")
+			.limit(limit)
+			.execute(),
 	]);
 	const route = (details: unknown) => {
 		try {
@@ -98,6 +115,22 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			href: `/ops/rezervasyonlar/${m.code}#mesajlar`,
 			at: String(m.at),
 		})),
+		...flights.map((f) => {
+			let d: { flightNo?: string; status?: FlightStatus; delayMin?: number } = {};
+			try {
+				d = JSON.parse(String(f.data));
+			} catch {
+				// The title alone is enough.
+			}
+			return {
+				key: `flight:${f.id}`,
+				kind: "flight" as const,
+				title: `Uçuş ${d.status ? FLIGHT_STATUS_LABELS[d.status].toLocaleLowerCase("tr") : "değişti"}${d.delayMin ? ` (+${d.delayMin} dk)` : ""} · ${f.code}`,
+				detail: [d.flightNo, f.contact_name, "sürücüyü bilgilendirin"].filter(Boolean).join(" · "),
+				href: `/ops/rezervasyonlar/${f.code}#ucus`,
+				at: String(f.at),
+			};
+		}),
 		...requests.map((r) => ({
 			key: `request:${r.id}`,
 			kind: "request" as const,
