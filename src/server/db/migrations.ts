@@ -463,4 +463,41 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_bookings_agency ON sd_bookings(agency_id, pickup_at)`,
 		],
 	},
+	{
+		name: "0014_pool",
+		statements: [
+			// Job pool (Faz 6, Mod B): ops opens a booking to partner fleets (later also
+			// independent drivers) either at a fixed payout (first to take it wins) or as an
+			// auction with a ceiling, where the lowest bid wins at the deadline.
+			`CREATE TABLE IF NOT EXISTS sd_pool_jobs (
+				id TEXT PRIMARY KEY,
+				booking_id TEXT NOT NULL REFERENCES sd_bookings(id),
+				mode TEXT NOT NULL CHECK (mode IN ('fixed','auction')),
+				payout_minor INTEGER NOT NULL,
+				deadline_at TEXT NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('open','awarded','cancelled','expired')),
+				note TEXT,
+				created_by TEXT,
+				created_at TEXT NOT NULL DEFAULT (${NOW}),
+				closed_at TEXT,
+				winner_kind TEXT,
+				winner_id TEXT,
+				winner_amount_minor INTEGER
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_pool_jobs_status ON sd_pool_jobs(status, deadline_at)`,
+			`CREATE INDEX IF NOT EXISTS sd_pool_jobs_booking ON sd_pool_jobs(booking_id)`,
+			`CREATE TABLE IF NOT EXISTS sd_pool_bids (
+				id TEXT PRIMARY KEY,
+				pool_job_id TEXT NOT NULL REFERENCES sd_pool_jobs(id),
+				bidder_kind TEXT NOT NULL CHECK (bidder_kind IN ('partner','driver')),
+				bidder_id TEXT NOT NULL,
+				amount_minor INTEGER NOT NULL,
+				note TEXT,
+				status TEXT NOT NULL CHECK (status IN ('active','withdrawn','won','lost')),
+				created_at TEXT NOT NULL DEFAULT (${NOW}),
+				updated_at TEXT NOT NULL DEFAULT (${NOW}),
+				UNIQUE (pool_job_id, bidder_kind, bidder_id)
+			)`,
+		],
+	},
 ];

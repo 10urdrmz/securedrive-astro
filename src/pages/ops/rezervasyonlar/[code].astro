@@ -32,6 +32,7 @@ import { isTracked } from "../../../server/live-location";
 import ChatBox from "../../../components/ChatBox.astro";
 import { listMessages, markRead, postMessage } from "../../../server/messages";
 import { CARRIER_JOB_LABELS, currentCarrierJob, listPartners, offerToPartner, PARTNER_ANSWER_MINUTES, withdrawFromPartner } from "../../../server/partners";
+import { awardBid, cancelPool, currentPoolJob, openPool, poolBids, POOL_STATUS_LABELS } from "../../../server/pool";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -98,6 +99,23 @@ if (form) {
 			if (!payout) throw new Error("Partnerin alacağı tutarı yazın. Örnek: 1.800");
 			await offerToPartner(db, booking, text(form, "org_id", 40), payout, actor, text(form, "note", 300) || null);
 			notice = "İş partnere verildi. Partner panelinden kabul edip kendi sürücüsünü atayacak.";
+		} else if (intent === "pool" && canWrite) {
+			const payout = parseMoney(text(form, "pool_payout", 20));
+			if (!payout) throw new Error("Havuz tutarını yazın. Örnek: 1.800");
+			const mode = text(form, "mode", 10) === "auction" ? "auction" : "fixed";
+			const minutes = Math.max(10, Math.min(48 * 60, Number(text(form, "minutes", 6)) || 60));
+			await openPool(db, booking, { mode, payoutMinor: payout, deadlineMinutes: minutes, note: text(form, "pool_note", 300) || null }, actor);
+			notice = mode === "auction" ? "İş ihaleye açıldı. Partnerler tavan tutarın altında teklif verecek." : "İş havuza kondu. İlk alan partner işi alır.";
+		} else if ((intent === "pool_cancel" || intent === "pool_award") && canWrite) {
+			const pool = await currentPoolJob(db, booking.id);
+			if (!pool || pool.status !== "open") throw new Error("Bu iş havuzda değil.");
+			if (intent === "pool_cancel") {
+				await cancelPool(db, pool, actor);
+				notice = "İş havuzdan çekildi.";
+			} else {
+				await awardBid(db, pool, text(form, "bid_id", 40), actor);
+				notice = "İhale verildi. İş partnerin, sürücüsünü partner atayacak.";
+			}
 		} else if (intent === "partner_back" && canWrite) {
 			await withdrawFromPartner(db, booking, actor);
 			notice = "İş partnerden geri alındı.";
@@ -133,6 +151,8 @@ const at = isoToIstanbul(booking.pickup_at);
 const drivers = await db.selectFrom("sd_drivers").selectAll().where("status", "=", "active").where("org_id", "is", null).orderBy("name").execute();
 const partners = (await listPartners(db)).filter((p) => p.status === "active");
 const carrierJob = await currentCarrierJob(db, booking.id);
+const pool = await currentPoolJob(db, booking.id);
+const bids = pool ? await poolBids(db, pool.id) : [];
 const carrier = carrierJob ? (partners.find((p) => p.id === carrierJob.org_id) ?? (await listPartners(db)).find((p) => p.id === carrierJob.org_id)) : null;
 const answerLate = carrierJob?.status === "offered" && Date.now() - Date.parse(carrierJob.offered_at) > PARTNER_ANSWER_MINUTES * 60_000;
 const sameClass = drivers.filter((d) => d.class_key === booking!.class_key);
@@ -183,6 +203,10 @@ const EVENT_LABELS: Record<string, string> = {
 	carrier_accepted: "Partner işi kabul etti",
 	carrier_declined: "Partner işi reddetti",
 	carrier_released: "İş partnerden geri alındı",
+	pool_opened: "İş havuza kondu",
+	pool_cancelled: "İş havuzdan çekildi",
+	pool_awarded: "Havuzdan partnere verildi",
+	pool_expired: "Havuz süresi doldu, alan olmadı",
 };
 const eventDriver = (data: unknown) => {
 	try {
@@ -212,8 +236,9 @@ const agencyName = booking.agency_id
 const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", partner: "Partner", company: "Firma", agency: "Acente", system: "Sistem" };
 const eventPartner = (data: unknown) => {
 	try {
-		const d = JSON.parse(String(data)) as { partnerName?: string; payoutMinor?: number };
-		return [d.partnerName, d.payoutMinor ? `${formatMoney(d.payoutMinor)} ₺` : ""].filter(Boolean).join(" · ");
+		const d = JSON.parse(String(data)) as { partnerName?: string; payoutMinor?: number; amount_minor?: number };
+		const amount = d.payoutMinor ?? d.amount_minor;
+		return [d.partnerName, amount ? `${formatMoney(amount)} ₺` : ""].filter(Boolean).join(" · ");
 	} catch {
 		return "";
 	}
@@ -373,6 +398,94 @@ const chatRoomName = await chatRoom(booking);
 			<h2 style="margin-top:0">Canlı konum</h2>
 			<div data-live-map-canvas />
 			<p class="muted" data-live-map-note style="margin:10px 0 0">Harita yükleniyor…</p>
+		</div>
+	)}
+
+	{(pool?.status === "open" || (canWrite && !isFinal && !isQuote && !carrierJob && !booking.driver_id && partners.length > 0)) && (
+		<div class="card" id="havuz">
+			<h2 style="margin-top:0">İş havuzu</h2>
+			{pool?.status === "open" ? (
+				<>
+					<p>
+						<span class="badge" style="background:#fffaeb;color:#b54708">{pool.mode === "auction" ? "İhalede" : "Havuzda"}</span>{" "}
+						{pool.mode === "auction" ? "Tavan" : "Sabit tutar"} <strong>{formatMoney(pool.payout_minor)} ₺</strong> · kapanış{" "}
+						{isoToIstanbul(pool.deadline_at).date.split("-").reverse().join(".")} {isoToIstanbul(pool.deadline_at).time}
+						{pool.mode === "auction" && " · en düşük teklif kazanır"}
+					</p>
+					{pool.mode === "auction" && (
+						<table class="data">
+							<thead>
+								<tr><th>Partner</th><th class="num">Teklif</th><th>Not</th><th /></tr>
+							</thead>
+							<tbody>
+								{bids.filter((b) => b.status === "active").map((b) => (
+									<tr>
+										<td>{b.bidder_name}</td>
+										<td class="num"><strong>{formatMoney(b.amount_minor)} ₺</strong></td>
+										<td class="muted">{b.note}</td>
+										<td>
+											{canWrite && (
+												<form method="post" style="margin:0">
+													<input type="hidden" name="intent" value="pool_award" />
+						<input type="hidden" name="version" value={booking.version} />
+													<input type="hidden" name="bid_id" value={b.id} />
+													<button class="btn secondary" type="submit">Bu teklife ver</button>
+												</form>
+											)}
+										</td>
+									</tr>
+								))}
+								{bids.filter((b) => b.status === "active").length === 0 && <tr><td colspan="4" class="muted">Henüz teklif yok.</td></tr>}
+							</tbody>
+						</table>
+					)}
+					{canWrite && (
+						<form method="post" class="actions">
+							<input type="hidden" name="intent" value="pool_cancel" />
+						<input type="hidden" name="version" value={booking.version} />
+							<button class="btn secondary" type="submit">Havuzdan çek</button>
+						</form>
+					)}
+				</>
+			) : (
+				<>
+					{pool && <p class="muted">Son havuz: {POOL_STATUS_LABELS[pool.status]}{pool.winner_amount_minor ? ` · ${formatMoney(pool.winner_amount_minor)} ₺` : ""}</p>}
+					<p class="muted" style="margin-top:0">
+						İşi tüm partner filolara açın. <strong>Sabit</strong>: yazdığınız tutarla ilk alan partner alır. <strong>İhale</strong>: tutar tavandır, partnerler
+						altında teklif verir, süre bitince en düşük teklif kazanır. Havuz en geç alıştan 2 saat önce kapanır.
+					</p>
+					<form method="post" class="form-grid">
+						<input type="hidden" name="intent" value="pool" />
+						<input type="hidden" name="version" value={booking.version} />
+						<label>
+							Usul
+							<select name="mode">
+								<option value="fixed">Sabit tutar (ilk alan)</option>
+								<option value="auction">İhale (en düşük teklif)</option>
+							</select>
+						</label>
+						<label>
+							Tutar / tavan (₺)
+							<input type="text" name="pool_payout" inputmode="decimal" required value={booking.payout_minor ? formatMoney(booking.payout_minor) : ""} placeholder="1.800" />
+						</label>
+						<label>
+							Süre
+							<select name="minutes">
+								<option value="30">30 dakika</option>
+								<option value="60" selected>1 saat</option>
+								<option value="180">3 saat</option>
+								<option value="720">12 saat</option>
+								<option value="1440">24 saat</option>
+							</select>
+						</label>
+						<label>
+							Partnerlere not
+							<input type="text" name="pool_note" />
+						</label>
+						<div><button class="btn" type="submit">Havuza koy</button></div>
+					</form>
+				</>
+			)}
 		</div>
 	)}
 
@@ -591,7 +704,7 @@ const chatRoomName = await chatRoom(booking);
 							{EVENT_LABELS[e.type] ?? e.type}
 							{["auto_offered", "offer_timed_out", "driver_accepted", "driver_declined"].includes(e.type) && eventDriver(e.data) && <> · {eventDriver(e.data)}</>}
 							{e.type === "flight_update" && eventFlight(e.data) && <> · {eventFlight(e.data)}</>}
-							{e.type.startsWith("carrier_") && eventPartner(e.data) && <> · {eventPartner(e.data)}</>}
+							{(e.type.startsWith("carrier_") || e.type === "pool_awarded") && eventPartner(e.data) && <> · {eventPartner(e.data)}</>}
 							{e.to_status && e.type === "status_change" && <> → {STATUS_LABELS[e.to_status as BookingStatus] ?? e.to_status}</>}
 						</td>
 						<td class="muted">{e.user_name ?? ACTORS[e.actor] ?? e.actor}</td>

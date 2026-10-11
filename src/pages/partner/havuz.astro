@@ -1,0 +1,139 @@
+---
+/**
+ * The job pool as a partner sees it: fixed-payout jobs to take (first come, first
+ * served) and auctions to bid on under the ceiling. Won jobs move to "İşler", where
+ * the partner puts a driver on them.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import { audit, formatMoney, parseMoney, readForm, text } from "../../server/ops";
+import { requirePartner } from "../../server/partners";
+import { getOpenPoolByCode, openPoolFor, placeBid, takeFixed, withdrawBid } from "../../server/pool";
+import { isoToIstanbul } from "../../server/pricing";
+
+const ctx = await requirePartner(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, org } = ctx;
+const bidder = { kind: "partner" as const, id: org.id };
+
+let notice = "";
+let error = "";
+const form = await readForm(Astro);
+if (form) {
+	const intent = text(form, "intent", 20);
+	const code = text(form, "code", 20).toUpperCase();
+	try {
+		const job = await getOpenPoolByCode(db, code);
+		if (!job) throw new Error("Bu iş artık havuzda değil.");
+		if (intent === "take") {
+			await takeFixed(db, job, org.id, { kind: "partner", userId: user.id });
+			await audit(db, user, "pool.take", "booking", job.booking_id, { code, org: org.id });
+			return Astro.redirect(`/partner?alindi=${code}`, 303);
+		} else if (intent === "bid") {
+			const amount = parseMoney(text(form, "amount", 20));
+			if (!amount) throw new Error("Teklif tutarını yazın. Örnek: 1.650");
+			await placeBid(db, job, bidder, amount, text(form, "note", 200) || null);
+			await audit(db, user, "pool.bid", "booking", job.booking_id, { code, org: org.id, amount });
+			notice = `${code} için ${formatMoney(amount)} ₺ teklifiniz kaydedildi.`;
+		} else if (intent === "withdraw") {
+			await withdrawBid(db, job, bidder);
+			notice = `${code} teklifiniz geri çekildi.`;
+		}
+	} catch (e) {
+		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
+	}
+}
+
+const jobs = await openPoolFor(db, bidder);
+const when = (iso: string) => {
+	const { date, time } = isoToIstanbul(iso);
+	return `${date.split("-").reverse().join(".")} ${time}`;
+};
+const left = (iso: string) => {
+	const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60_000));
+	return minutes >= 120 ? `${Math.floor(minutes / 60)} saat` : `${minutes} dakika`;
+};
+---
+
+<OpsLayout title="İş havuzu" user={user} panel="partner">
+	{notice && <p class="notice">{notice}</p>}
+	{error && <p class="notice error">{error}</p>}
+	<p class="muted" style="margin-top:0">
+		SecureDrive'ın tüm partnerlere açtığı işler. <strong>Sabit</strong> işleri ilk alan alır. <strong>İhalede</strong> tavanın altında teklif verirsiniz;
+		süre bitince en düşük teklif kazanır. Kazandığınız iş "İşler" sayfasına düşer, sürücünüzü oradan atarsınız. Başka partnerlerin tekliflerini görmezsiniz.
+	</p>
+	{jobs.length === 0 && <div class="card muted">Şu an havuzda iş yok.</div>}
+	{
+		jobs.map((j) => (
+			<div class="card job">
+				<div class="top">
+					<div>
+						<strong>{when(j.pickup_at)}</strong> · {j.code}
+						<div>
+							{j.from_name} → {j.to_name}
+						</div>
+						<div class="muted">
+							{j.class_name} · {j.pax} kişi · {j.bags} bavul{j.flight_no && ` · uçuş ${j.flight_no}`}
+						</div>
+						{j.note && <div class="muted">Not: {j.note}</div>}
+					</div>
+					<div class="money">
+						<span class="badge" style="background:#fffaeb;color:#b54708">{j.mode === "auction" ? "İhale" : "Sabit"}</span>
+						<strong>{formatMoney(j.payout_minor)} ₺</strong>
+						<span class="muted">{j.mode === "auction" ? "tavan" : "hakediş"} · {left(j.deadline_at)} kaldı</span>
+					</div>
+				</div>
+				{j.mode === "fixed" ? (
+					<form method="post" class="actions">
+						<input type="hidden" name="code" value={j.code} />
+						<button class="btn" type="submit" name="intent" value="take">
+							İşi al · {formatMoney(j.payout_minor)} ₺
+						</button>
+					</form>
+				) : (
+					<form method="post" class="actions" style="align-items:end">
+						<input type="hidden" name="code" value={j.code} />
+						<label>
+							Teklifiniz (₺)
+							<input type="text" name="amount" inputmode="decimal" required value={j.my_bid && j.my_bid_status === "active" ? formatMoney(j.my_bid) : ""} placeholder={formatMoney(j.payout_minor)} />
+						</label>
+						<label>
+							Not (araç, karşılama…)
+							<input type="text" name="note" />
+						</label>
+						<button class="btn" type="submit" name="intent" value="bid">
+							{j.my_bid_status === "active" ? "Teklifi güncelle" : "Teklif ver"}
+						</button>
+						{j.my_bid_status === "active" && (
+							<button class="btn secondary" type="submit" name="intent" value="withdraw" formnovalidate>
+								Geri çek
+							</button>
+						)}
+					</form>
+				)}
+				{j.mode === "auction" && (
+					<p class="muted" style="margin:6px 0 0">
+						{j.my_bid_status === "active" ? `Teklifiniz ${formatMoney(j.my_bid)} ₺. ` : ""}
+						{j.bids} teklif var.
+					</p>
+				)}
+			</div>
+		))
+	}
+</OpsLayout>
+
+<style>
+	.top {
+		display: flex;
+		justify-content: space-between;
+		gap: 16px;
+		flex-wrap: wrap;
+	}
+	.money {
+		display: grid;
+		justify-items: end;
+		gap: 2px;
+	}
+	.money strong {
+		font-size: 20px;
+	}
+</style>
