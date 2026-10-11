@@ -29,6 +29,7 @@ import { NO_STORE } from "./account-page";
 import { allowVisitor, currentMember, EMAIL, PHONE, type Member } from "./members";
 import { canWrite, firstName, listMessages, markRead, postMessage, type ChatMessage } from "../server/messages";
 import { iyzicoEnabled, iyzicoIsSandbox } from "../server/payments/iyzico";
+import { flightView, getFlight, type FlightView } from "../server/flights";
 
 export interface Zone {
 	id: string;
@@ -77,6 +78,8 @@ export interface BookingDetail {
 	driver: { name: string; plate: string | null; vehicle: string | null } | null;
 	messages: ChatMessage[];
 	chatWritable: boolean;
+	/** The arriving flight's status, for airport pickups once it is tracked. */
+	flight: FlightView | null;
 	/** Hours before pickup until which the passenger may cancel online, free of charge. */
 	freeCancelHours: number;
 	canCancel: boolean;
@@ -254,6 +257,7 @@ async function bookingDetail(
 		driver: detail.driver ? { name: detail.driver.name, plate: detail.driver.plate, vehicle: detail.driver.vehicle } : null,
 		messages: await listMessages(db, booking, "passenger"),
 		chatWritable: canWrite(booking, "passenger"),
+		flight: booking.flight_no ? flightView(await getFlight(db, booking.id)) : null,
 		freeCancelHours: Number.isFinite(freeCancelHours) ? freeCancelHours : 0,
 		canCancel,
 		payHref: booking.status === "pending_payment" && booking.payment_method === "online" && iyzicoEnabled() ? paymentStartPath(booking) : null,

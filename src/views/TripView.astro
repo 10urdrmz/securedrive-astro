@@ -316,13 +316,46 @@ const chatRoomName = await chatRoom(booking);
 								</div>
 							</li>
 						</ol>
+						{
+							page.flight && !closed && (
+								<div
+									class:list={[
+										"grid gap-1 rounded-xl p-3 text-sm ring-1 ring-inset",
+										page.flight.status === "cancelled" || page.flight.status === "diverted" || page.flight.delayMin >= 15
+											? "bg-amber-50 ring-amber-200"
+											: page.flight.status === "landed"
+												? "bg-emerald-50 ring-emerald-200"
+												: "bg-sky-50 ring-sky-200",
+									]}
+								>
+									<div class="flex flex-wrap items-center justify-between gap-2">
+										<span class="inline-flex items-center gap-1.5 font-semibold text-gray-900">
+											<Icon name="plane" size={16} />
+											{t("flight.title")} <span dir="ltr">{page.flight.flightNo}</span>
+										</span>
+										<strong class="text-gray-900">{t(`flight.${page.flight.status}` as UiKey)}</strong>
+									</div>
+									<p class="m-0 text-gray-700">
+										{[
+											page.flight.at && t(page.flight.status === "landed" ? "flight.landedAt" : "flight.eta", { t: isoToIstanbul(page.flight.at).time }),
+											page.flight.delayMin > 0 && t("flight.delay", { m: page.flight.delayMin }),
+											page.flight.terminal && t("flight.terminal", { x: page.flight.terminal }),
+											page.flight.belt && t("flight.belt", { x: page.flight.belt }),
+										]
+											.filter(Boolean)
+											.join(" · ")}
+									</p>
+									{page.flight.status !== "landed" && <p class="m-0 text-xs text-gray-600">{t("flight.note")}</p>}
+								</div>
+							)
+						}
 						<dl class="m-0 grid grid-cols-2 gap-x-4 gap-y-3 border-0 border-t border-solid border-gray-100 pt-4 text-sm">
 							{[
 								{ icon: "calendar", label: t("book.pickupTime"), value: `${pickupLong} · ${pickup.time}`, wide: true },
 								{ icon: "car", label: t("form.vehicle"), value: page.className, wide: true },
 								{ icon: "users", label: t("quick.passengers"), value: String(booking.pax) },
 								{ icon: "luggage", label: t("form.luggage"), value: String(booking.bags) },
-								booking.flight_no && { icon: "plane", label: t("track.flight"), value: booking.flight_no, ltr: true },
+								booking.flight_no && !(page.flight && !closed) && { icon: "plane", label: t("track.flight"), value: booking.flight_no, ltr: true },
 								booking.sign_name && { icon: "sign", label: t("book.signName"), value: booking.sign_name },
 							]
 								.filter(Boolean)

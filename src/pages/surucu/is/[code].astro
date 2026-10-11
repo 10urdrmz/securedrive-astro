@@ -5,6 +5,8 @@
  * a change ops made meanwhile cannot skip a step.
  */
 import { chatRoom } from "../../../server/realtime";
+import { FLIGHT_STATUS_LABELS, flightView, getFlight } from "../../../server/flights";
+import { isoToIstanbul as flightClock } from "../../../server/pricing";
 import DriverLayout from "../../../layouts/DriverLayout.astro";
 import { getDb } from "../../../server/db";
 import { ConflictError, PAYMENT_METHOD_LABELS, type BookingStatus } from "../../../server/bookings";
@@ -63,6 +65,7 @@ await markRead(db, b.id, "driver");
 const offerMinutes = job.offeredAt ? (await getSettings(db)).offerMinutes : 0;
 const minutesLeft = job.offeredAt ? Math.max(0, Math.ceil((Date.parse(job.offeredAt) + offerMinutes * 60_000 - Date.now()) / 60_000)) : null;
 const chatRoomName = await chatRoom(b);
+const flight = b.flight_no ? flightView(await getFlight(db, b.id)) : null;
 ---
 
 <DriverLayout title={b.code} driver={driver} back>
@@ -179,6 +182,15 @@ const chatRoomName = await chatRoom(b);
 							<a href={`https://www.flightradar24.com/data/flights/${encodeURIComponent(b.flight_no.replace(/\s/g, "").toLowerCase())}`} target="_blank" rel="noopener">
 								{b.flight_no}
 							</a>
+							{flight && (
+								<div class:list={["flight", flight.delayMin > 0 || flight.status === "cancelled" || flight.status === "diverted" ? "late" : flight.status === "landed" ? "landed" : ""]}>
+									{FLIGHT_STATUS_LABELS[flight.status]}
+									{flight.at && <> · {flight.status === "landed" ? "indi" : "iniş"} {flightClock(flight.at).time}</>}
+									{flight.delayMin > 0 && <> · +{flight.delayMin} dk</>}
+									{flight.terminal && <> · Terminal {flight.terminal}</>}
+									{flight.belt && <> · Bant {flight.belt}</>}
+								</div>
+							)}
 						</dd>
 					</div>
 				)
@@ -388,6 +400,18 @@ const chatRoomName = await chatRoom(b);
 	}
 	.facts a {
 		color: #175cd3;
+	}
+	.flight {
+		margin-top: 4px;
+		font-size: 13px;
+		font-weight: 600;
+		color: var(--drv-muted, #475467);
+	}
+	.flight.late {
+		color: #b42318;
+	}
+	.flight.landed {
+		color: #067647;
 	}
 	.note {
 		margin: 12px 0 0;

@@ -25,7 +25,8 @@ import {
 	type BookingStatus,
 } from "../../../server/bookings";
 import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../../server/ops";
-import { isoToIstanbul, refundPct } from "../../../server/pricing";
+import { isoToIstanbul, istanbulToIso, refundPct } from "../../../server/pricing";
+import { airportCode, FLIGHT_STATUS_LABELS, FLIGHT_STATUSES, flightApiEnabled, flightView, getFlight, resumeAutomaticFlight, setFlightManually, type FlightStatus } from "../../../server/flights";
 import { getSettings } from "../../../server/settings";
 import { isTracked } from "../../../server/live-location";
 import ChatBox from "../../../components/ChatBox.astro";
@@ -50,6 +51,24 @@ if (form) {
 	if (intent === "message" && canWrite) {
 		await postMessage(db, booking, "ops", user.id, "Operasyon", String(form.get("message") ?? ""));
 		return Astro.redirect(`/ops/rezervasyonlar/${booking.code}#mesajlar`, 303);
+	}
+	// Flight status is kept beside the booking, not in it: no version check.
+	if (intent === "flight" && canWrite && booking.flight_no) {
+		const status = text(form, "flight_status", 20) as FlightStatus;
+		const time = text(form, "flight_time", 5);
+		let at: string | null = null;
+		if (/^\d{2}:\d{2}$/.test(time)) {
+			// The landing is near the pickup; a time far before it means after midnight.
+			at = istanbulToIso(isoToIstanbul(booking.pickup_at).date, time);
+			if (at && Date.parse(at) < Date.parse(booking.pickup_at) - 12 * 3600_000) at = new Date(Date.parse(at) + 24 * 3600_000).toISOString();
+		}
+		if (FLIGHT_STATUSES.includes(status)) await setFlightManually(db, booking, actor, status, at);
+		return Astro.redirect(`/ops/rezervasyonlar/${booking.code}#ucus`, 303);
+	}
+	if (intent === "flight_auto" && canWrite) {
+		const zone = await db.selectFrom("sd_zones").select("name").where("id", "=", booking.from_zone_id).executeTakeFirst();
+		await resumeAutomaticFlight(db, booking, airportCode(zone?.name));
+		return Astro.redirect(`/ops/rezervasyonlar/${booking.code}#ucus`, 303);
 	}
 	try {
 		if (Number(text(form, "version", 10)) !== booking.version) throw new ConflictError();
@@ -140,10 +159,23 @@ const EVENT_LABELS: Record<string, string> = {
 	auto_offered: "Otomatik atama: sürücüye önerildi",
 	offer_timed_out: "Sürücü süresinde cevap vermedi",
 	auto_unmatched: "Otomatik atama uygun sürücü bulamadı",
+	flight_update: "Uçuş durumu",
 };
 const eventDriver = (data: unknown) => {
 	try {
 		return (JSON.parse(String(data)) as { driverName?: string }).driverName ?? "";
+	} catch {
+		return "";
+	}
+};
+const flightRaw = booking.flight_no ? await getFlight(db, booking.id) : null;
+const flight = flightView(flightRaw);
+const fromAirport = (await db.selectFrom("sd_zones").select("kind").where("id", "=", booking.from_zone_id).executeTakeFirst())?.kind === "airport";
+const clock = (iso: string | null) => (iso ? isoToIstanbul(iso).time : "");
+const eventFlight = (data: unknown) => {
+	try {
+		const d = JSON.parse(String(data)) as { status?: keyof typeof FLIGHT_STATUS_LABELS; at?: string | null; delayMin?: number };
+		return [d.status ? FLIGHT_STATUS_LABELS[d.status] : "", d.at ? clock(d.at) : "", d.delayMin ? `+${d.delayMin} dk` : ""].filter(Boolean).join(" · ");
 	} catch {
 		return "";
 	}
@@ -203,7 +235,22 @@ const chatRoomName = await chatRoom(booking);
 				{booking.pickup_address && <tr><th>Alış adresi</th><td>{booking.pickup_address}</td></tr>}
 				{booking.dropoff_address && <tr><th>Varış adresi</th><td>{booking.dropoff_address}</td></tr>}
 				<tr><th>Araç</th><td>{info.className} · {booking.pax} kişi · {booking.bags} bavul</td></tr>
-				{booking.flight_no && <tr><th>Uçuş</th><td>{booking.flight_no}</td></tr>}
+				{booking.flight_no && (
+					<tr>
+						<th>Uçuş</th>
+						<td>
+							{booking.flight_no}
+							{flight && (
+								<>
+									{" · "}
+									<strong>{FLIGHT_STATUS_LABELS[flight.status]}</strong>
+									{flight.at && <> · {flight.status === "landed" ? "indi" : "tahmini iniş"} {clock(flight.at)}</>}
+									{flight.delayMin > 0 && <> · <span class="badge off">+{flight.delayMin} dk</span></>}
+								</>
+							)}
+						</td>
+					</tr>
+				)}
 				<tr><th>Yolcu</th><td>{booking.contact_name} · <a href={`tel:${booking.contact_phone}`}>{booking.contact_phone}</a>{booking.contact_email && <> · {booking.contact_email}</>}</td></tr>
 				{booking.sign_name && <tr><th>Tabela</th><td>{booking.sign_name}</td></tr>}
 				{booking.notes && <tr><th>Yolcu notu</th><td>{booking.notes}</td></tr>}
@@ -219,6 +266,56 @@ const chatRoomName = await chatRoom(booking);
 			{!isQuote && <a class="btn secondary" href={passengerLink} target="_blank" rel="noopener noreferrer">Yolcu sayfasını aç</a>}
 		</div>
 	</div>
+
+	{booking.flight_no && fromAirport && (
+		<div class="card" id="ucus">
+			<h2 style="margin-top:0">Uçuş takibi · {booking.flight_no}</h2>
+			{flight ? (
+				<table class="data">
+					<tbody>
+						<tr><th>Durum</th><td><strong>{FLIGHT_STATUS_LABELS[flight.status]}</strong>{flight.delayMin > 0 && <> · <span class="badge off">+{flight.delayMin} dk rötar</span></>}</td></tr>
+						{flight.scheduledAt && <tr><th>Planlanan iniş</th><td>{clock(flight.scheduledAt)}</td></tr>}
+						{flight.at && flight.at !== flight.scheduledAt && <tr><th>{flight.status === "landed" ? "İniş" : "Tahmini iniş"}</th><td><strong>{clock(flight.at)}</strong></td></tr>}
+						{(flight.terminal || flight.belt) && <tr><th>Terminal / bagaj</th><td>{[flight.terminal && `Terminal ${flight.terminal}`, flight.belt && `Bant ${flight.belt}`].filter(Boolean).join(" · ")}</td></tr>}
+						<tr>
+							<th>Kaynak</th>
+							<td>
+								{flight.source === "manual" ? "Operasyon elle girdi" : "Otomatik"}
+								{flight.checkedAt && <> · son güncelleme {clock(flight.checkedAt)}</>}
+								{flightRaw?.error && flight.source === "api" && <> · <span class="muted">{flightRaw.error === "not_found" ? "uçuş bulunamadı, numarayı kontrol edin" : "kaynağa ulaşılamadı"}</span></>}
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			) : (
+				<p class="muted" style="margin-top:0">
+					{flightApiEnabled() ? "Uçuş, alış saatinden 24 saat önce otomatik izlenmeye başlar." : "Otomatik uçuş takibi için FLIGHT_API_KEY tanımlı değil. Durumu aşağıdan elle girebilirsiniz."}
+				</p>
+			)}
+			{canWrite && !isFinal && (
+				<form method="post" class="actions" style="align-items:end">
+					<input type="hidden" name="intent" value="flight" />
+					<label>
+						Durum
+						<select name="flight_status">
+							{FLIGHT_STATUSES.map((st) => <option value={st} selected={(flight?.status ?? "scheduled") === st}>{FLIGHT_STATUS_LABELS[st]}</option>)}
+						</select>
+					</label>
+					<label>
+						İniş saati (tahmini ya da gerçek)
+						<input type="time" name="flight_time" value={flight?.at ? clock(flight.at) : ""} />
+					</label>
+					<button class="btn secondary" type="submit">Uçuş durumunu kaydet</button>
+				</form>
+			)}
+			{canWrite && !isFinal && flightApiEnabled() && flight?.source === "manual" && (
+				<form method="post" class="actions">
+					<input type="hidden" name="intent" value="flight_auto" />
+					<button class="btn secondary" type="submit">Otomatik takibe dön</button>
+				</form>
+			)}
+		</div>
+	)}
 
 	{assigned && isTracked(booking.status) && (
 		<div
@@ -410,6 +507,7 @@ const chatRoomName = await chatRoom(booking);
 						<td>
 							{EVENT_LABELS[e.type] ?? e.type}
 							{["auto_offered", "offer_timed_out", "driver_accepted", "driver_declined"].includes(e.type) && eventDriver(e.data) && <> · {eventDriver(e.data)}</>}
+							{e.type === "flight_update" && eventFlight(e.data) && <> · {eventFlight(e.data)}</>}
 							{e.to_status && e.type === "status_change" && <> → {STATUS_LABELS[e.to_status as BookingStatus] ?? e.to_status}</>}
 						</td>
 						<td class="muted">{e.user_name ?? ACTORS[e.actor] ?? e.actor}</td>

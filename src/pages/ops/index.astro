@@ -1,4 +1,5 @@
 ---
+import { FLIGHT_STATUS_LABELS, flightView, type Flight, type FlightStatus } from "../../server/flights";
 import OpsLayout from "../../layouts/OpsLayout.astro";
 import Icon from "../../components/Icon.astro";
 import { STATUS_LABELS, type BookingStatus } from "../../server/bookings";
@@ -90,6 +91,8 @@ const upcoming = showBookings
 			.leftJoin("sd_zones as f", "f.id", "b.from_zone_id")
 			.leftJoin("sd_zones as t", "t.id", "b.to_zone_id")
 			.leftJoin("sd_drivers as d", "d.id", "b.driver_id")
+			.leftJoin("sd_flights as fl", "fl.booking_id", "b.id")
+			.select(["fl.status as flight_status", "fl.scheduled_at as flight_scheduled", "fl.estimated_at as flight_estimated", "fl.actual_at as flight_actual"])
 			.select(["b.code", "b.status", "b.pickup_at", "b.pax", "b.contact_name", "b.flight_no", "f.name as from_name", "f.kind as from_kind", "t.name as to_name", "t.kind as to_kind", "d.name as driver_name"])
 			.where("b.pickup_at", ">=", new Date(Date.now() - 2 * 3600_000).toISOString())
 			.where("b.pickup_at", "<", new Date(Date.now() + 36 * 3600_000).toISOString())
@@ -231,7 +234,21 @@ const kpis: Kpi[] = showBookings
 												<div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
 													<span class="font-mono">{b.code}</span>
 													<span class="inline-flex items-center gap-1"><Icon name="users" size={12} /> {b.pax}</span>
-													{b.flight_no && <span class="inline-flex items-center gap-1"><Icon name="plane" size={12} /> {b.flight_no}</span>}
+													{b.flight_no && (
+														<span class="inline-flex items-center gap-1">
+															<Icon name="plane" size={12} /> {b.flight_no}
+															{b.flight_status && (() => {
+																const v = flightView({ status: b.flight_status, scheduled_at: b.flight_scheduled, estimated_at: b.flight_estimated, actual_at: b.flight_actual, flight_no: b.flight_no } as Flight)!;
+																const bad = v.delayMin >= 15 || v.status === "cancelled" || v.status === "diverted";
+																return (
+																	<span class:list={["font-semibold", bad ? "text-red-600" : v.status === "landed" ? "text-emerald-700" : "text-gray-600"]}>
+																		{FLIGHT_STATUS_LABELS[v.status as FlightStatus]}
+																		{v.delayMin > 0 && ` +${v.delayMin} dk`}
+																	</span>
+																);
+															})()}
+														</span>
+													)}
 													{b.driver_name ? (
 														<span class="inline-flex items-center gap-1"><Icon name="user" size={12} /> {b.driver_name}</span>
 													) : (

@@ -2,6 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { getDb } from "./server/db";
 import { PRIVATE_PATH, purgeEdgeCacheOnce } from "./server/edge-cache";
 import { dispatchIfDue } from "./server/dispatch";
+import { refreshFlightsIfDue } from "./server/flights";
 
 /**
  * Adds the SecureDrive theme to the EmDash admin.
@@ -43,6 +44,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
 		if (import.meta.env.PROD) await purgeEdgeCacheOnce(await getDb(context.locals));
 		// Automatic driver offers move on while ops or drivers have the panels open.
 		if (/^\/(?:ops|surucu)(?:\/|$)/.test(context.url.pathname)) await dispatchIfDue(await getDb(context.locals));
+		// Flight status stays fresh while anyone follows a booking.
+		// On Cloudflare the check runs after the response, so nobody waits for the flight API.
+		if (/^\/(?:ops|surucu|(?:[a-z]{2}\/)?rezervasyon\/)/.test(context.url.pathname)) {
+			const task = refreshFlightsIfDue(await getDb(context.locals));
+			const cf = (context.locals as { cfContext?: { waitUntil(promise: Promise<unknown>): void } }).cfContext;
+			if (cf) cf.waitUntil(task);
+			else await task;
+		}
 	}
 	const response = await next();
 	if (!context.url.pathname.startsWith("/_emdash/admin")) return response;
