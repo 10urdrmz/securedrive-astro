@@ -74,7 +74,7 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			.selectFrom("sd_booking_events as e")
 			.innerJoin("sd_bookings as b", "b.id", "e.booking_id")
 			.select(["e.id", "e.at", "e.data", "e.type", "b.code", "b.contact_name"])
-			.where("e.type", "in", ["driver_declined", "quote_accepted", "quote_declined"])
+			.where("e.type", "in", ["driver_declined", "quote_accepted", "quote_declined", "auto_unmatched"])
 			.orderBy("e.at", "desc")
 			.limit(limit)
 			.execute(),
@@ -112,6 +112,16 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 					kind: accepted ? ("booking" as const) : ("declined" as const),
 					title: `${accepted ? "Teklif onaylandı" : "Teklif reddedildi"} · ${d.code}`,
 					detail: [d.contact_name, accepted ? "sürücü atayın" : "rezervasyon kapandı"].filter(Boolean).join(" · "),
+					href: `/ops/rezervasyonlar/${d.code}`,
+					at: String(d.at),
+				};
+			}
+			if (d.type === "auto_unmatched") {
+				return {
+					key: `unmatched:${d.id}`,
+					kind: "declined" as const,
+					title: `Otomatik atama sürücü bulamadı · ${d.code}`,
+					detail: [d.contact_name, "elle sürücü atayın"].filter(Boolean).join(" · "),
 					href: `/ops/rezervasyonlar/${d.code}`,
 					at: String(d.at),
 				};

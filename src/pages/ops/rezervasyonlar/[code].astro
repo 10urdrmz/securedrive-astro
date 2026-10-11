@@ -145,6 +145,16 @@ const EVENT_LABELS: Record<string, string> = {
 	driver_declined: "Sürücü işi reddetti",
 	quote_accepted: "Müşteri teklifi onayladı",
 	quote_declined: "Müşteri teklifi reddetti",
+	auto_offered: "Otomatik atama: sürücüye önerildi",
+	offer_timed_out: "Sürücü süresinde cevap vermedi",
+	auto_unmatched: "Otomatik atama uygun sürücü bulamadı",
+};
+const eventDriver = (data: unknown) => {
+	try {
+		return (JSON.parse(String(data)) as { driverName?: string }).driverName ?? "";
+	} catch {
+		return "";
+	}
 };
 const ACTORS: Record<string, string> = { ops: "Operasyon", passenger: "Yolcu", driver: "Sürücü", system: "Sistem" };
 // The current driver's answer in the driver app (no row: not answered yet).
@@ -388,6 +398,7 @@ const driverHasApp = booking.driver_id
 						<td style="white-space:nowrap">{new Date(e.at).toLocaleString("tr-TR", { timeZone: "Europe/Istanbul" })}</td>
 						<td>
 							{EVENT_LABELS[e.type] ?? e.type}
+							{["auto_offered", "offer_timed_out", "driver_accepted", "driver_declined"].includes(e.type) && eventDriver(e.data) && <> · {eventDriver(e.data)}</>}
 							{e.to_status && e.type === "status_change" && <> → {STATUS_LABELS[e.to_status as BookingStatus] ?? e.to_status}</>}
 						</td>
 						<td class="muted">{e.user_name ?? ACTORS[e.actor] ?? e.actor}</td>

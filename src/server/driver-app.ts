@@ -209,6 +209,8 @@ export interface DriverJob {
 	fromName: string;
 	toName: string;
 	className: string;
+	/** When an unanswered automatic offer was made; it moves to another driver after the offer window. */
+	offeredAt: string | null;
 }
 
 function jobsQuery(db: Db, driverId: string) {
@@ -222,13 +224,13 @@ function jobsQuery(db: Db, driverId: string) {
 		)
 		.leftJoin("sd_assignment_acks as k", "k.assignment_id", "a.id")
 		.selectAll("b")
-		.select(["f.name as from_name", "t.name as to_name", "c.name as class_name", "a.id as assignment_id", "k.response as response"])
+		.select(["f.name as from_name", "t.name as to_name", "c.name as class_name", "a.id as assignment_id", "a.mode as assignment_mode", "a.created_at as assigned_at", "k.response as response"])
 		.where("b.driver_id", "=", driverId);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const toJob = (row: any): DriverJob => {
-	const { from_name, to_name, class_name, assignment_id, response, ...booking } = row;
+	const { from_name, to_name, class_name, assignment_id, assignment_mode, assigned_at, response, ...booking } = row;
 	return {
 		booking: booking as Booking,
 		assignmentId: assignment_id ?? null,
@@ -236,6 +238,7 @@ const toJob = (row: any): DriverJob => {
 		fromName: from_name ?? "",
 		toName: to_name ?? "",
 		className: class_name ?? booking.class_key,
+		offeredAt: assignment_mode === "auto" && !response && assigned_at ? assigned_at : null,
 	};
 };
 

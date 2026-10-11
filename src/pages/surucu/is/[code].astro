@@ -10,6 +10,7 @@ import { ConflictError, PAYMENT_METHOD_LABELS, type BookingStatus } from "../../
 import { DRIVER_STEPS, driverJob, driverStep, jobBadge, respond, sessionDriver, when } from "../../../server/driver-app";
 import { formatMoney, readForm, text } from "../../../server/ops";
 import { isTracked } from "../../../server/live-location";
+import { getSettings } from "../../../server/settings";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
@@ -49,6 +50,9 @@ const pickupPlace = b.pickup_address || job.fromName;
 const dropoffPlace = b.dropoff_address || job.toName;
 const collect = (b.payment_method === "cash" || b.payment_method === "card_in_vehicle") && b.payment_status !== "paid";
 const tripStarted = isTracked(b.status);
+// An automatic offer: how long the driver has left to answer.
+const offerMinutes = job.offeredAt ? (await getSettings(db)).offerMinutes : 0;
+const minutesLeft = job.offeredAt ? Math.max(0, Math.ceil((Date.parse(job.offeredAt) + offerMinutes * 60_000 - Date.now()) / 60_000)) : null;
 ---
 
 <DriverLayout title={b.code} driver={driver} back>
@@ -66,6 +70,11 @@ const tripStarted = isTracked(b.status);
 		needsAnswer && (
 			<div class="drv-card actions">
 				<strong>Bu işi alıyor musunuz?</strong>
+				{minutesLeft !== null && (
+					<p class="drv-muted" style="margin:0">
+						Bu iş size otomatik önerildi. {minutesLeft > 0 ? `${minutesLeft} dakika içinde cevap vermezseniz` : "Süre doldu;"} başka sürücüye gider.
+					</p>
+				)}
 				<form method="post">
 					<input type="hidden" name="intent" value="accept" />
 					<input type="hidden" name="version" value={b.version} />
