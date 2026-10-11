@@ -286,17 +286,3 @@ export async function requirePartner(Astro: AstroGlobal): Promise<PartnerContext
 	Astro.response.headers.set("Cache-Control", "no-store");
 	return { db, user, org };
 }
-
-/** Totals a partner is owed for completed jobs, by month (Istanbul time). */
-export async function partnerEarnings(db: Db, orgId: string) {
-	const rows = await partnerJobs(db, orgId, "done", 1000);
-	const months = new Map<string, { count: number; total: number }>();
-	for (const row of rows) {
-		const month = new Date(Date.parse(row.pickup_at) + 3 * 3600_000).toISOString().slice(0, 7);
-		const entry = months.get(month) ?? { count: 0, total: 0 };
-		entry.count++;
-		entry.total += row.payout_minor;
-		months.set(month, entry);
-	}
-	return { rows, months: [...months.entries()].map(([month, v]) => ({ month, ...v })) };
-}

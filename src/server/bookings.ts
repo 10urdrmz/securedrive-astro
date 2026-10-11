@@ -102,6 +102,7 @@ export interface Booking {
 	driver_id: string | null;
 	/** The partner fleet the job is given to, if any. */
 	carrier_org_id: string | null;
+	settlement_id: string | null;
 	cancel_reason: string | null;
 	refund_pct: number | null;
 	tracking_token: string;
@@ -215,7 +216,7 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 			.execute();
 	}
 	await addEvent(db, id, actor, "created", null, status, { source: input.source, price_minor: price });
-	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null, carrier_org_id: null } as Booking;
+	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null, carrier_org_id: null, settlement_id: null } as Booking;
 }
 
 export async function addEvent(

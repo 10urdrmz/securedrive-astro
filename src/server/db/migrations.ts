@@ -416,4 +416,33 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_bookings_carrier ON sd_bookings(carrier_org_id)`,
 		],
 	},
+	{
+		name: "0011_settlements",
+		statements: [
+			// Weekly statements of what we owe a driver or partner fleet (payouts) against the
+			// cash their drivers collected from passengers. Each completed booking lands on one.
+			`CREATE TABLE IF NOT EXISTS sd_settlements (
+				id TEXT PRIMARY KEY,
+				party_kind TEXT NOT NULL CHECK (party_kind IN ('driver','partner')),
+				party_id TEXT NOT NULL,
+				party_name TEXT NOT NULL,
+				period_start TEXT NOT NULL,
+				period_end TEXT NOT NULL,
+				jobs INTEGER NOT NULL,
+				payout_minor INTEGER NOT NULL,
+				cash_minor INTEGER NOT NULL,
+				net_minor INTEGER NOT NULL,
+				status TEXT NOT NULL CHECK (status IN ('open','paid','void')),
+				created_by TEXT,
+				created_at TEXT NOT NULL DEFAULT (${NOW}),
+				paid_at TEXT,
+				paid_by TEXT,
+				paid_note TEXT
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_settlements_party ON sd_settlements(party_kind, party_id, period_start)`,
+			`CREATE INDEX IF NOT EXISTS sd_settlements_period ON sd_settlements(period_start, status)`,
+			`ALTER TABLE sd_bookings ADD COLUMN settlement_id TEXT`,
+			`CREATE INDEX IF NOT EXISTS sd_bookings_settlement ON sd_bookings(settlement_id)`,
+		],
+	},
 ];
