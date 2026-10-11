@@ -23,9 +23,11 @@ interface Props {
 	jsonLd?: Record<string, unknown>[];
 	/** Hide the home-page style transparent header. */
 	overlayHeader?: boolean;
+	/** Leave out the floating call/WhatsApp bar (pages with their own contact actions). */
+	hideDock?: boolean;
 }
 
-const { locale, path, title, description, image, noindex, content, jsonLd = [], overlayHeader = false } = Astro.props;
+const { locale, path, title, description, image, noindex, content, jsonLd = [], overlayHeader = false, hideDock = false } = Astro.props;
 const t = useTranslations(locale);
 const meta = LOCALE_META[locale];
 
@@ -87,7 +89,7 @@ const alternates = content ? [] : LOCALES.map((l) => ({ hreflang: l, href: new U
 			<slot />
 		</main>
 		<Footer locale={locale} />
-		<ContactDock locale={locale} />
+		{!hideDock && <ContactDock locale={locale} />}
 		<EmDashBodyEnd page={pageCtx} />
 
 		<script>
