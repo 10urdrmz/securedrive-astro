@@ -6,11 +6,10 @@ import PageHero from "../components/sections/PageHero.astro";
 import RouteCard from "../components/sections/RouteCard.astro";
 import TrustStrip from "../components/sections/TrustStrip.astro";
 import CtaBand from "../components/sections/CtaBand.astro";
-import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { bookPath, pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import { getLocalized, slugOf } from "../lib/content";
-import { formatApprox, formatTry } from "../lib/format";
-import { airportName, bookHref, routeTitle } from "../lib/routes";
+import { routeTitle, zoneIdOf } from "../lib/routes";
 import { breadcrumbJsonLd } from "../lib/schema";
 import { SITE } from "../lib/site";
 
@@ -24,16 +23,13 @@ const t = useTranslations(locale);
 const slug = slugOf(entry);
 const d = entry.data;
 const title = routeTitle(d, locale);
-const from = airportName(d.origin, locale);
 const sideLabel = d.side === "Avrupa" ? t("routes.side.avrupa") : d.side === "Anadolu" ? t("routes.side.anadolu") : null;
 
-const prices = [
-	{ vehicle: "Mercedes Vito VIP", seats: 6, price: d.vito_price_try },
-	{ vehicle: "Mercedes Sprinter VIP", seats: 16, price: d.sprinter_price_try },
-].filter((p) => p.price);
-
-const description = `${title}: ${formatTry(d.vito_price_try, locale)} · ${t("common.perTrip")}. ${t("trust.flightText")}`;
-const transferHref = bookHref(locale, { from: d.origin, to: d.destination });
+// Prices come as carrier offers (offers.ts); the page opens a request for this route.
+const fromZone = zoneIdOf(d.origin);
+const toZone = zoneIdOf(d.destination);
+const today = new Date().toISOString().slice(0, 10);
+const description = `${title}: ${t("routes.requestText")} ${t("trust.flightText")}`;
 
 const nearby = (await getLocalized(Astro, "routes", locale))
 	.filter((r) => r.data.origin === d.origin && slugOf(r) !== slug)
@@ -48,13 +44,6 @@ const jsonLd = [
 		serviceType: "Airport transfer",
 		provider: { "@id": `${SITE.url}/#business` },
 		areaServed: { "@type": "Place", name: `${d.destination}, İstanbul` },
-		offers: prices.map((p) => ({
-			"@type": "Offer",
-			name: p.vehicle,
-			price: p.price,
-			priceCurrency: "TRY",
-			availability: "https://schema.org/InStock",
-		})),
 	},
 	breadcrumbJsonLd([
 		{ name: t("common.home"), path: pagePath(locale, "home") || "/" },
@@ -82,26 +71,35 @@ const jsonLd = [
 
 	<section class="section">
 		<div class="container">
-			<div class="grid grid--2 prices">
-				{
-					prices.map((p) => (
-						<div class="card price-card">
-							<div class="card-body">
-								<p class="eyebrow">{t("routes.vehicle")}</p>
-								<h2 class="card-title">{p.vehicle}</h2>
-								<p class="muted">
-									<Icon name="users" size={16} /> {t("common.seats", { n: p.seats })}
-								</p>
-								<p class="price">
-									<strong>{formatTry(p.price, locale)}</strong>
-									<span>≈ {formatApprox(p.price, locale)}</span>
-								</p>
-								<p class="muted small">{t("common.perTrip")}</p>
-								<a href={transferHref} class="btn btn--primary btn--block">{t("common.book")}</a>
-							</div>
+			<div class="card request-card">
+				<div class="card-body">
+					<h2 class="card-title">{t("routes.requestTitle")}</h2>
+					<p class="muted">{t("routes.requestText")}</p>
+					<form class="request-form" action={bookPath(locale)} method="get">
+						{fromZone && <input type="hidden" name="from" value={fromZone} />}
+						{toZone && <input type="hidden" name="to" value={toZone} />}
+						<div class="field">
+							<label for="rq-date">{t("quick.date")}</label>
+							<input id="rq-date" name="date" type="date" min={today} required />
 						</div>
-					))
-				}
+						<div class="field">
+							<label for="rq-time">{t("quick.time")}</label>
+							<input id="rq-time" name="time" type="time" required />
+						</div>
+						<div class="field">
+							<label for="rq-pax">{t("quick.passengers")}</label>
+							<input id="rq-pax" name="pax" type="number" min="1" max="60" value="2" inputmode="numeric" required />
+						</div>
+						<div class="field">
+							<label for="rq-bags">{t("form.luggage")}</label>
+							<input id="rq-bags" name="bags" type="number" min="0" max="60" value="2" inputmode="numeric" required />
+						</div>
+						<button type="submit" class="btn btn--primary">
+							{t("routes.requestCta")}
+							<Icon name="arrow" size={18} class="flip-rtl" />
+						</button>
+					</form>
+				</div>
 			</div>
 			<p class="price-note">{t("routes.priceNote")}</p>
 			{d.content && <article class="prose route-content"><PortableText value={d.content} /></article>}
@@ -133,7 +131,6 @@ const jsonLd = [
 								destination={r.data.destination}
 								distanceKm={r.data.distance_km}
 								durationMin={r.data.duration_min}
-								price={r.data.vito_price_try}
 								badge={r.data.badge}
 							/>
 						))}
@@ -163,43 +160,16 @@ const jsonLd = [
 		gap: var(--space-2);
 	}
 
-	.prices {
-		max-width: 880px;
+	.request-card {
+		margin-bottom: var(--space-6);
 	}
-
-	.price-card .card-body {
+	.request-form {
 		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 		gap: var(--space-3);
+		align-items: end;
+		margin-top: var(--space-4);
 	}
-
-	.muted {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		color: var(--color-muted);
-	}
-
-	.small {
-		font-size: var(--text-sm);
-	}
-
-	.price {
-		display: flex;
-		align-items: baseline;
-		gap: var(--space-3);
-		margin-top: var(--space-2);
-	}
-
-	.price strong {
-		font-family: var(--font-display);
-		font-size: var(--text-3xl);
-		color: var(--color-brand-strong);
-	}
-
-	.price span {
-		color: var(--color-muted);
-	}
-
 	.price-note {
 		margin-top: var(--space-8);
 		color: var(--color-muted);

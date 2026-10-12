@@ -66,9 +66,21 @@ const when = (iso: string) => {
 						</td>
 						<td>{agency ? (PAYER[t.payment_method] ?? t.payment_method) : (t.cost_center ?? "—")}</td>
 						<td>
-							<span class:list={["badge", t.status === "completed" && "ok", t.status === "cancelled" && "off"]}>{STATUS_LABELS[t.status as BookingStatus] ?? t.status}</span>
+							<span class:list={["badge", t.status === "completed" && "ok", t.status === "cancelled" && "off", t.status === "bidding" && "warn"]}>{STATUS_LABELS[t.status as BookingStatus] ?? t.status}</span>
 						</td>
-						<td class="num" style="white-space:nowrap">{formatMoney(t.price_minor)} ₺</td>
+						<td class="num" style="white-space:nowrap">
+							{t.status === "bidding" ? (
+								ownBooking(t) ? (
+									<a class="btn sm" href={`/rezervasyon/${t.code}?t=${t.tracking_token}`} target="_blank" rel="noopener">
+										Teklifleri gör
+									</a>
+								) : (
+									"—"
+								)
+							) : (
+								`${formatMoney(t.price_minor)} ₺`
+							)}
+						</td>
 					</tr>
 				))
 			}

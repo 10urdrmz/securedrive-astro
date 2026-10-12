@@ -2,7 +2,6 @@
 import Icon from "../Icon.astro";
 import type { Locale } from "../../i18n/locales";
 import { useTranslations } from "../../i18n/ui";
-import { formatApprox, formatTry } from "../../lib/format";
 import { airportName } from "../../lib/routes";
 
 interface Props {
@@ -12,11 +11,12 @@ interface Props {
 	destination: string;
 	distanceKm?: number | null;
 	durationMin?: number | null;
-	price: number;
 	badge?: string | null;
 }
 
-const { locale, href, origin, destination, distanceKm, durationMin, price, badge } = Astro.props;
+const { locale, href, origin, destination, distanceKm, durationMin, badge } = Astro.props;
+// "Sabit Fiyat" badges come from the tariff days; carriers now set the price.
+const label = badge && !/sabit fiyat/i.test(badge) ? badge : null;
 const t = useTranslations(locale);
 ---
 
@@ -24,7 +24,7 @@ const t = useTranslations(locale);
 	<div class="card-body">
 		<div class="route-top">
 			<span class="route-origin"><Icon name="plane" size={16} />{airportName(origin, locale)}</span>
-			{badge && locale === "tr" && <span class="badge badge--gold">{badge}</span>}
+			{label && locale === "tr" && <span class="badge badge--gold">{label}</span>}
 		</div>
 		<h3 class="card-title"><a href={href} class="card-link">{destination}</a></h3>
 		<ul class="route-meta">
@@ -32,9 +32,7 @@ const t = useTranslations(locale);
 			{distanceKm ? <li><Icon name="route" size={16} />{t("common.km", { n: distanceKm })}</li> : null}
 		</ul>
 		<div class="route-price">
-			<span class="route-price-label">{t("common.from")}</span>
-			<strong>{formatTry(price, locale)}</strong>
-			<span class="route-price-approx">≈ {formatApprox(price, locale)}</span>
+			<span class="route-cta">{t("routes.requestCta")} <Icon name="arrow" size={16} class="flip-rtl" /></span>
 		</div>
 	</div>
 </article>
@@ -83,15 +81,11 @@ const t = useTranslations(locale);
 		border-top: 1px dashed var(--color-border);
 	}
 
-	.route-price strong {
-		font-family: var(--font-display);
-		font-size: var(--text-2xl);
-		color: var(--navy-800);
-	}
-
-	.route-price-label,
-	.route-price-approx {
-		font-size: var(--text-sm);
-		color: var(--color-muted);
+	.route-cta {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-1);
+		font-weight: 600;
+		color: var(--navy-700, #1d5f9b);
 	}
 </style>
