@@ -26,6 +26,7 @@ import { isoToIstanbul, istanbulToIso, refundPct } from "../server/pricing";
 import { getCompany, monthSpend } from "../server/companies";
 import { createRequest, offersFor, pickOffer, type OfferCard } from "../server/offers";
 import { getSettings } from "../server/settings";
+import { getLocalized, slugOf, texts } from "./content";
 import { NO_STORE } from "./account-page";
 import { allowVisitor, currentMember, EMAIL, PHONE, type Member } from "./members";
 import { canWrite, firstName, listMessages, markRead, postMessage, type ChatMessage } from "../server/messages";
@@ -90,6 +91,12 @@ export interface BookingDetail {
 	notice?: "created" | "cancelled" | "paid" | "paymentFailed" | "reviewed" | "quoteAccepted" | "quoteDeclined" | "requested" | "picked";
 	/** While the request waits for carriers: their live offers, cheapest first. */
 	offers: OfferCard[];
+	/**
+	 * The public fleet catalog's photo and specs for each offered vehicle class, keyed by
+	 * class_key, so the passenger sees what the car looks like right on this page instead
+	 * of having to leave for the Filo (fleet) page. Empty once a driver is assigned.
+	 */
+	vehicleCatalog: Record<string, VehicleCatalogEntry>;
 	/** Extras asked for on a request, added to the offer the customer picks. */
 	requestedExtras: { name: string; qty: number; price_minor: number }[];
 	/** Where "pay now" leads, while a booking waits for its online payment. */
@@ -103,6 +110,41 @@ export interface BookingDetail {
 }
 
 export type BookPage = WizardPage | BookingDetail;
+
+export interface VehicleCatalogEntry {
+	name: string;
+	classLabel: string | null;
+	image: unknown;
+	fallbackImage: string | null;
+	seats: number | null;
+	luggage: number | null;
+	engine: string | null;
+	transmission: string | null;
+	modelYear: string | null;
+	features: string[];
+}
+
+/** The public fleet catalog (the "vehicles" CMS collection), keyed by class slug. sd_vehicle_classes.key matches it. */
+async function loadVehicleCatalog(Astro: AstroGlobal, locale: Locale): Promise<Record<string, VehicleCatalogEntry>> {
+	const entries = await getLocalized(Astro, "vehicles", locale);
+	const map: Record<string, VehicleCatalogEntry> = {};
+	for (const entry of entries) {
+		const d = entry.data as Record<string, unknown>;
+		map[slugOf(entry)] = {
+			name: typeof d.name === "string" ? d.name : "",
+			classLabel: typeof d.class_label === "string" ? d.class_label : null,
+			image: d.image,
+			fallbackImage: typeof d.fallback_image === "string" ? d.fallback_image : null,
+			seats: typeof d.seats === "number" ? d.seats : null,
+			luggage: typeof d.luggage === "number" ? d.luggage : null,
+			engine: typeof d.engine === "string" ? d.engine : null,
+			transmission: typeof d.transmission === "string" ? d.transmission : null,
+			modelYear: typeof d.model_year === "string" ? d.model_year : null,
+			features: texts(d.features),
+		};
+	}
+	return map;
+}
 
 const CODE = /^SD-\d{4}-\d{4,}$/i;
 /** A request is paid in the vehicle; online payment would need the price before the offers. */
@@ -277,6 +319,7 @@ async function bookingDetail(
 		canReview: false,
 		receipt: Astro.url.searchParams.get("makbuz") === "1" && !["cancelled", "bidding"].includes(booking.status),
 		offers: booking.status === "bidding" ? await offersFor(db, booking) : [],
+		vehicleCatalog: booking.status === "bidding" ? await loadVehicleCatalog(Astro, locale) : {},
 		requestedExtras:
 			booking.status === "bidding" ? await db.selectFrom("sd_booking_extras").select(["name", "qty", "price_minor"]).where("booking_id", "=", booking.id).execute() : [],
 	};
