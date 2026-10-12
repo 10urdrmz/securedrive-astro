@@ -127,7 +127,7 @@ export async function monthSpend(db: Db, orgId: string, month = currentMonth(), 
 		.selectFrom("sd_bookings")
 		.select((eb) => [eb.fn.coalesce(eb.fn.sum<number>("price_minor"), eb.lit(0)).as("total"), eb.fn.countAll<number>().as("trips")])
 		.where(by, "=", orgId)
-		.where("status", "not in", ["cancelled", "quoted"])
+		.where("status", "not in", ["cancelled", "quoted", "bidding"])
 		.where("pickup_at", ">=", start)
 		.where("pickup_at", "<", end)
 		.executeTakeFirst();

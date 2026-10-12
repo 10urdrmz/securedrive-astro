@@ -22,7 +22,8 @@ import {
 	type Booking,
 	type PaymentMethod,
 } from "../server/bookings";
-import { istanbulToIso, refundPct } from "../server/pricing";
+import { isoToIstanbul, istanbulToIso, refundPct } from "../server/pricing";
+import { getCompany, monthSpend } from "../server/companies";
 import { createRequest, offersFor, pickOffer, type OfferCard } from "../server/offers";
 import { getSettings } from "../server/settings";
 import { NO_STORE } from "./account-page";
@@ -332,8 +333,13 @@ async function bookingDetail(
 		}
 		if (form.get("intent") === "pick") {
 			if (booking.status !== "bidding") return redirect(Astro, self);
+			const offerId = clean(form.get("offer"), 40);
+			if (await overCompanyLimit(db, booking, page, offerId)) {
+				Astro.response.status = 422;
+				return { ...page, error: "book.error.overLimit" };
+			}
 			try {
-				await pickOffer(db, booking, clean(form.get("offer"), 40), { kind: "passenger" });
+				await pickOffer(db, booking, offerId, { kind: "passenger" });
 			} catch (error) {
 				if (error instanceof ConflictError || (error instanceof Error && (error.message === "gone" || error.message === "closed"))) {
 					Astro.response.status = 409;
@@ -419,4 +425,16 @@ export async function memberBookingCards(Astro: AstroGlobal, member: Member): Pr
 /** Starts (or restarts) the online payment of a booking; see src/pages/api/odeme. */
 export function paymentStartPath(booking: Pick<Booking, "code" | "tracking_token">): string {
 	return `/api/odeme/baslat?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`;
+}
+
+/** A company's monthly limit, checked when one of its requests gets its price. */
+async function overCompanyLimit(db: Db, booking: Booking, page: BookingDetail, offerId: string): Promise<boolean> {
+	if (!booking.org_id) return false;
+	const company = await getCompany(db, booking.org_id);
+	const limit = company?.settings.monthlyLimitMinor;
+	const offer = page.offers.find((o) => o.id === offerId);
+	if (!limit || !offer) return false;
+	const extras = page.requestedExtras.reduce((sum, e) => sum + e.price_minor, 0);
+	const { total } = await monthSpend(db, booking.org_id, isoToIstanbul(booking.pickup_at).date.slice(0, 7));
+	return total + offer.price_minor + extras > limit;
 }

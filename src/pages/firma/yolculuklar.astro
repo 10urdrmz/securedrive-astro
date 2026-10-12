@@ -24,7 +24,7 @@ const tripUrl = freshTrip ? new URL(`/rezervasyon/${freshTrip.code}?t=${freshTri
 	{
 		freshTrip && (
 			<div class="notice">
-				<strong>{freshTrip.code}</strong> ayrıldı. Yolcunun takip linki (sürücü, canlı konum ve mesajlaşma burada):
+				<strong>{freshTrip.code}</strong> {freshTrip.status === "bidding" ? "talebi taşıyıcılara gitti. Teklifler bu linkte görünür, birini seçince transfer kesinleşir; aynı link sonra yolcunun takip sayfası olur:" : "ayrıldı. Yolcunun takip linki (sürücü, canlı konum ve mesajlaşma burada):"}
 				<br />
 				<a href={tripUrl} target="_blank" rel="noopener">{tripUrl}</a>
 				<div class="actions">

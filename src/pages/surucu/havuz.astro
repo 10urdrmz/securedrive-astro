@@ -61,7 +61,11 @@ const jobs = await openPoolFor(db, bidder, driver.class_key);
 const myClass = driver.class_key
 	? await db.selectFrom("sd_vehicle_classes").select(["name", "pax_max", "bags_max"]).where("key", "=", driver.class_key).executeTakeFirst()
 	: undefined;
-const requests = myClass ? await openRequestsFor(db, bidder, { paxMax: myClass.pax_max, bagsMax: myClass.bags_max }) : [];
+const requests = myClass
+	? (await openRequestsFor(db, bidder, { paxMax: myClass.pax_max, bagsMax: myClass.bags_max })).filter(
+			(r) => r.allowed_classes.length === 0 || r.allowed_classes.includes(driver.class_key ?? ""),
+		)
+	: [];
 const left = (iso: string) => {
 	const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60_000));
 	return minutes >= 120 ? `${Math.floor(minutes / 60)} saat` : `${minutes} dk`;

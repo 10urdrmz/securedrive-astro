@@ -256,7 +256,7 @@
 			"urlPattern": "/rotalar/{slug}",
 			"label": "Rotalar",
 			"labelSingular": "Rota",
-			"description": "Sabit fiyatlı transfer güzergâhları. Fiyatlar TL, araç başı ve her şey dahildir.",
+			"description": "Transfer güzergâhları. Fiyatı taşıyıcılar teklifle verir; Vito ve Sprinter fiyat alanları yalnızca iç referanstır, sitede gösterilmez.",
 			"supports": [
 				"drafts",
 				"search",
@@ -563,7 +563,7 @@
 					"title": "Ana sayfa",
 					"kind": "page",
 					"headline": "Havalimanından kapınıza, kusursuz bir yolculuk.",
-					"summary": "Uçuşunuzu takip eden protokol şoförleri, Mercedes VIP araçlar ve önceden bilinen sabit fiyat. Köprü, otoyol ve bekleme dahil."
+					"summary": "Yolculuğunuzu yazın, lisanslı VIP filolar ve onaylı şoförler size fiyat versin. Teklifleri karşılaştırın, size uyanı seçin. Köprü, otoyol ve bekleme dahil."
 				}
 			},
 			{
@@ -575,7 +575,7 @@
 					"title": "Home",
 					"kind": "page",
 					"headline": "From the airport to your door, flawlessly.",
-					"summary": "Professional chauffeurs who track your flight, Mercedes VIP vehicles and a fixed price agreed in advance. Bridges, tolls and waiting time included."
+					"summary": "Tell us your trip and licensed VIP fleets and approved chauffeurs send you prices. Compare the offers and pick the one that suits you. Bridges, tolls and waiting included."
 				},
 				"translationOf": "page-home"
 			},
@@ -588,7 +588,7 @@
 					"title": "الرئيسية",
 					"kind": "page",
 					"headline": "من المطار إلى باب منزلك، رحلة بلا عناء.",
-					"summary": "سائقون محترفون يتابعون رحلتك الجوية، وسيارات مرسيدس VIP، وسعر ثابت متفق عليه مسبقاً. الجسور والطرق السريعة ووقت الانتظار مشمولة."
+					"summary": "أخبرنا عن رحلتك لترسل لك أساطيل VIP المرخّصة والسائقون المعتمدون أسعارهم. قارن العروض واختر ما يناسبك. الجسور والطرق السريعة والانتظار مشمولة."
 				},
 				"translationOf": "page-home"
 			},
@@ -601,7 +601,7 @@
 					"title": "Главная",
 					"kind": "page",
 					"headline": "Из аэропорта до вашей двери — безупречно.",
-					"summary": "Профессиональные водители, которые следят за вашим рейсом, автомобили Mercedes VIP и фиксированная цена, согласованная заранее. Мосты, платные дороги и ожидание включены."
+					"summary": "Опишите поездку, и лицензированные VIP-автопарки и проверенные водители пришлют вам цены. Сравните предложения и выберите подходящее. Мосты, платные дороги и ожидание включены."
 				},
 				"translationOf": "page-home"
 			},
@@ -638,7 +638,7 @@
 								{
 									"_type": "span",
 									"_key": "k0004",
-									"text": "SecureDrive, Türkiye'de premium VIP karayolu taşımacılığında güvenilirliği, sabit fiyat garantisini ve hizmet kalitesini tek çatı altında toplamak için kuruldu. Transfer sektöründeki fiyat belirsizliğini, yetkisiz araçları ve gecikmeleri; lisanslı filo, eğitimli protokol şoförleri ve şeffaf fiyatlandırmayla ortadan kaldırıyoruz."
+									"text": "SecureDrive, Türkiye'de premium VIP karayolu taşımacılığında güvenilirliği, şeffaf teklif usulünü ve hizmet kalitesini tek çatı altında toplamak için kuruldu. Transfer sektöründeki fiyat belirsizliğini, yetkisiz araçları ve gecikmeleri; lisanslı filo, eğitimli protokol şoförleri ve şeffaf fiyatlandırmayla ortadan kaldırıyoruz."
 								}
 							]
 						},
@@ -833,7 +833,7 @@
 								{
 									"_type": "span",
 									"_key": "k0029",
-									"text": "SecureDrive was founded to bring reliability, fixed-price certainty and premium service together in VIP road travel across Türkiye. We replace the uncertain prices, unlicensed vehicles and delays common in the transfer business with a licensed fleet, trained protocol chauffeurs and transparent pricing."
+									"text": "SecureDrive was founded to bring reliability, transparent offer-based pricing and premium service together in VIP road travel across Türkiye. We replace the uncertain prices, unlicensed vehicles and delays common in the transfer business with a licensed fleet, trained protocol chauffeurs and transparent pricing."
 								}
 							]
 						},
@@ -1926,7 +1926,7 @@
 							"text": "İsim tabelalı kapı karşılama ve bagaj desteği"
 						},
 						{
-							"text": "Köprü ve otoyol dahil sabit fiyat"
+							"text": "Her şey dahil teklifleri karşılaştırın"
 						}
 					],
 					"cta_label": "Havalimanı transferi planla",
@@ -1954,7 +1954,7 @@
 							"text": "Name-sign welcome and luggage assistance"
 						},
 						{
-							"text": "Fixed price including bridges and tolls"
+							"text": "Compare all-inclusive offers"
 						}
 					],
 					"cta_label": "Plan an airport transfer",
@@ -1983,7 +1983,7 @@
 							"text": "استقبال بلوحة باسمك ومساعدة في الأمتعة"
 						},
 						{
-							"text": "سعر ثابت يشمل الجسور والطرق"
+							"text": "قارن العروض الشاملة"
 						}
 					],
 					"cta_label": "خطّط لنقل من المطار",
@@ -2012,7 +2012,7 @@
 							"text": "Встреча с табличкой и помощь с багажом"
 						},
 						{
-							"text": "Фиксированная цена с мостами и платными дорогами"
+							"text": "Сравнивайте предложения «всё включено»"
 						}
 					],
 					"cta_label": "Заказать трансфер из аэропорта",
@@ -2156,7 +2156,7 @@
 							"text": "Yabancı dil bilen protokol şoförleri"
 						},
 						{
-							"text": "Sözleşmeli sabit fiyat garantisi"
+							"text": "Tüm tekliflerde kurumsal indirim"
 						}
 					],
 					"cta_label": "Kurumsal başvuru yap",
@@ -2184,7 +2184,7 @@
 							"text": "Multilingual protocol chauffeurs"
 						},
 						{
-							"text": "Contracted fixed prices"
+							"text": "A corporate discount on every offer"
 						}
 					],
 					"cta_label": "Apply for a corporate account",
@@ -3868,7 +3868,7 @@
 				"locale": "tr",
 				"data": {
 					"question": "Fiyatlara köprü, otoyol ve otopark ücretleri dahil mi?",
-					"answer": "Evet. Size ilettiğimiz fiyat her şey dahil sabit fiyattır. Köprü, Avrasya Tüneli, otoyol veya havalimanı otoparkı için yolculuk sonunda ek ücret talep edilmez.",
+					"answer": "Evet. Taşıyıcıların verdiği her teklif her şey dahil fiyattır; seçtiğiniz fiyata köprü, Avrasya Tüneli, otoyol veya havalimanı otoparkı için yolculuk sonunda ek ücret eklenmez.",
 					"category": "payment",
 					"featured": true,
 					"order": 2
@@ -3881,7 +3881,7 @@
 				"locale": "en",
 				"data": {
 					"question": "Are bridge, motorway and parking fees included?",
-					"answer": "Yes. The price we quote is an all-inclusive fixed price. You are never charged extra for bridges, the Eurasia Tunnel, motorways or airport parking.",
+					"answer": "Yes. Every carrier offer is an all-inclusive price. You are never charged extra for bridges, the Eurasia Tunnel, motorways or airport parking.",
 					"category": "payment",
 					"featured": true,
 					"order": 2
@@ -3895,7 +3895,7 @@
 				"locale": "tr",
 				"data": {
 					"question": "Havalimanında şoförümü nerede bulacağım?",
-					"answer": "Şoförünüz dış hatlar gelen yolcu çıkışında adınızın yazılı olduğu tabelayla bekler. Ayrıca iniş öncesinde şoförünüzün adı ve telefonu size SMS veya WhatsApp ile iletilir.",
+					"answer": "Şoförünüz dış hatlar gelen yolcu çıkışında adınızın yazılı olduğu tabelayla bekler. Şoförünüzün adı, aracı ve plakası rezervasyon sayfanızda görünür; şoförünüzle oradaki mesajlaşmadan yazışırsınız.",
 					"category": "airport",
 					"featured": true,
 					"order": 3
@@ -3908,7 +3908,7 @@
 				"locale": "en",
 				"data": {
 					"question": "Where will I meet my chauffeur at the airport?",
-					"answer": "Your chauffeur waits at the international arrivals exit holding a sign with your name. Before you land we also send you the chauffeur's name and phone number by SMS or WhatsApp.",
+					"answer": "Your chauffeur waits at the international arrivals exit holding a sign with your name. Your chauffeur's name, vehicle and plate appear on your booking page, and you can message them there.",
 					"category": "airport",
 					"featured": true,
 					"order": 3
@@ -3949,7 +3949,7 @@
 				"locale": "tr",
 				"data": {
 					"question": "Bebek koltuğu ekleyebilir miyim?",
-					"answer": "Evet. Talep formundaki not alanına çocuğunuzun yaşını yazmanız yeterli; ECE R44 ve i-Size standartlarına uygun Isofix koltuk aracınıza takılı olarak gelir.",
+					"answer": "Evet. Talep formunda ekstralardan bebek koltuğunu seçin ve nota çocuğunuzun yaşını yazın; ECE R44 ve i-Size standartlarına uygun Isofix koltuk aracınıza takılı olarak gelir.",
 					"category": "booking",
 					"featured": false,
 					"order": 5
@@ -3962,7 +3962,7 @@
 				"locale": "en",
 				"data": {
 					"question": "Can I add a child seat?",
-					"answer": "Yes. Just add your child's age in the notes field. An ECE R44 / i-Size compliant Isofix seat will be fitted before pickup.",
+					"answer": "Yes. Choose a child seat under extras in the request form and add your child's age in the notes. An ECE R44 / i-Size compliant Isofix seat will be fitted before pickup.",
 					"category": "booking",
 					"featured": false,
 					"order": 5
@@ -3976,7 +3976,7 @@
 				"locale": "tr",
 				"data": {
 					"question": "Ödemeyi nasıl yapabilirim?",
-					"answer": "Kredi kartı, banka havalesi veya kurumsal müşterilerimiz için aylık cari hesap ile ödeme yapabilirsiniz. Ödeme yöntemi rezervasyon onayında size iletilir.",
+					"answer": "Seçtiğiniz teklifin ücretini araçta nakit veya kredi kartıyla ödersiniz. Kurumsal müşterilerimiz ve acenteler aylık cari hesapla çalışır.",
 					"category": "payment",
 					"featured": false,
 					"order": 6
@@ -3989,7 +3989,7 @@
 				"locale": "en",
 				"data": {
 					"question": "How can I pay?",
-					"answer": "You can pay by credit card, bank transfer or, for corporate clients, on a monthly account. Payment options are included in your booking confirmation.",
+					"answer": "You pay for the offer you pick in the vehicle, by cash or credit card. Corporate clients and agencies use a monthly account.",
 					"category": "payment",
 					"featured": false,
 					"order": 6
@@ -4003,7 +4003,7 @@
 				"locale": "tr",
 				"data": {
 					"question": "Şirketimiz için cari hesap açabilir miyiz?",
-					"answer": "Evet. Kurumsal başvuru formunu doldurduğunuzda müşteri temsilcimiz sizinle iletişime geçer; aylık toplu e-fatura ve sözleşmeli sabit fiyatlarla çalışabiliriz.",
+					"answer": "Evet. Kurumsal başvuru formunu doldurduğunuzda müşteri temsilcimiz sizinle iletişime geçer; aylık toplu e-fatura ve tüm tekliflerde kurumsal indirimle çalışabiliriz.",
 					"category": "corporate",
 					"featured": false,
 					"order": 7
@@ -4016,7 +4016,7 @@
 				"locale": "en",
 				"data": {
 					"question": "Can our company open a corporate account?",
-					"answer": "Yes. Fill in the corporate application form and our account manager will contact you. We work with monthly consolidated e-invoicing and contracted fixed prices.",
+					"answer": "Yes. Fill in the corporate application form and our account manager will contact you. We work with monthly consolidated e-invoicing and a corporate discount on every offer.",
 					"category": "corporate",
 					"featured": false,
 					"order": 7

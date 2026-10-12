@@ -1,13 +1,16 @@
 ---
 /**
- * Booking taken on the phone. Same price engine as the website; ops may agree a
- * different price (recorded as an adjustment line) and may book at short notice.
+ * Booking taken on the phone. By default it goes out as a request like the website:
+ * carriers send offers and the customer (or ops for them) picks one. Ops can still
+ * send its own price for approval, or record a price already agreed on the phone
+ * (tariff or a typed price, which may be at short notice).
  */
 import OpsLayout from "../../../layouts/OpsLayout.astro";
 import { createBooking, PAYMENT_METHOD_LABELS, type PaymentMethod } from "../../../server/bookings";
 import { audit, formatMoney, parseMoney, readForm, requireOps, text } from "../../../server/ops";
 import { isoToIstanbul, quote } from "../../../server/pricing";
 import { bookingPrefill, getTransferInquiry, markInquiryBooked } from "../../../server/inquiries";
+import { createRequest } from "../../../server/offers";
 
 const ctx = await requireOps(Astro, "bookings.write");
 if (ctx instanceof Response) return ctx;
@@ -37,12 +40,50 @@ const form = await readForm(Astro);
 if (form) {
 	const keys = ["from", "to", "date", "time", "pax", "bags", "class_key", "name", "phone", "email", "flight", "address", "sign", "notes", "internal", "price", "payment", "intent"];
 	v = Object.fromEntries(keys.map((k) => [k, text(form, k, k === "notes" || k === "internal" ? 1000 : 200)]));
-	const result = await quote(
+	if (v.intent === "request") {
+		const fromAirport = zones.find((z) => z.id === v.from)?.kind === "airport";
+		const requestErrors: Record<string, string> = { ...QUOTE_ERRORS, tooSoon: "Teklif toplamak için saat çok yakın; fiyatı anlaşıp onaylı rezervasyon oluşturun.", tooMany: "Bu kişi ve bagaja uygun araç sınıfı yok." };
+		if (v.name.length < 2 || !/^\+?[0-9 ()-]{7,20}$/.test(v.phone)) error = "Yolcu adı ve geçerli telefon gerekli.";
+		else if (!["cash", "card_in_vehicle"].includes(v.payment)) error = "Teklif usulünde ödeme araçta nakit ya da kartla olur.";
+		else {
+			const created = await createRequest(db, {
+				fromZoneId: v.from,
+				toZoneId: v.to,
+				date: v.date,
+				time: v.time,
+				pax: Number(v.pax) || 0,
+				bags: Number(v.bags) || 0,
+				contact: { name: v.name, phone: v.phone, email: v.email.toLowerCase() || null },
+				flightNo: v.flight.toUpperCase().replace(/\s+/g, "") || null,
+				signName: v.sign || v.name,
+				pickupAddress: fromAirport ? null : v.address || null,
+				dropoffAddress: fromAirport ? v.address || null : null,
+				notes: v.notes || null,
+				paymentMethod: v.payment as PaymentMethod,
+				locale: inquiry && ["tr", "en", "ar", "ru"].includes(inquiry.locale) ? inquiry.locale : "tr",
+				memberId: inquiry?.memberId ?? null,
+				agencyId: null,
+				extras: {},
+				source: "ops",
+				internalNotes: v.internal || null,
+				actor: { kind: "ops", userId: user.id },
+			});
+			if (!created.ok) error = requestErrors[created.error] ?? "Talep oluşturulamadı.";
+			else {
+				if (inquiry) await markInquiryBooked(db, inquiry.id, created.booking.code, "quoted");
+				await audit(db, user, "booking.request", "booking", created.booking.id, { code: created.booking.code, inquiry: inquiry?.reference });
+				return Astro.redirect(`/ops/rezervasyonlar/${created.booking.code}#teklifler`, 303);
+			}
+		}
+	}
+	const result = error || v.intent === "request" ? null : await quote(
 		db,
 		{ fromZoneId: v.from, toZoneId: v.to, date: v.date, time: v.time, pax: Number(v.pax) || 0, bags: Number(v.bags) || 0 },
 		{ ignoreLeadTime: true },
 	);
-	if (!result.ok) {
+	if (!result) {
+		// The request path above already answered.
+	} else if (!result.ok) {
 		error = QUOTE_ERRORS[result.error] ?? "Fiyat hesaplanamadı.";
 	} else {
 		const option = result.quote.options.find((o) => o.classKey === v.class_key);
@@ -107,7 +148,9 @@ const districts = zones.filter((z) => z.kind !== "airport");
 	{error && <p class="notice error">{error}</p>}
 	{preview && <p class="notice">{preview}. Bilgileri kontrol edip teklifi gönderin ya da rezervasyonu oluşturun.</p>}
 	<p class="muted lead">
-		<strong>Müşteriye teklif gönder</strong>: müşteri linkten fiyatı görür, onaylarsa rezervasyon kesinleşir, reddederse kapanır.
+		<strong>Taşıyıcılardan teklif iste</strong>: talep partnerlere ve bağımsız sürücülere gider, kendi filomuzla da teklif verebilirsiniz; müşteri
+		linkten teklifleri görüp seçer, telefonda seçtiyse onun adına siz seçersiniz. Araç sınıfı ve fiyat alanı bu seçenekte kullanılmaz.
+		<strong>Müşteriye teklif gönder</strong>: kendi fiyatımızı yollarız; müşteri onaylarsa rezervasyon kesinleşir, reddederse kapanır.
 		<strong>Onaylı rezervasyon oluştur</strong>: müşteri fiyatı telefonda zaten kabul ettiyse.
 	</p>
 	<form class="card" method="post">
@@ -157,8 +200,9 @@ const districts = zones.filter((z) => z.kind !== "airport");
 			<label>Teklif / anlaşılan fiyat (TL, boşsa tarife) <input type="text" class="money" name="price" value={v.price} inputmode="decimal" /></label>
 		</div>
 		<div class="actions">
-			<button class="btn secondary" type="submit" name="intent" value="preview">Fiyatı hesapla</button>
-			<button class="btn" type="submit" name="intent" value="quote">Müşteriye teklif gönder</button>
+			<button class="btn" type="submit" name="intent" value="request">Taşıyıcılardan teklif iste</button>
+			<button class="btn secondary" type="submit" name="intent" value="preview">Tarife fiyatını hesapla</button>
+			<button class="btn secondary" type="submit" name="intent" value="quote">Müşteriye kendi fiyatımızı gönder</button>
 			<button class="btn secondary" type="submit" name="intent" value="save">Onaylı rezervasyon oluştur</button>
 		</div>
 	</form>

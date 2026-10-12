@@ -91,7 +91,7 @@ const left = (iso: string) => {
 	{requests.length === 0 && <div class="card muted">Şu an teklif bekleyen müşteri talebi yok.</div>}
 	{
 		requests.map((r) => {
-			const fits = classes.filter((c) => c.pax_max >= r.pax && c.bags_max >= r.bags);
+			const fits = classes.filter((c) => c.pax_max >= r.pax && c.bags_max >= r.bags && (r.allowed_classes.length === 0 || r.allowed_classes.includes(c.key)));
 			const active = r.my_status === "active";
 			return (
 				<div class="card job">
