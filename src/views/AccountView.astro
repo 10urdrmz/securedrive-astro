@@ -3,7 +3,7 @@ import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import PageHero from "../components/sections/PageHero.astro";
 import StatusBadge from "../components/account/StatusBadge.astro";
-import { ACCOUNT_SLUG, LOCALE_META, accountPath, localizePath, bookPath, trackPath, type AccountAction } from "../i18n/locales";
+import { ACCOUNT_SLUG, LOCALE_META, accountPath, localizePath, bookPath, lookupPath, trackPath, type AccountAction } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import type { AccountPage } from "../lib/account-page";
 import { PASSWORD_MAX, PASSWORD_MIN } from "../lib/members";
@@ -35,13 +35,39 @@ const profile = { name: member?.name, email: member?.email, phone: member?.phone
 const password = { minlength: PASSWORD_MIN, maxlength: PASSWORD_MAX, required: true } as const;
 
 const trips = requests.map((request) => presentRequest(request, locale));
+const openRequests = trips.filter((trip) => trip.status !== "booked" && trip.status !== "closed");
+
+// Online bookings split into what is still ahead and what is done; the nearest one is featured.
+const FINAL = ["completed", "cancelled", "no_show"];
+const ahead = bookings.filter((b) => !FINAL.includes(b.status)).sort((a, b) => a.pickupAt.localeCompare(b.pickupAt));
+const past = bookings.filter((b) => FINAL.includes(b.status));
+const [next, ...upcoming] = ahead;
 const stats = [
-	{ label: t("account.stats.total"), value: trips.length },
-	{ label: t("account.stats.active"), value: trips.filter((trip) => trip.status !== "booked" && trip.status !== "closed").length },
-	{ label: t("account.stats.booked"), value: trips.filter((trip) => trip.status === "booked").length },
-];
+	{ label: t("account.stats.upcoming"), value: ahead.length, icon: "calendar" },
+	{ label: t("account.stats.completed"), value: past.filter((b) => b.status === "completed").length, icon: "check" },
+	{ label: t("account.stats.requests"), value: openRequests.length, icon: "route" },
+] as const;
+
+const intl = LOCALE_META[locale].intl;
+const parts = (iso: string) => {
+	const date = new Date(iso);
+	const f = (o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(intl, { timeZone: "Europe/Istanbul", ...o }).format(date);
+	return { day: f({ day: "numeric" }), month: f({ month: "short" }), weekday: f({ weekday: "short" }), time: isoToIstanbul(iso).time, long: f({ weekday: "long", day: "numeric", month: "long" }) };
+};
+/** Status colours: waiting on the passenger amber, on its way green, done grey. */
+const tone = (status: string) =>
+	["quoted", "pending_payment"].includes(status)
+		? "bg-[#fffaeb] text-[#b54708]"
+		: ["driver_en_route", "driver_arrived", "on_board"].includes(status)
+			? "bg-[#ecfdf3] text-[#05603a]"
+			: status === "completed"
+				? "bg-gray-100 text-gray-700"
+				: ["cancelled", "no_show"].includes(status)
+					? "bg-gray-100 text-gray-500"
+					: "bg-navy-50 text-navy-700";
+const needsAction = (status: string) => status === "quoted" || status === "pending_payment";
 const tabs = [
-	{ view: "account", action: "", label: t("account.nav.requests"), icon: "route" },
+	{ view: "account", action: "", label: t("account.nav.trips"), icon: "route" },
 	{ view: "profile", action: "profil", label: t("account.nav.profile"), icon: "user" },
 	{ view: "security", action: "guvenlik", label: t("account.nav.security"), icon: "shield" },
 ] as const;
@@ -145,188 +171,226 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 	{
 		!guest && member && (
 			<>
-				{/* Account banner: who is signed in, and the one thing they most likely came to do. */}
 				<section class="bg-[radial-gradient(900px_320px_at_85%_-20%,rgb(29_95_155/0.45),transparent_70%),linear-gradient(180deg,var(--color-ink-900),var(--color-ink-800))] text-white">
-					<div class="container flex flex-wrap items-center gap-5 py-10">
-						<span class="grid place-items-center size-16 shrink-0 rounded-full bg-white/10 border border-solid border-white/20 font-display text-xl font-bold">
+					<div class="container flex items-center gap-4 py-6 sm:py-8">
+						<span class="grid place-items-center size-12 sm:size-14 shrink-0 rounded-full bg-white/10 border border-solid border-white/20 font-display text-lg font-bold">
 							{initials}
 						</span>
-						<div class="flex-1 min-w-48">
-							<h1 class="font-display text-2xl sm:text-3xl font-bold leading-tight">{t("account.hello", { name: member.name })}</h1>
-							<p class="mt-1 text-sm text-white/70">
+						<div class="flex-1 min-w-0">
+							<h1 class="font-display text-xl sm:text-2xl font-bold leading-tight truncate">{t("account.hello", { name: member.name })}</h1>
+							<p class="mt-0.5 text-sm text-white/65 truncate">
 								<span dir="ltr">@{member.username}</span> · {t("account.memberSince")} {since}
 							</p>
 						</div>
-						<a href={bookPath(locale)} class="btn btn--light">
+						<a href={bookPath(locale)} class="btn btn--light hidden sm:inline-flex">
 							{t("nav.book")}
 							<Icon name="arrow" size={18} class="flip-rtl" />
 						</a>
+						<form method="post" action={accountPath(locale)} class="shrink-0">
+							<input type="hidden" name="intent" value="logout" />
+							<button
+								type="submit"
+								aria-label={t("account.logout")}
+								class="inline-flex items-center gap-2 p-2.5 sm:px-3.5 sm:py-2 border border-solid border-white/25 rounded-full bg-transparent text-white/85 text-sm font-semibold cursor-pointer hover:bg-white/10"
+							>
+								<Icon name="logout" size={16} class="flip-rtl" />
+								<span class="hidden sm:inline">{t("account.logout")}</span>
+							</button>
+						</form>
 					</div>
 				</section>
 
-				<section class="bg-gray-100 py-8 sm:py-12 min-h-[50vh]">
-					<div class="container grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-8 items-start">
-						<nav class:list={[card, "min-w-0 p-2 lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]"]} aria-label={t("account.title")}>
-							<ul class="flex lg:flex-col gap-1 list-none p-0 overflow-x-auto">
+				<section class="bg-gray-100 pt-4 pb-24 sm:py-10 min-h-[50vh]">
+					<div class="container grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[230px_minmax(0,1fr)] lg:gap-8 items-start">
+						<nav class:list={[card, "min-w-0 p-1.5 lg:p-2 lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]"]} aria-label={t("account.title")}>
+							<ul class="grid grid-cols-3 lg:grid-cols-1 gap-1 list-none p-0">
 								{
 									tabs.map((tab) => (
-										<li class="shrink-0">
+										<li class="min-w-0">
 											<a
 												href={accountPath(locale, tab.action)}
 												aria-current={tab.view === view ? "page" : undefined}
-												class="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-gray-600 whitespace-nowrap transition-colors hover:bg-gray-100 aria-[current=page]:bg-navy-700 aria-[current=page]:text-white"
+												class="flex flex-col lg:flex-row items-center justify-center lg:justify-start gap-1 lg:gap-3 px-2 lg:px-4 py-2.5 lg:py-3 rounded-xl text-xs lg:text-sm font-semibold text-gray-600 text-center transition-colors hover:bg-gray-100 aria-[current=page]:bg-navy-700 aria-[current=page]:text-white"
 											>
 												<Icon name={tab.icon} size={18} />
-												{tab.label}
+												<span class="truncate max-w-full">{tab.label}</span>
 											</a>
 										</li>
 									))
 								}
-								<li class="shrink-0 lg:mt-1 lg:pt-1 lg:border-0 lg:border-t lg:border-solid lg:border-gray-200">
-									<form method="post" action={accountPath(locale)}>
-										<input type="hidden" name="intent" value="logout" />
-										<button
-											type="submit"
-											class="flex w-full items-center gap-3 px-4 py-3 border-0 bg-transparent rounded-xl text-sm font-semibold text-gray-600 whitespace-nowrap cursor-pointer transition-colors hover:bg-gray-100 hover:text-[#b42318]"
-										>
-											<Icon name="close" size={18} />
-											{t("account.logout")}
-										</button>
-									</form>
-								</li>
 							</ul>
 						</nav>
 
-						<div class="grid gap-6 min-w-0">
+						<div class="grid gap-5 sm:gap-6 min-w-0">
 							{notice && <p class="form-status" data-state="success" role="status">{t(`account.notice.${notice}`)}</p>}
 
 							{
 								view === "account" && (
 									<>
-										<ul class="grid grid-cols-3 gap-3 sm:gap-4 list-none p-0">
-											{
-												stats.map((stat) => (
-													<li class:list={[card, "px-4 py-4 sm:px-6 sm:py-5"]}>
-														<div class="font-display text-2xl sm:text-3xl font-bold text-navy-700 tabular-nums">{stat.value}</div>
-														<div class="mt-1 text-xs sm:text-sm text-gray-600">{stat.label}</div>
-													</li>
-												))
-											}
-										</ul>
-
-										<div class="flex items-center justify-between gap-4">
-											<h2 class="font-display text-xl font-bold">{t("book.myBookings")}</h2>
-											<a href={bookPath(locale)} class="btn btn--ghost btn--sm">{t("book.new")}</a>
-										</div>
-										{
-											bookings.length === 0 ? (
-												<p class:list={[card, "px-6 py-5 text-gray-600"]}>{t("book.myBookingsEmpty")}</p>
-											) : (
-												<ul class="grid gap-3 list-none p-0">
-													{bookings.map((b) => {
-														const at = isoToIstanbul(b.pickupAt);
-														return (
-															<li class:list={[card, "flex flex-wrap items-center justify-between gap-4 px-5 py-4"]}>
-																<div class="grid gap-1">
-																	<span class="font-display font-bold text-navy-800 tabular-nums" dir="ltr">{b.code}</span>
-																	<span class="font-semibold">{b.fromName} → {b.toName}</span>
-																	<small class="text-sm text-gray-600">
-																		{at.date} · {at.time} · {formatTry(b.price_minor / 100, locale)} · {t(`book.status.${b.status}` as UiKey)}
-																	</small>
-																</div>
-																<a href={bookPath(locale, b.code, b.token)} class="btn btn--ghost btn--sm">
-																	{t("book.view")}
-																	<Icon name="arrow" size={16} class="flip-rtl" />
-																</a>
+										{next && (() => {
+											const d = parts(next.pickupAt);
+											return (
+												<a
+													href={bookPath(locale, next.code, next.token)}
+													class="group block rounded-2xl overflow-hidden bg-navy-800 text-white no-underline shadow-[0_18px_40px_-20px_rgb(10_37_64/0.6)]"
+												>
+													<div class="flex items-center justify-between gap-3 px-5 sm:px-6 pt-5">
+														<span class="text-xs font-semibold uppercase tracking-wider text-white/60">{t("account.next")}</span>
+														<span class:list={["inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap", tone(next.status)]}>
+															<span class="size-1.5 rounded-full bg-current" />
+															{t(`book.status.${next.status}` as UiKey)}
+														</span>
+													</div>
+													<div class="grid gap-5 px-5 sm:px-6 py-5 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center">
+														<div class="flex items-baseline gap-3">
+															<span class="font-display text-4xl font-bold tabular-nums" dir="ltr">{d.time}</span>
+															<span class="text-white/75 font-semibold">{d.long}</span>
+														</div>
+														<ol class="grid gap-2.5 list-none p-0 sm:ps-6 sm:border-0 sm:border-s sm:border-solid sm:border-white/15">
+															<li class="flex items-center gap-3 font-semibold">
+																<span class="size-2.5 shrink-0 rounded-full border-2 border-solid border-white" />
+																{next.fromName}
 															</li>
-														);
-													})}
-												</ul>
-											)
-										}
+															<li class="flex items-center gap-3 font-semibold">
+																<span class="size-2.5 shrink-0 rounded-full bg-gold-300" />
+																{next.toName}
+															</li>
+														</ol>
+														<span class="btn btn--light justify-self-start sm:justify-self-end">
+															{t("account.openTrip")}
+															<Icon name="arrow" size={18} class="flip-rtl" />
+														</span>
+													</div>
+													<div class="flex flex-wrap items-center justify-between gap-2 px-5 sm:px-6 py-3 bg-black/20 text-sm text-white/70">
+														<span dir="ltr" class="font-semibold tabular-nums">{next.code}</span>
+														{needsAction(next.status) ? (
+															<span class="font-semibold text-gold-300">{t("account.actionNeeded")}</span>
+														) : (
+															<span>{formatTry(next.price_minor / 100, locale)}</span>
+														)}
+													</div>
+												</a>
+											);
+										})()}
 
-										<div class="flex items-center justify-between gap-4">
-											<h2 class="font-display text-xl font-bold">{t("account.requests")}</h2>
-										</div>
-
-										{
-											trips.length === 0 && (
-												<div class:list={[card, "grid justify-items-center gap-4 px-6 py-12 text-center"]}>
-													<span class="grid place-items-center size-14 rounded-full bg-navy-50 text-navy-700">
-														<Icon name="route" size={26} />
-													</span>
-													<p class="max-w-md text-gray-600">{t("account.requestsEmpty")}</p>
-													<a href={bookPath(locale)} class="btn btn--primary">{t("nav.book")}</a>
-												</div>
-											)
-										}
-
-										<ul class="grid gap-4 list-none p-0">
-											{
-												trips.map((trip) => (
-													<li class:list={[card, "overflow-hidden transition-shadow hover:shadow-[0_14px_32px_-16px_rgb(10_37_64/0.35)]"]}>
-														<div class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-navy-50/60 border-0 border-b border-solid border-gray-200">
-															<span class="font-display font-bold text-navy-800 tabular-nums" dir="ltr">{trip.reference}</span>
-															<StatusBadge locale={locale} status={trip.status} />
-														</div>
-														<div class="grid gap-5 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-															<div class="grid gap-4">
-																{/* The route as a two-stop line: airport, then district. */}
-																<ol class="grid gap-3 list-none p-0">
-																	<li class="relative flex items-center gap-3 font-semibold after:absolute after:start-[5px] after:top-[calc(50%+8px)] after:h-[calc(100%-4px)] after:w-0.5 after:bg-gray-300">
-																		<span class="size-3 shrink-0 rounded-full border-2 border-solid border-navy-700 bg-white" />
-																		{trip.from}
-																	</li>
-																	<li class="flex items-center gap-3 font-semibold">
-																		<span class="size-3 shrink-0 rounded-full bg-navy-700" />
-																		{trip.to}
-																	</li>
-																</ol>
-																<ul class="flex flex-wrap gap-x-5 gap-y-2 list-none p-0 text-sm text-gray-600">
-																	{trip.day && (
-																		<li class="inline-flex items-center gap-1.5">
-																			<Icon name="calendar" size={16} />
-																			{[trip.day, trip.time].filter(Boolean).join(" · ")}
-																		</li>
-																	)}
-																	{trip.passengers && (
-																		<li class="inline-flex items-center gap-1.5">
-																			<Icon name="users" size={16} />
-																			{t("account.passengersCount", { n: trip.passengers })}
-																		</li>
-																	)}
-																	{trip.flight && (
-																		<li class="inline-flex items-center gap-1.5">
-																			<Icon name="plane" size={16} />
-																			<span dir="ltr">{trip.flight}</span>
-																		</li>
-																	)}
-																	{trip.vehicle && <li>{trip.vehicle}</li>}
-																	{trip.returnTrip && <li>{t("account.requestReturn")}</li>}
-																</ul>
-															</div>
-															<div class="flex items-center justify-between gap-4 sm:flex-col sm:items-end">
-																<small class="text-xs text-gray-500">
-																	{t("account.requestSent")} {trip.sent}
-																</small>
-																<a href={trackPath(locale, trip.id)} class="btn btn--ghost btn--sm">
-																	{t("account.track")}
-																	<Icon name="arrow" size={16} class="flip-rtl" />
-																</a>
-															</div>
-														</div>
+										{(bookings.length > 0 || trips.length > 0) && (
+											<ul class="grid grid-cols-3 gap-2 sm:gap-4 list-none p-0">
+												{stats.map((stat) => (
+													<li class:list={[card, "flex items-center gap-3 px-3 py-3 sm:px-5 sm:py-4"]}>
+														<span class="hidden sm:grid place-items-center size-10 shrink-0 rounded-xl bg-navy-50 text-navy-700">
+															<Icon name={stat.icon} size={20} />
+														</span>
+														<span class="grid">
+															<span class="font-display text-xl sm:text-2xl font-bold text-navy-800 tabular-nums leading-tight">{stat.value}</span>
+															<span class="text-xs sm:text-sm text-gray-600 leading-snug">{stat.label}</span>
+														</span>
 													</li>
-												))
-											}
-										</ul>
+												))}
+											</ul>
+										)}
+
+										{bookings.length === 0 && trips.length === 0 && (
+											<div class:list={[card, "grid justify-items-center gap-4 px-6 py-12 text-center"]}>
+												<span class="grid place-items-center size-14 rounded-full bg-navy-50 text-navy-700">
+													<Icon name="route" size={26} />
+												</span>
+												<p class="max-w-md text-gray-600">{t("account.tripsEmpty")}</p>
+												<a href={bookPath(locale)} class="btn btn--primary">
+													{t("nav.book")}
+												</a>
+											</div>
+										)}
+
+										{[
+											{ title: t("account.upcoming"), list: upcoming },
+											{ title: t("account.past"), list: past },
+										].map(
+											(group) =>
+												group.list.length > 0 && (
+													<section class="grid gap-3">
+														<h2 class="font-display text-lg font-bold">{group.title}</h2>
+														<ul class="grid gap-2.5 list-none p-0">
+															{group.list.map((b) => {
+																const d = parts(b.pickupAt);
+																const done = FINAL.includes(b.status);
+																return (
+																	<li>
+																		<a
+																			href={bookPath(locale, b.code, b.token)}
+																			class:list={[card, "flex items-center gap-4 px-4 py-3.5 sm:px-5 no-underline text-inherit transition-shadow hover:shadow-[0_14px_32px_-16px_rgb(10_37_64/0.35)]", done && "opacity-90"]}
+																		>
+																			<span class:list={["flex flex-col items-center gap-0.5 w-14 shrink-0 py-2 rounded-xl text-center leading-none", done ? "bg-gray-100 text-gray-600" : "bg-navy-50 text-navy-800"]}>
+																				<span class="text-[11px] font-semibold uppercase">{d.month}</span>
+																				<span class="font-display text-xl font-bold tabular-nums">{d.day}</span>
+																				<span class="text-[11px]">{d.weekday}</span>
+																			</span>
+																			<span class="grid gap-1 flex-1 min-w-0">
+																				<span class="font-semibold line-clamp-2">
+																					{b.fromName} <span class="text-gray-400 flip-rtl inline-block">→</span> {b.toName}
+																				</span>
+																				<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+																					<span dir="ltr" class="tabular-nums">{d.time}</span>
+																					<span class:list={["inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold", tone(b.status)]}>
+																						{t(`book.status.${b.status}` as UiKey)}
+																					</span>
+																					<span class="hidden sm:inline tabular-nums">{formatTry(b.price_minor / 100, locale)}</span>
+																				</span>
+																			</span>
+																			<Icon name="chevron" size={18} class="shrink-0 text-gray-400 -rotate-90 rtl:rotate-90" />
+																		</a>
+																	</li>
+																);
+															})}
+														</ul>
+													</section>
+												),
+										)}
+
+										{trips.length > 0 && (
+											<section class="grid gap-3">
+												<h2 class="font-display text-lg font-bold">{t("account.requests")}</h2>
+												<ul class="grid gap-2.5 list-none p-0">
+													{trips.map((trip) => (
+														<li>
+															<a
+																href={trackPath(locale, trip.id)}
+																class:list={[card, "grid gap-2 px-4 py-3.5 sm:px-5 no-underline text-inherit transition-shadow hover:shadow-[0_14px_32px_-16px_rgb(10_37_64/0.35)]"]}
+															>
+																<span class="flex flex-wrap items-center justify-between gap-2">
+																	<span class="font-semibold">
+																		{trip.from} <span class="text-gray-400 flip-rtl inline-block">→</span> {trip.to}
+																	</span>
+																	<StatusBadge locale={locale} status={trip.status} />
+																</span>
+																<span class="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+																	<span dir="ltr" class="font-semibold tabular-nums text-navy-800">{trip.reference}</span>
+																	{trip.day && <span>{[trip.day, trip.time].filter(Boolean).join(" · ")}</span>}
+																	{trip.passengers && <span>{t("account.passengersCount", { n: trip.passengers })}</span>}
+																	{trip.flight && <span dir="ltr">{trip.flight}</span>}
+																	{trip.returnTrip && <span>{t("account.requestReturn")}</span>}
+																</span>
+															</a>
+														</li>
+													))}
+												</ul>
+											</section>
+										)}
+
+										<p class="text-sm text-gray-600 text-center">
+											{t("account.findBooking")}{" "}
+											<a href={lookupPath(locale)} class="font-semibold text-navy-700 underline">
+												{t("account.findBookingLink")}
+											</a>
+										</p>
 									</>
 								)
 							}
 
 							{
 								view === "profile" && (
-									<div class:list={[card, "p-6 sm:p-8"]}>
-										<h2 class="font-display text-xl font-bold mb-6">{t("account.profile")}</h2>
+									<div class:list={[card, "p-5 sm:p-8"]}>
+										<h2 class="font-display text-xl font-bold">{t("account.profile")}</h2>
+										<p class="mt-2 mb-6 text-sm text-gray-600">{t("account.profileHint")}</p>
 										<form class="form" method="post" action={accountPath(locale, "profil")}>
 											<input type="hidden" name="intent" value="profile" />
 											{error && errorForm === "profile" && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
@@ -350,7 +414,7 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 													<input id="acc-phone" name="phone" type="tel" maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={profile.phone} />
 												</div>
 											</div>
-											<button type="submit" class="btn btn--primary justify-self-start">{t("account.save")}</button>
+											<button type="submit" class="btn btn--primary sm:justify-self-start">{t("account.save")}</button>
 										</form>
 									</div>
 								)
@@ -358,7 +422,7 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 
 							{
 								view === "security" && (
-									<div class:list={[card, "p-6 sm:p-8"]}>
+									<div class:list={[card, "p-5 sm:p-8"]}>
 										<h2 class="font-display text-xl font-bold">{t("account.changePassword")}</h2>
 										<p class="mt-2 mb-6 text-sm text-gray-600">{t("account.security")}</p>
 										<form class="form" method="post" action={accountPath(locale, "guvenlik")}>
@@ -379,7 +443,7 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 													<input id="acc-password-repeat" name="password_repeat" type="password" autocomplete="new-password" dir="ltr" {...password} />
 												</div>
 											</div>
-											<button type="submit" class="btn btn--primary justify-self-start">{t("account.changePassword")}</button>
+											<button type="submit" class="btn btn--primary sm:justify-self-start">{t("account.changePassword")}</button>
 										</form>
 									</div>
 								)
