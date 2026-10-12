@@ -1,13 +1,15 @@
 ---
 /**
- * The job pool for independent drivers: fixed-payout jobs to take and auctions to bid
- * on, for the class they drive. A won job lands in "İşlerim", already accepted.
+ * The job pool for independent drivers: customer requests from the site to send a
+ * price for (offers.ts), then fixed-payout jobs to take and auctions to bid on, for
+ * the class they drive. A won job lands in "İşlerim", already accepted.
  */
 import DriverLayout from "../../layouts/DriverLayout.astro";
 import { getDb } from "../../server/db";
 import { sessionDriver, when } from "../../server/driver-app";
 import { formatMoney, parseMoney, readForm, text } from "../../server/ops";
 import { getOpenPoolByCode, openPoolFor, placeBid, takeFixed, withdrawBid } from "../../server/pool";
+import { getOpenRequest, openRequestsFor, placeOffer, withdrawOffer } from "../../server/offers";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
@@ -22,6 +24,19 @@ if (form) {
 	const intent = text(form, "intent", 20);
 	const code = text(form, "code", 20).toUpperCase();
 	try {
+		if (intent === "offer" || intent === "offer_withdraw") {
+			const request = await getOpenRequest(db, code);
+			if (!request) throw new Error("Bu talep artık açık değil.");
+			if (intent === "offer") {
+				const amount = parseMoney(text(form, "amount", 20));
+				if (!amount) throw new Error("Kazancınızı yazın. Örnek: 1.650");
+				await placeOffer(db, request, bidder, { classKey: driver.class_key ?? "", amountMinor: amount, vehicle: text(form, "vehicle", 80) || null, note: null });
+				notice = `${formatMoney(amount)} ₺ teklifiniz müşteriye iletildi. Müşteri seçerse iş İşlerim'e düşer.`;
+			} else {
+				await withdrawOffer(db, request, bidder);
+				notice = "Teklifiniz geri çekildi.";
+			}
+		} else {
 		const job = await getOpenPoolByCode(db, code);
 		if (!job) throw new Error("Bu iş artık havuzda değil.");
 		if (intent === "take") {
@@ -36,12 +51,17 @@ if (form) {
 			await withdrawBid(db, job, bidder);
 			notice = "Teklifiniz geri çekildi.";
 		}
+		}
 	} catch (e) {
 		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
 	}
 }
 
 const jobs = await openPoolFor(db, bidder, driver.class_key);
+const myClass = driver.class_key
+	? await db.selectFrom("sd_vehicle_classes").select(["name", "pax_max", "bags_max"]).where("key", "=", driver.class_key).executeTakeFirst()
+	: undefined;
+const requests = myClass ? await openRequestsFor(db, bidder, { paxMax: myClass.pax_max, bagsMax: myClass.bags_max }) : [];
 const left = (iso: string) => {
 	const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60_000));
 	return minutes >= 120 ? `${Math.floor(minutes / 60)} saat` : `${minutes} dk`;
@@ -56,6 +76,61 @@ const left = (iso: string) => {
 	</p>
 	{notice && <p class="drv-notice">{notice}</p>}
 	{error && <p class="drv-notice error" role="alert">{error}</p>}
+	<h2 class="sec">Müşteri talepleri</h2>
+	<p class="drv-muted">
+		Müşteri yolculuğunu yazdı, fiyat bekliyor. <strong>Kazancınızı</strong> yazın; müşteri teklifleri karşılaştırıp birini seçer. Müşterinin adını, telefonunu
+		ve diğer teklifleri görmezsiniz.
+	</p>
+	{
+		requests.length === 0 && (
+			<div class="drv-card" style="text-align:center;padding:20px 16px">
+				<span class="drv-muted">Aracınıza uygun açık talep yok.</span>
+			</div>
+		)
+	}
+	{
+		requests.map((r) => {
+			const w = when(r.pickup_at);
+			const active = r.my_status === "active";
+			return (
+				<div class="drv-card pool">
+					<div class="top">
+						<div class="whenx">
+							<strong>{w.time}</strong>
+							<span>{w.day}</span>
+						</div>
+						<span class:list={["drv-pill", active ? "ok" : "warn"]}>{active ? "Teklif verdiniz" : "Talep"}</span>
+					</div>
+					<div class="route">{r.from_name} → {r.to_name}</div>
+					<div class="drv-muted meta">
+						{r.pax} kişi · {r.bags} bavul{r.flight_no && ` · ${r.flight_no}`} · {r.offers} teklif
+					</div>
+					{r.extras && <div class="drv-muted meta">Ekstralar: {r.extras}</div>}
+					{r.notes && <div class="drv-muted meta">Not: {r.notes}</div>}
+					<form method="post">
+						<input type="hidden" name="code" value={r.code} />
+						<label class="drv-field">
+							Kazancınız (₺){active && ` · şu an ${formatMoney(r.my_amount ?? 0)} ₺`}
+							<input type="text" name="amount" inputmode="decimal" required placeholder="1.650" />
+						</label>
+						<label class="drv-field">
+							Aracınız (model, renk)
+							<input type="text" name="vehicle" maxlength="80" value={r.my_vehicle ?? ""} />
+						</label>
+						<button class="drv-btn" type="submit" name="intent" value="offer">
+							{active ? "Teklifi güncelle" : `Teklif ver · ${myClass!.name}`}
+						</button>
+						{active && (
+							<button class="drv-btn ghost" type="submit" name="intent" value="offer_withdraw" formnovalidate style="margin-top:8px">
+								Teklifi geri çek
+							</button>
+						)}
+					</form>
+				</div>
+			);
+		})
+	}
+	<h2 class="sec">Operasyon havuzu</h2>
 	{
 		jobs.length === 0 && (
 			<div class="drv-card" style="text-align:center;padding:32px 16px">
@@ -120,6 +195,10 @@ const left = (iso: string) => {
 </DriverLayout>
 
 <style>
+	.sec {
+		font-size: 18px;
+		margin: 20px 0 4px;
+	}
 	.pool {
 		display: grid;
 		gap: 8px;

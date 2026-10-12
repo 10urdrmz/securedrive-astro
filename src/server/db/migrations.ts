@@ -525,4 +525,28 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_driver_applications_phone ON sd_driver_applications(phone_key)`,
 		],
 	},
+	{
+		name: "0016_offers",
+		statements: [
+			// Public bookings work like GetTransfer: the customer posts the trip (booking
+			// status "bidding"), partner fleets, independent drivers and ops (own fleet) send
+			// prices, and the customer picks one. One live offer per bidder per booking.
+			`CREATE TABLE IF NOT EXISTS sd_offers (
+				id TEXT PRIMARY KEY,
+				booking_id TEXT NOT NULL REFERENCES sd_bookings(id),
+				bidder_kind TEXT NOT NULL CHECK (bidder_kind IN ('partner','driver','ops')),
+				bidder_id TEXT NOT NULL,
+				class_key TEXT NOT NULL REFERENCES sd_vehicle_classes(key),
+				payout_minor INTEGER NOT NULL,
+				price_minor INTEGER NOT NULL,
+				vehicle TEXT,
+				note TEXT,
+				status TEXT NOT NULL CHECK (status IN ('active','withdrawn','won','lost')),
+				created_at TEXT NOT NULL DEFAULT (${NOW}),
+				updated_at TEXT NOT NULL DEFAULT (${NOW}),
+				UNIQUE (booking_id, bidder_kind, bidder_id)
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_offers_booking ON sd_offers(booking_id, status)`,
+		],
+	},
 ];

@@ -16,14 +16,14 @@ import {
 	addEvent,
 	answerQuote,
 	ConflictError,
-	createBooking,
 	getBookingByCode,
 	sameSecret,
 	transition,
 	type Booking,
 	type PaymentMethod,
 } from "../server/bookings";
-import { quote, refundPct, type ClassQuote, type Quote, type QuoteInput } from "../server/pricing";
+import { istanbulToIso, refundPct } from "../server/pricing";
+import { createRequest, offersFor, pickOffer, type OfferCard } from "../server/offers";
 import { getSettings } from "../server/settings";
 import { NO_STORE } from "./account-page";
 import { allowVisitor, currentMember, EMAIL, PHONE, type Member } from "./members";
@@ -51,11 +51,13 @@ export interface WizardPage {
 	view: "wizard";
 	locale: Locale;
 	member: Member | null;
-	step: 1 | 2 | 3;
+	step: 1 | 2;
 	zones: Zone[];
 	trip: Partial<Trip>;
-	quote?: Quote;
-	option?: ClassQuote;
+	/** Extras the customer may ask for in step 2 (child seat …), with their price. */
+	extras?: { key: string; name: string; price_minor: number; max_qty: number }[];
+	/** The address field is the pickup (district → airport) rather than the drop-off. */
+	addressOnPickup?: boolean;
 	error?: UiKey;
 	/** Details typed so far, to refill the form after an error. */
 	values: Record<string, string>;
@@ -84,7 +86,11 @@ export interface BookingDetail {
 	/** Hours before pickup until which the passenger may cancel online, free of charge. */
 	freeCancelHours: number;
 	canCancel: boolean;
-	notice?: "created" | "cancelled" | "paid" | "paymentFailed" | "reviewed" | "quoteAccepted" | "quoteDeclined";
+	notice?: "created" | "cancelled" | "paid" | "paymentFailed" | "reviewed" | "quoteAccepted" | "quoteDeclined" | "requested" | "picked";
+	/** While the request waits for carriers: their live offers, cheapest first. */
+	offers: OfferCard[];
+	/** Extras asked for on a request, added to the offer the customer picks. */
+	requestedExtras: { name: string; qty: number; price_minor: number }[];
 	/** Where "pay now" leads, while a booking waits for its online payment. */
 	payHref: string | null;
 	/** The passenger's review, once given; reviews open when the trip is completed. */
@@ -98,7 +104,8 @@ export interface BookingDetail {
 export type BookPage = WizardPage | BookingDetail;
 
 const CODE = /^SD-\d{4}-\d{4,}$/i;
-const publicMethods = (): PaymentMethod[] => (iyzicoEnabled() ? ["online", "cash", "card_in_vehicle"] : ["cash", "card_in_vehicle"]);
+/** A request is paid in the vehicle; online payment would need the price before the offers. */
+const REQUEST_METHODS: PaymentMethod[] = ["cash", "card_in_vehicle"];
 
 const clean = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "");
 const int = (value: string | null, fallback: number) => (value && /^\d{1,2}$/.test(value) ? Number(value) : fallback);
@@ -119,6 +126,20 @@ function redirect(Astro: AstroGlobal, to: string) {
 
 async function loadZones(db: Db): Promise<Zone[]> {
 	return db.selectFrom("sd_zones").select(["id", "name", "kind"]).where("serviceable", "=", 1).orderBy("sort").execute();
+}
+
+/** The trip itself can be served: real places, not the same one, far enough ahead. */
+async function checkTrip(db: Db, trip: Trip): Promise<string | null> {
+	const pickupAt = istanbulToIso(trip.date, trip.time);
+	if (!pickupAt || trip.from === trip.to) return "invalidInput";
+	const hours = (Date.parse(pickupAt) - Date.now()) / 3600_000;
+	if (hours < 0) return "past";
+	if (hours < (await getSettings(db)).minLeadHours) return "tooSoon";
+	const zones = await db.selectFrom("sd_zones").select("serviceable").where("id", "in", [trip.from, trip.to]).execute();
+	if (zones.length !== 2) return "invalidInput";
+	if (zones.some((z) => !z.serviceable)) return "notServiceable";
+	const fits = await db.selectFrom("sd_vehicle_classes").select("key").where("active", "=", 1).where("pax_max", ">=", trip.pax).where("bags_max", ">=", trip.bags).executeTakeFirst();
+	return fits ? null : "tooMany";
 }
 
 function readTrip(params: URLSearchParams): Partial<Trip> {
@@ -147,35 +168,28 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	const online = iyzicoEnabled();
 	const page: WizardPage = { view: "wizard", locale, member, step: 1, zones, trip, values: {}, online, sandbox: online && iyzicoIsSandbox() };
 	if (!trip.from || !trip.to || !trip.date || !trip.time) return page;
-
-	const input: QuoteInput = { fromZoneId: trip.from, toZoneId: trip.to, date: trip.date, time: trip.time, pax: trip.pax!, bags: trip.bags! };
-	const isPost = Astro.request.method === "POST";
-	let form: FormData | null = null;
-	if (isPost) {
-		if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
-		form = await Astro.request.formData();
-		input.extras = {};
-		for (const [key, value] of form.entries()) {
-			if (key.startsWith("extra_") && typeof value === "string") input.extras[key.slice(6)] = int(value, 0);
-		}
-	}
-
-	const result = await quote(db, input);
-	if (!result.ok) {
+	const tripError = await checkTrip(db, trip as Trip);
+	if (tripError) {
 		Astro.response.status = 422;
-		return { ...page, error: `book.error.${result.error}` as UiKey };
+		return { ...page, error: `book.error.${tripError}` as UiKey };
 	}
-	page.quote = result.quote;
-	page.step = 2;
-	const classKey = clean(params.get("class"), 40);
-	const option = result.quote.options.find((o) => o.classKey === classKey && o.fits);
-	if (!option) return page;
-	page.option = option;
-	page.step = 3;
-	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: online ? "online" : "cash" };
-	if (!form) return page;
 
-	const field = (name: string, max = 200) => clean(form!.get(name), max);
+	// Step 2: who travels, what they need, how they pay. Posting it opens the request
+	// to carriers; prices come as offers on the booking page (offers.ts).
+	page.step = 2;
+	page.extras = await db.selectFrom("sd_extras").select(["key", "name", "price_minor", "max_qty"]).where("active", "=", 1).orderBy("sort").execute();
+	const fromZone = zones.find((z) => z.id === trip.from);
+	page.addressOnPickup = !!fromZone && fromZone.kind !== "airport";
+	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: "cash" };
+	if (Astro.request.method !== "POST") return page;
+	if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
+	const form = await Astro.request.formData();
+	const extras: Record<string, number> = {};
+	for (const [key, value] of form.entries()) {
+		if (key.startsWith("extra_") && typeof value === "string") extras[key.slice(6)] = int(value, 0);
+	}
+
+	const field = (name: string, max = 200) => clean(form.get(name), max);
 	page.values = {
 		name: field("name", 80),
 		phone: field("phone", 24),
@@ -186,7 +200,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 		notes: field("notes", 1000),
 		payment: field("payment", 20),
 	};
-	for (const [key, qty] of Object.entries(input.extras ?? {})) page.values[`extra_${key}`] = String(qty);
+	for (const [key, qty] of Object.entries(extras)) page.values[`extra_${key}`] = String(qty);
 	const fail = (error: string, status = 422) => {
 		Astro.response.status = status;
 		return { ...page, error: `book.error.${error}` as UiKey };
@@ -196,38 +210,32 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	const v = page.values;
 	if (v.name.length < 2 || !PHONE.test(v.phone)) return fail("details");
 	if (v.email && !EMAIL.test(v.email)) return fail("email");
-	if (!publicMethods().includes(v.payment as PaymentMethod)) return fail("details");
-	// iyzico sends the receipt by e-mail and requires an address.
-	if (v.payment === "online" && !v.email) return fail("emailRequired");
+	if (!REQUEST_METHODS.includes(v.payment as PaymentMethod)) return fail("details");
 	if (form.get("terms") !== "on") return fail("terms");
 	if (!(await allowVisitor(Astro, "booking", 5, 60))) return fail("rate", 429);
 
-	// The district side carries the hotel or home address; the airport side needs none.
-	const addressOnPickup = result.quote.from.kind !== "airport";
 	const agency = await referringAgency(db, Astro.cookies);
-	const booking = await createBooking(
-		db,
-		{
-			quote: result.quote,
-			option,
-			contact: { name: v.name, phone: v.phone, email: v.email || null },
-			flightNo: v.flight || null,
-			signName: v.sign || v.name,
-			pickupAddress: addressOnPickup ? v.address || null : null,
-			dropoffAddress: addressOnPickup ? null : v.address || null,
-			notes: v.notes || null,
-			pax: input.pax,
-			bags: input.bags,
-			paymentMethod: v.payment as PaymentMethod,
-			source: "web",
-			locale,
-			memberId: member?.id ?? null,
-			agencyId: agency?.id ?? null,
-		},
-		{ kind: "passenger" },
-	);
-	if (booking.payment_method === "online") return redirect(Astro, paymentStartPath(booking));
-	return redirect(Astro, `${bookPath(locale, booking.code, booking.tracking_token)}&ok=created`);
+	const result = await createRequest(db, {
+		fromZoneId: trip.from,
+		toZoneId: trip.to,
+		date: trip.date,
+		time: trip.time,
+		pax: trip.pax!,
+		bags: trip.bags!,
+		contact: { name: v.name, phone: v.phone, email: v.email || null },
+		flightNo: v.flight || null,
+		signName: v.sign || v.name,
+		pickupAddress: page.addressOnPickup ? v.address || null : null,
+		dropoffAddress: page.addressOnPickup ? null : v.address || null,
+		notes: v.notes || null,
+		paymentMethod: v.payment as PaymentMethod,
+		locale,
+		memberId: member?.id ?? null,
+		agencyId: agency?.id ?? null,
+		extras,
+	});
+	if (!result.ok) return fail(result.error);
+	return redirect(Astro, `${bookPath(locale, result.booking.code, result.booking.tracking_token)}&ok=requested`);
 }
 
 async function bookingDetail(
@@ -245,7 +253,7 @@ async function bookingDetail(
 
 	const settings = await getSettings(db);
 	const freeCancelHours = Math.min(...settings.cancellation.filter((r) => r.refundPct >= 100).map((r) => r.hoursBefore), Infinity);
-	const cancellable = ["pending_payment", "confirmed", "assigned"].includes(booking.status);
+	const cancellable = ["pending_payment", "confirmed", "assigned", "bidding"].includes(booking.status);
 	const canCancel = cancellable && Number.isFinite(freeCancelHours) && refundPct(settings, booking.pickup_at) >= 100;
 	const self = bookPath(locale, booking.code, booking.tracking_token);
 
@@ -266,13 +274,28 @@ async function bookingDetail(
 		payHref: booking.status === "pending_payment" && booking.payment_method === "online" && iyzicoEnabled() ? paymentStartPath(booking) : null,
 		review: null,
 		canReview: false,
-		receipt: Astro.url.searchParams.get("makbuz") === "1" && booking.status !== "cancelled",
+		receipt: Astro.url.searchParams.get("makbuz") === "1" && !["cancelled", "bidding"].includes(booking.status),
+		offers: booking.status === "bidding" ? await offersFor(db, booking) : [],
+		requestedExtras:
+			booking.status === "bidding" ? await db.selectFrom("sd_booking_extras").select(["name", "qty", "price_minor"]).where("booking_id", "=", booking.id).execute() : [],
 	};
+	// A request is free to withdraw until an offer is picked.
+	if (booking.status === "bidding") page.canCancel = true;
 	page.review = (await db.selectFrom("sd_reviews").select(["rating", "comment"]).where("booking_id", "=", booking.id).executeTakeFirst()) ?? null;
 	page.canReview = booking.status === "completed" && !page.review;
 	if (Astro.request.method === "GET") await markRead(db, booking.id, "passenger");
 	const ok = Astro.url.searchParams.get("ok");
-	if (ok === "created" || ok === "cancelled" || ok === "paid" || ok === "paymentFailed" || ok === "reviewed" || ok === "quoteAccepted" || ok === "quoteDeclined")
+	if (
+		ok === "created" ||
+		ok === "cancelled" ||
+		ok === "paid" ||
+		ok === "paymentFailed" ||
+		ok === "reviewed" ||
+		ok === "quoteAccepted" ||
+		ok === "quoteDeclined" ||
+		ok === "requested" ||
+		ok === "picked"
+	)
 		page.notice = ok;
 
 	if (Astro.request.method === "POST") {
@@ -307,13 +330,29 @@ async function bookingDetail(
 			}
 			return redirect(Astro, `${self}&ok=${accept ? "quoteAccepted" : "quoteDeclined"}`);
 		}
+		if (form.get("intent") === "pick") {
+			if (booking.status !== "bidding") return redirect(Astro, self);
+			try {
+				await pickOffer(db, booking, clean(form.get("offer"), 40), { kind: "passenger" });
+			} catch (error) {
+				if (error instanceof ConflictError || (error instanceof Error && (error.message === "gone" || error.message === "closed"))) {
+					Astro.response.status = 409;
+					return { ...page, offers: await offersFor(db, (await getBookingByCode(db, booking.code))!), error: "book.error.offerGone" };
+				}
+				throw error;
+			}
+			return redirect(Astro, `${self}&ok=picked`);
+		}
 		if (form.get("intent") !== "cancel") return redirect(Astro, self);
 		if (!canCancel) {
 			Astro.response.status = 422;
 			return { ...page, error: "book.error.cancelClosed" };
 		}
 		try {
-			await transition(db, booking, "cancelled", { kind: "passenger" }, { reason: "Yolcu online iptal etti", refundPct: 100 });
+			await transition(db, booking, "cancelled", { kind: "passenger" }, { reason: booking.status === "bidding" ? "Yolcu talebi geri çekti" : "Yolcu online iptal etti", refundPct: 100 });
+			if (booking.status === "bidding") {
+				await db.updateTable("sd_offers").set({ status: "lost", updated_at: new Date().toISOString() }).where("booking_id", "=", booking.id).where("status", "=", "active").execute();
+			}
 		} catch (error) {
 			if (!(error instanceof ConflictError)) throw error;
 		}

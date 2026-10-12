@@ -1,6 +1,8 @@
 ---
 /**
- * The job pool as a partner sees it: fixed-payout jobs to take (first come, first
+ * The job pool as a partner sees it. First, customer requests from the site: the
+ * partner names a class and what it wants to earn, and the customer picks among the
+ * offers (offers.ts). Then ops' own pool: fixed-payout jobs to take (first come, first
  * served) and auctions to bid on under the ceiling. Won jobs move to "İşler", where
  * the partner puts a driver on them.
  */
@@ -9,6 +11,7 @@ import { audit, formatMoney, parseMoney, readForm, text } from "../../server/ops
 import { requirePartner } from "../../server/partners";
 import { getOpenPoolByCode, openPoolFor, placeBid, takeFixed, withdrawBid } from "../../server/pool";
 import { isoToIstanbul } from "../../server/pricing";
+import { classesFitting, getOpenRequest, openRequestsFor, placeOffer, withdrawOffer } from "../../server/offers";
 
 const ctx = await requirePartner(Astro);
 if (ctx instanceof Response) return ctx;
@@ -22,6 +25,25 @@ if (form) {
 	const intent = text(form, "intent", 20);
 	const code = text(form, "code", 20).toUpperCase();
 	try {
+		if (intent === "offer" || intent === "offer_withdraw") {
+			const request = await getOpenRequest(db, code);
+			if (!request) throw new Error("Bu talep artık açık değil.");
+			if (intent === "offer") {
+				const amount = parseMoney(text(form, "amount", 20));
+				if (!amount) throw new Error("Kazancınızı yazın. Örnek: 1.650");
+				await placeOffer(db, request, bidder, {
+					classKey: text(form, "class", 40),
+					amountMinor: amount,
+					vehicle: text(form, "vehicle", 80) || null,
+					note: text(form, "note", 200) || null,
+				});
+				await audit(db, user, "offer.place", "booking", request.id, { code, org: org.id, amount });
+				notice = `${code} için ${formatMoney(amount)} ₺ teklifiniz müşteriye iletildi.`;
+			} else {
+				await withdrawOffer(db, request, bidder);
+				notice = `${code} teklifiniz geri çekildi.`;
+			}
+		} else {
 		const job = await getOpenPoolByCode(db, code);
 		if (!job) throw new Error("Bu iş artık havuzda değil.");
 		if (intent === "take") {
@@ -38,12 +60,15 @@ if (form) {
 			await withdrawBid(db, job, bidder);
 			notice = `${code} teklifiniz geri çekildi.`;
 		}
+		}
 	} catch (e) {
 		error = e instanceof Error ? e.message : "İşlem yapılamadı.";
 	}
 }
 
 const jobs = await openPoolFor(db, bidder);
+const requests = await openRequestsFor(db, bidder);
+const classes = await classesFitting(db, 1, 0);
 const when = (iso: string) => {
 	const { date, time } = isoToIstanbul(iso);
 	return `${date.split("-").reverse().join(".")} ${time}`;
@@ -57,6 +82,71 @@ const left = (iso: string) => {
 <OpsLayout title="İş havuzu" user={user} panel="partner">
 	{notice && <p class="notice">{notice}</p>}
 	{error && <p class="notice error">{error}</p>}
+	<h2 style="margin:0 0 4px">Müşteri talepleri</h2>
+	<p class="muted" style="margin-top:0">
+		Sitedeki müşteriler yolculuğunu yazdı, fiyat bekliyor. Araç sınıfını ve <strong>sizin kazancınızı</strong> yazın; müşteri teklifleri yan yana görür
+		ve birini seçer. Seçilirseniz iş "İşler" sayfasına onaylı olarak düşer. Müşterinin adını ve iletişim bilgisini, diğer teklifleri görmezsiniz. Teklifinizi
+		alıştan 1 saat öncesine kadar değiştirebilirsiniz.
+	</p>
+	{requests.length === 0 && <div class="card muted">Şu an teklif bekleyen müşteri talebi yok.</div>}
+	{
+		requests.map((r) => {
+			const fits = classes.filter((c) => c.pax_max >= r.pax && c.bags_max >= r.bags);
+			const active = r.my_status === "active";
+			return (
+				<div class="card job">
+					<div class="top">
+						<div>
+							<strong>{when(r.pickup_at)}</strong> · {r.code}
+							<div>
+								{r.from_name} → {r.to_name}
+							</div>
+							<div class="muted">
+								{r.pax} kişi · {r.bags} bavul{r.flight_no && ` · uçuş ${r.flight_no}`}
+							</div>
+							{r.extras && <div class="muted">Ekstralar: {r.extras}</div>}
+							{r.notes && <div class="muted">Not: {r.notes}</div>}
+						</div>
+						<div class="money">
+							{active ? <span class="badge ok">Teklifiniz: {formatMoney(r.my_amount ?? 0)} ₺</span> : r.my_status === "lost" ? <span class="badge off">Kaybedildi</span> : <span class="badge warn">Teklif bekliyor</span>}
+							<span class="muted">{r.offers} teklif var</span>
+						</div>
+					</div>
+					<form method="post" class="actions" style="align-items:end;flex-wrap:wrap">
+						<input type="hidden" name="code" value={r.code} />
+						<label>
+							Araç sınıfı
+							<select name="class" required>
+								{fits.map((c) => (
+									<option value={c.key} selected={r.my_class === c.key}>
+										{c.name} ({c.pax_max} kişi)
+									</option>
+								))}
+							</select>
+						</label>
+						<label>
+							Kazancınız (₺)
+							<input type="text" name="amount" inputmode="decimal" required value={active && r.my_amount ? formatMoney(r.my_amount) : ""} placeholder="1.650" />
+						</label>
+						<label>
+							Araç (model, renk)
+							<input type="text" name="vehicle" maxlength="80" value={r.my_vehicle ?? ""} placeholder="Mercedes Vito, siyah" />
+						</label>
+						<button class="btn" type="submit" name="intent" value="offer">
+							{active ? "Teklifi güncelle" : "Teklif ver"}
+						</button>
+						{active && (
+							<button class="btn secondary" type="submit" name="intent" value="offer_withdraw" formnovalidate>
+								Geri çek
+							</button>
+						)}
+					</form>
+				</div>
+			);
+		})
+	}
+
+	<h2 style="margin:24px 0 4px">Operasyon havuzu</h2>
 	<p class="muted" style="margin-top:0">
 		SecureDrive'ın tüm partnerlere açtığı işler. <strong>Sabit</strong> işleri ilk alan alır. <strong>İhalede</strong> tavanın altında teklif verirsiniz;
 		süre bitince en düşük teklif kazanır. Kazandığınız iş "İşler" sayfasına düşer, sürücünüzü oradan atarsınız. Başka partnerlerin tekliflerini görmezsiniz.

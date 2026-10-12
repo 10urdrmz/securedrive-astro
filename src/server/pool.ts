@@ -18,6 +18,7 @@ import type { Db } from "./db";
 import { addEvent, assignDriver, FINAL_STATUSES, getBookingByCode, updateBooking, type Actor, type Booking } from "./bookings";
 import { getPartner, offerToPartner } from "./partners";
 import { ulid } from "./ids";
+import { expireRequests } from "./offers";
 
 export type PoolMode = "fixed" | "auction";
 export interface Bidder {
@@ -94,7 +95,7 @@ export async function openPool(
 	actor: Actor,
 ): Promise<PoolJob> {
 	if (FINAL_STATUSES.includes(booking.status)) throw new Error("Kapanmış bir rezervasyon havuza konamaz.");
-	if (booking.status === "quoted") throw new Error("Müşteri teklifi onaylamadan iş havuza konamaz.");
+	if (booking.status === "quoted" || booking.status === "bidding") throw new Error("Müşteri onaylamadan iş havuza konamaz.");
 	if (booking.driver_id || booking.carrier_org_id) throw new Error("Önce sürücüyü ya da partneri işten alın.");
 	if (!(input.payoutMinor > 0)) throw new Error("Havuz tutarını yazın.");
 	const current = await currentPoolJob(db, booking.id);
@@ -156,8 +157,25 @@ async function award(db: Db, job: PoolJob, winner: { kind: "partner" | "driver";
 		.execute();
 	const bookingRow = await db.selectFrom("sd_bookings").select("code").where("id", "=", job.booking_id).executeTakeFirstOrThrow();
 	const booking = (await getBookingByCode(db, bookingRow.code))!;
+	await handToCarrier(db, booking, winner, actor, job.note, "pool_awarded");
+}
+
+/**
+ * Gives a booking to the partner or driver who won it (pool or customer's pick):
+ * a partner gets the job already accepted at that amount and puts a driver on it;
+ * a driver is assigned directly, already accepted, with that amount as the payout.
+ */
+export async function handToCarrier(
+	db: Db,
+	booking: Booking,
+	winner: { kind: "partner" | "driver"; id: string; amountMinor: number },
+	actor: Actor,
+	note: string | null,
+	event: string,
+) {
+	const now = new Date().toISOString();
 	if (winner.kind === "partner") {
-		await offerToPartner(db, booking, winner.id, winner.amountMinor, actor, job.note);
+		await offerToPartner(db, booking, winner.id, winner.amountMinor, actor, note);
 		await db
 			.updateTable("sd_carrier_jobs")
 			.set({ status: "accepted", responded_at: now })
@@ -166,7 +184,7 @@ async function award(db: Db, job: PoolJob, winner: { kind: "partner" | "driver";
 			.where("status", "=", "offered")
 			.execute();
 		const partner = await getPartner(db, winner.id);
-		await addEvent(db, booking.id, actor, "pool_awarded", null, null, { orgId: winner.id, partnerName: partner?.name ?? null, amount_minor: winner.amountMinor });
+		await addEvent(db, booking.id, actor, event, null, null, { orgId: winner.id, partnerName: partner?.name ?? null, amount_minor: winner.amountMinor });
 	} else {
 		await updateBooking(db, booking, { payout_minor: winner.amountMinor });
 		const fresh = (await getBookingByCode(db, booking.code))!;
@@ -182,7 +200,7 @@ async function award(db: Db, job: PoolJob, winner: { kind: "partner" | "driver";
 			.executeTakeFirst();
 		if (assignment) await db.insertInto("sd_assignment_acks").values({ assignment_id: assignment.id, response: "accepted", at: now }).execute();
 		const driver = await db.selectFrom("sd_drivers").select("name").where("id", "=", winner.id).executeTakeFirst();
-		await addEvent(db, booking.id, actor, "pool_awarded", null, null, { driverId: winner.id, driverName: driver?.name ?? null, amount_minor: winner.amountMinor });
+		await addEvent(db, booking.id, actor, event, null, null, { driverId: winner.id, driverName: driver?.name ?? null, amount_minor: winner.amountMinor });
 	}
 }
 
@@ -305,6 +323,7 @@ export async function settlePoolsIfDue(db: Db): Promise<void> {
 	lastRun = Date.now();
 	try {
 		await settleDuePools(db);
+		await expireRequests(db);
 	} catch (error) {
 		console.error("pool", error);
 	}

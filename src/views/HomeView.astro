@@ -8,12 +8,12 @@ import RouteCard from "../components/sections/RouteCard.astro";
 import HowSteps from "../components/sections/HowSteps.astro";
 import FaqList from "../components/sections/FaqList.astro";
 import CtaBand from "../components/sections/CtaBand.astro";
-import { pagePath, type Locale } from "../i18n/locales";
+import { bookPath, pagePath, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import { byOrder, getLocalized, getLocalizedEntry, slugOf } from "../lib/content";
 import { airportName } from "../lib/routes";
 import { businessJsonLd, faqJsonLd } from "../lib/schema";
-import { AIRPORT_CODES, DISTRICTS } from "securedrive-inquiries/places";
+import { ISTANBUL_DISTRICTS } from "../server/db/catalog";
 
 interface Props {
 	locale: Locale;
@@ -64,35 +64,45 @@ const today = new Date().toISOString().slice(0, 10);
 				<h1>{headline}</h1>
 				<p class="hero-lead">{subtitle}</p>
 				<div class="hero-actions">
-					<a href={pagePath(locale, "transfer")} class="btn btn--light">{t("hero.ctaPrimary")}</a>
+					<a href={bookPath(locale)} class="btn btn--light">{t("hero.ctaPrimary")}</a>
 					<a href={pagePath(locale, "fleet")} class="btn btn--ghost-light">{t("hero.ctaSecondary")}</a>
 				</div>
 			</div>
 
-			<form class="quick" action={pagePath(locale, "transfer")} method="get">
+			<form class="quick" action={bookPath(locale)} method="get">
 				<h2>{t("quick.title")}</h2>
 				<div class="field">
 					<label for="q-from">{t("quick.from")}</label>
-					<select id="q-from" name="from">
+					<select id="q-from" name="from" required>
 						<option value="">{t("form.choose")}</option>
-						{AIRPORT_CODES.map((code) => <option value={code}>{airportName(code, locale)}</option>)}
+						{(["IST", "SAW"] as const).map((code) => <option value={code.toLowerCase()}>{airportName(code, locale)}</option>)}
 					</select>
 				</div>
 				<div class="field">
 					<label for="q-to">{t("quick.to")}</label>
-					<select id="q-to" name="to">
+					<select id="q-to" name="to" required>
 						<option value="">{t("form.choose")}</option>
-						{DISTRICTS.map((district) => <option value={district}>{district}</option>)}
+						{ISTANBUL_DISTRICTS.filter((d) => d.serviceable).map((d) => <option value={d.id}>{d.name}</option>)}
 					</select>
 				</div>
 				<div class="quick-row">
 					<div class="field">
 						<label for="q-date">{t("quick.date")}</label>
-						<input id="q-date" name="date" type="date" min={today} />
+						<input id="q-date" name="date" type="date" min={today} required />
 					</div>
 					<div class="field">
+						<label for="q-time">{t("quick.time")}</label>
+						<input id="q-time" name="time" type="time" required />
+					</div>
+				</div>
+				<div class="quick-row">
+					<div class="field">
 						<label for="q-pax">{t("quick.passengers")}</label>
-						<input id="q-pax" name="passengers" type="number" min="1" max="60" value="2" inputmode="numeric" />
+						<input id="q-pax" name="pax" type="number" min="1" max="60" value="2" inputmode="numeric" required />
+					</div>
+					<div class="field">
+						<label for="q-bags">{t("form.luggage")}</label>
+						<input id="q-bags" name="bags" type="number" min="0" max="60" value="2" inputmode="numeric" required />
 					</div>
 				</div>
 				<button type="submit" class="btn btn--primary btn--block">

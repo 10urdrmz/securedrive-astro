@@ -12,6 +12,7 @@ import { SITE } from "../lib/site";
 export const GET: APIRoute = async () => {
 	const paths = new Set<string>(Object.values(PAGE_SLUGS));
 	paths.delete(PAGE_SLUGS.about); // listed through the pages collection below
+	paths.delete(PAGE_SLUGS.transfer); // redirects to the booking request
 
 	const sections = { services: PAGE_SLUGS.services, vehicles: PAGE_SLUGS.fleet, routes: PAGE_SLUGS.routes, posts: PAGE_SLUGS.blog };
 	for (const [collection, base] of Object.entries(sections)) {

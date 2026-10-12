@@ -28,6 +28,8 @@ export interface BusinessSettings {
 	autoAssignHours: number;
 	/** A driver who has not answered an automatic offer within this loses it. */
 	offerMinutes: number;
+	/** Platform share added on top of a carrier's offer to make the customer's price, in percent. */
+	offerCommissionPct: number;
 }
 
 export const DEFAULT_SETTINGS: BusinessSettings = {
@@ -49,6 +51,7 @@ export const DEFAULT_SETTINGS: BusinessSettings = {
 	autoAssign: true,
 	autoAssignHours: 24,
 	offerMinutes: 15,
+	offerCommissionPct: 15,
 };
 
 const KEY = "business";

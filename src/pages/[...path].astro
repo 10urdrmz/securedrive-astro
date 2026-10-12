@@ -9,6 +9,7 @@
  */
 import { LEGACY_REDIRECTS, PAGE_SLUGS, pageKeyForSlug, parsePath, localizePath } from "../i18n/locales";
 import { getLocalizedEntry } from "../lib/content";
+import { bookHref } from "../lib/routes";
 import HomeView from "../views/HomeView.astro";
 import ServicesView from "../views/ServicesView.astro";
 import ServiceView from "../views/ServiceView.astro";
@@ -34,6 +35,12 @@ if (locale === "tr" && first && !second && LEGACY_REDIRECTS[first]) {
 	return Astro.redirect(LEGACY_REDIRECTS[first], 301);
 }
 if (first === "home" && !second) return Astro.redirect(localizePath(locale, ""), 301);
+// The old price-request form gave way to the booking request (offers.ts); keep its
+// links and the homepage form's old parameters working.
+if (first === PAGE_SLUGS.transfer && !second) {
+	const q = Astro.url.searchParams;
+	return Astro.redirect(bookHref(locale, { from: q.get("from"), to: q.get("to"), date: q.get("date"), pax: q.get("passengers") ?? q.get("pax") }), 301);
+}
 
 const DETAIL_COLLECTIONS = { services: "services", fleet: "vehicles", routes: "routes", blog: "posts" } as const;
 type DetailKey = keyof typeof DETAIL_COLLECTIONS;

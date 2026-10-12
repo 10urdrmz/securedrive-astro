@@ -103,6 +103,7 @@ export async function currentCarrierJob(db: Db, bookingId: string): Promise<Carr
 export async function offerToPartner(db: Db, booking: Booking, orgId: string, payoutMinor: number, actor: Actor, note: string | null = null) {
 	if (FINAL_STATUSES.includes(booking.status)) throw new Error("Kapanmış bir rezervasyon partnere verilemez.");
 	if (booking.status === "quoted") throw new Error("Müşteri teklifi onaylamadan iş partnere verilemez.");
+	if (booking.status === "bidding") throw new Error("Müşteri bir teklif seçmeden iş partnere verilemez.");
 	if (!(payoutMinor > 0)) throw new Error("Partnerin alacağı tutarı yazın.");
 	const partner = await getPartner(db, orgId);
 	if (!partner || partner.status !== "active") throw new Error("Partner bulunamadı ya da pasif.");

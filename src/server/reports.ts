@@ -83,7 +83,7 @@ async function rows(db: Db, start: string, end: string): Promise<ReportRow[]> {
 			"o.name as partner_name",
 			"r.rating",
 		])
-		.where("b.status", "!=", "quoted")
+		.where("b.status", "not in", ["quoted", "bidding"])
 		.where("b.pickup_at", ">=", start)
 		.where("b.pickup_at", "<", end)
 		.limit(20000)
