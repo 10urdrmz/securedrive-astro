@@ -10,6 +10,7 @@ import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import Notice from "../components/Notice.astro";
 import ChatBox from "../components/ChatBox.astro";
+import Photo from "../components/Photo.astro";
 import { BOOK_SLUG, LOCALE_META, bookPath } from "../i18n/locales";
 import { useTranslations, type UiKey } from "../i18n/ui";
 import type { BookingDetail } from "../lib/booking-page";
@@ -149,39 +150,70 @@ const chatRoomName = await chatRoom(booking);
 									</div>
 								) : (
 									<ul class="m-0 grid list-none gap-3 p-0">
-										{page.offers.map((offer, i) => (
+										{page.offers.map((offer, i) => {
+											const v = page.vehicleCatalog[offer.class_key];
+											return (
 											<li class:list={["grid gap-3 rounded-2xl border border-solid p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center", i === 0 ? "border-emerald-300 bg-emerald-50/40" : "border-gray-200"]}>
-												<div class="grid min-w-0 gap-1">
-													<div class="flex flex-wrap items-center gap-2">
-														<strong class="text-gray-900">{offer.display_name}</strong>
-														{i === 0 && page.offers.length > 1 && (
-															<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">{t("offers.best")}</span>
+												<div class="grid min-w-0 gap-3 sm:grid-cols-[72px_minmax(0,1fr)]">
+													{v && (v.image || v.fallbackImage) ? (
+														<div class="h-[54px] w-[72px] shrink-0 overflow-hidden rounded-lg bg-gray-100">
+															<Photo image={v.image} fallback={v.fallbackImage} alt={v.name} class="h-full w-full object-cover" sizes="72px" width={144} height={108} />
+														</div>
+													) : (
+														<div class="hidden h-[54px] w-[72px] shrink-0 sm:block" />
+													)}
+													<div class="grid min-w-0 gap-1">
+														<div class="flex flex-wrap items-center gap-2">
+															<strong class="text-gray-900">{offer.display_name}</strong>
+															{i === 0 && page.offers.length > 1 && (
+																<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">{t("offers.best")}</span>
+															)}
+														</div>
+														<span class="text-sm text-gray-700">
+															{offer.class_name}
+															{offer.vehicle && <> · {offer.vehicle}</>}
+														</span>
+														<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+															<span class="inline-flex items-center gap-1">
+																<Icon name="users" size={14} />
+																{offer.pax_max}
+															</span>
+															<span class="inline-flex items-center gap-1">
+																<Icon name="luggage" size={14} />
+																{offer.bags_max}
+															</span>
+															{offer.rating !== null ? (
+																<span class="inline-flex items-center gap-1">
+																	<Icon name="star-fill" size={14} class="text-amber-400" />
+																	{offer.rating.toFixed(1)} ({offer.ratings})
+																</span>
+															) : (
+																<span>{t("offers.new")}</span>
+															)}
+															{offer.trips > 0 && <span>{t("offers.trips", { n: offer.trips })}</span>}
+														</span>
+														{offer.note && <p class="m-0 text-sm text-gray-600">{offer.note}</p>}
+														{v && (v.engine || v.transmission || v.modelYear || v.features.length > 0) && (
+															<details class="mt-1 text-xs">
+																<summary class="cursor-pointer select-none font-semibold text-navy-700">{t("offers.seeVehicle")}</summary>
+																<dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
+																	{v.engine && (<><dt class="text-gray-500">{t("fleet.engine")}</dt><dd class="m-0">{v.engine}</dd></>)}
+																	{v.transmission && (<><dt class="text-gray-500">{t("fleet.transmission")}</dt><dd class="m-0">{v.transmission}</dd></>)}
+																	{v.modelYear && (<><dt class="text-gray-500">{t("fleet.year")}</dt><dd class="m-0">{v.modelYear}</dd></>)}
+																</dl>
+																{v.features.length > 0 && (
+																	<ul class="m-0 mt-2 grid list-none gap-1 p-0 sm:grid-cols-2">
+																		{v.features.map((f) => (
+																			<li class="flex items-center gap-1 text-gray-700">
+																				<Icon name="check" size={12} />
+																				{f}
+																			</li>
+																		))}
+																	</ul>
+																)}
+															</details>
 														)}
 													</div>
-													<span class="text-sm text-gray-700">
-														{offer.class_name}
-														{offer.vehicle && <> · {offer.vehicle}</>}
-													</span>
-													<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
-														<span class="inline-flex items-center gap-1">
-															<Icon name="users" size={14} />
-															{offer.pax_max}
-														</span>
-														<span class="inline-flex items-center gap-1">
-															<Icon name="luggage" size={14} />
-															{offer.bags_max}
-														</span>
-														{offer.rating !== null ? (
-															<span class="inline-flex items-center gap-1">
-																<Icon name="star-fill" size={14} class="text-amber-400" />
-																{offer.rating.toFixed(1)} ({offer.ratings})
-															</span>
-														) : (
-															<span>{t("offers.new")}</span>
-														)}
-														{offer.trips > 0 && <span>{t("offers.trips", { n: offer.trips })}</span>}
-													</span>
-													{offer.note && <p class="m-0 text-sm text-gray-600">{offer.note}</p>}
 												</div>
 												<form method="post" class="m-0 flex items-center justify-between gap-3 sm:grid sm:justify-items-end">
 													<input type="hidden" name="intent" value="pick" />
@@ -190,7 +222,8 @@ const chatRoomName = await chatRoom(booking);
 													<button class="btn btn--primary btn--sm" type="submit">{t("offers.pick")}</button>
 												</form>
 											</li>
-										))}
+											);
+										})}
 									</ul>
 								)}
 								{page.requestedExtras.length > 0 && (
