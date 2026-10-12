@@ -18,9 +18,11 @@ interface Props {
 	active?: string;
 	/** The same shell serves partner fleets (/partner) and company accounts (/firma) with their own menus. */
 	panel?: "ops" | "partner" | "company" | "agency";
+	/** One line under the page title. Page buttons go in the "actions" slot next to it. */
+	subtitle?: string;
 }
 
-const { title, user, active = Astro.url.pathname, panel = "ops" } = Astro.props;
+const { title, user, active = Astro.url.pathname, panel = "ops", subtitle } = Astro.props;
 const partner = panel === "partner";
 const PANEL = {
 	ops: { home: "/ops", name: "Operasyon", logout: "/ops/cikis" },
@@ -45,7 +47,7 @@ const ago = (iso: string) => {
 };
 
 type IconName = Parameters<typeof Icon>[0]["name"];
-type NavItem = { href: string; label: string; icon: IconName; show: boolean; count?: keyof OpsCounts; hint?: string };
+type NavItem = { href: string; label: string; icon: IconName; show: boolean; count?: keyof OpsCounts; hint?: string; group?: string };
 const NAV_ALL: NavItem[] = !user
 	? []
 	: panel === "agency"
@@ -73,17 +75,17 @@ const NAV_ALL: NavItem[] = !user
 				{ href: "/partner/finans", label: "Hakediş", icon: "wallet", show: true },
 			]
 		: [
-			{ href: "/ops", label: "Pano", icon: "dashboard", show: true },
+			{ href: "/ops", label: "Pano", icon: "dashboard", show: true, group: "Günlük iş" },
 			{ href: "/ops/rezervasyonlar", label: "Rezervasyonlar", icon: "calendar", show: can(user, "bookings.read"), count: "bookings" as const, hint: "sürücü bekleyen" },
 			{ href: "/ops/talepler", label: "Fiyat talepleri", icon: "inbox", show: can(user, "bookings.read"), count: "requests" as const, hint: "yeni talep" },
 			{ href: "/ops/harita", label: "Canlı harita", icon: "map", show: can(user, "bookings.read") },
-			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read"), count: "applications" as const, hint: "yeni başvuru" },
+			{ href: "/ops/suruculer", label: "Sürücüler", icon: "user", show: can(user, "bookings.read"), count: "applications" as const, hint: "yeni başvuru", group: "İş ortakları" },
 			{ href: "/ops/partnerler", label: "Partner filolar", icon: "building", show: can(user, "bookings.read") },
 			{ href: "/ops/firmalar", label: "Kurumsal firmalar", icon: "card", show: can(user, "bookings.read") },
 			{ href: "/ops/acenteler", label: "Acenteler ve oteller", icon: "globe", show: can(user, "bookings.read") },
-			{ href: "/ops/hakedis", label: "Hakediş", icon: "wallet", show: can(user, "settlements.manage") },
+			{ href: "/ops/hakedis", label: "Hakediş", icon: "wallet", show: can(user, "settlements.manage"), group: "Finans" },
 			{ href: "/ops/raporlar", label: "Raporlar", icon: "gauge", show: can(user, "reports.read") },
-			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read"), group: "Ayarlar" },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", icon: "pin", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", icon: "car", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/ekstralar", label: "Ekstralar", icon: "gift", show: can(user, "catalog.read") },
@@ -92,6 +94,25 @@ const NAV_ALL: NavItem[] = !user
 			{ href: "/ops/yonetim/denetim", label: "Denetim kaydı", icon: "file", show: can(user, "audit.read") },
 			];
 const NAV = NAV_ALL.filter((item) => item.show);
+// Menu sections: an item without a group stays in the section above it.
+const SECTIONS: { title: string; items: NavItem[] }[] = [];
+for (const item of NAV) {
+	if (item.group || SECTIONS.length === 0) SECTIONS.push({ title: item.group ?? "", items: [] });
+	SECTIONS[SECTIONS.length - 1].items.push(item);
+}
+const isActive = (href: string) => active === href || (href !== PANEL.home && active.startsWith(`${href}/`));
+const roleLabel = user ? user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ") : "";
+const initials = user
+	? user.name
+			.split(/\s+/)
+			.filter(Boolean)
+			.slice(0, 2)
+			.map((w) => w[0]!.toLocaleUpperCase("tr-TR"))
+			.join("")
+	: "";
+// Booking search in the top bar, for ops staff who can read bookings.
+const search = panel === "ops" && watch;
+const hasActions = Astro.slots.has("actions");
 
 Astro.response.headers.set("Cache-Control", "no-store");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
@@ -107,78 +128,150 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		<title>{title} · SecureDrive {PANEL.name}</title>
 		<link rel="icon" href="/favicon.svg" />
 	</head>
-	<body class="ops">
-		<header class="ops-top">
-			<a class="ops-brand" href={PANEL.home}>SecureDrive <span>{PANEL.name}</span></a>
-			{
-				user && (
-					<div class="ops-user">
-						{watch && (
-							<details class="ops-bell" data-ops-bell>
-								<summary aria-label="Bildirimler">
-									<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-										<path d="M10.27 21a2 2 0 0 0 3.46 0" />
-										<path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33" />
-									</svg>
-									<span class="ops-count" data-ops-total hidden={counts.requests + counts.bookings === 0}>
-										{counts.requests + counts.bookings}
-									</span>
-								</summary>
-								<div class="ops-bell-panel">
-									<div class="ops-bell-head">
-										<strong>Bildirimler</strong>
-										<button type="button" class="ops-link" data-ops-enable hidden>Masaüstü bildirimlerini aç</button>
-									</div>
-									<ul data-ops-feed>
-										{feed.map((item) => (
-											<li data-key={item.key} data-at={item.at}>
-												<a href={item.href}>
-													<span class:list={["ops-dot", item.kind]} aria-hidden="true" />
-													<span class="ops-feed-text">
-														<strong>{item.title}</strong>
-														<span>{item.detail}</span>
-													</span>
-													<time datetime={item.at}>{ago(item.at)}</time>
-												</a>
-											</li>
-										))}
-										{feed.length === 0 && <li class="ops-empty">Henüz bildirim yok.</li>}
-									</ul>
-								</div>
-							</details>
-						)}
-						<span>
-							{user.name} · {user.roles.map((r) => ROLE_LABELS[r] ?? r).join(", ")}
-						</span>
-						<form method="post" action={PANEL.logout}>
-							<button type="submit" class="ops-link">Çıkış</button>
-						</form>
-					</div>
-				)
-			}
-		</header>
-		<div class:list={["ops-shell", NAV.length === 0 && "no-nav"]}>
+	<body class:list={["ops", NAV.length === 0 && "ops-solo"]}>
+		{NAV.length > 0 && <input type="checkbox" id="ops-menu" class="ops-menu-toggle" aria-hidden="true" tabindex="-1" />}
+		<div class="ops-app">
 			{
 				NAV.length > 0 && (
-					<nav class="ops-nav" aria-label={`${PANEL.name} menüsü`}>
-						{NAV.map((item) => (
-							<a href={item.href} aria-current={active === item.href || (item.href !== PANEL.home && active.startsWith(`${item.href}/`)) ? "page" : undefined}>
-								<Icon name={item.icon} size={18} class="ops-nav-icon" />
-								<span>{item.label}</span>
-								{item.count && (
-									<span class="ops-count" data-ops-count={item.count} title={item.hint} hidden={counts[item.count] === 0}>
-										{counts[item.count]}
-									</span>
-								)}
+					<aside class="ops-side">
+						<div class="ops-side-head">
+							<a class="ops-brand" href={PANEL.home}>
+								<span class="ops-logo" aria-hidden="true">SD</span>
+								<span>
+									SecureDrive <em>{PANEL.name}</em>
+								</span>
 							</a>
-						))}
-					</nav>
+							<label for="ops-menu" class="ops-icon-btn ops-close" aria-label="Menüyü kapat">
+								<Icon name="close" size={20} />
+							</label>
+						</div>
+						<nav class="ops-nav" aria-label={`${PANEL.name} menüsü`}>
+							{SECTIONS.map((section) => (
+								<div class="ops-nav-group">
+									{section.title && <p class="ops-nav-title">{section.title}</p>}
+									{section.items.map((item) => (
+										<a href={item.href} aria-current={isActive(item.href) ? "page" : undefined}>
+											<Icon name={item.icon} size={18} class="ops-nav-icon" />
+											<span class="ops-nav-label">{item.label}</span>
+											{item.count && (
+												<span class="ops-count" data-ops-count={item.count} title={item.hint} hidden={counts[item.count] === 0}>
+													{counts[item.count]}
+												</span>
+											)}
+										</a>
+									))}
+								</div>
+							))}
+						</nav>
+						{user && (
+							<div class="ops-side-user">
+								<span class="ops-avatar" aria-hidden="true">{initials}</span>
+								<span class="ops-who">
+									<strong>{user.name}</strong>
+									<span>{roleLabel}</span>
+								</span>
+								<form method="post" action={PANEL.logout}>
+									<button type="submit" class="ops-icon-btn" aria-label="Çıkış yap" title="Çıkış yap">
+										<Icon name="logout" size={18} />
+									</button>
+								</form>
+							</div>
+						)}
+					</aside>
 				)
 			}
-			<main class="ops-main">
-				<h1>{title}</h1>
-				<slot />
-			</main>
+			{NAV.length > 0 && <label for="ops-menu" class="ops-scrim" aria-hidden="true" />}
+			<div class="ops-body">
+				<header class:list={["ops-top", NAV.length > 0 && !search && !watch && "ops-top-min"]}>
+					{
+						NAV.length > 0 && (
+							<label for="ops-menu" class="ops-icon-btn ops-burger" aria-label="Menü">
+								<Icon name="menu" size={22} />
+							</label>
+						)
+					}
+					<a class="ops-brand ops-top-brand" href={PANEL.home}>
+						<span class="ops-logo" aria-hidden="true">SD</span>
+						<span>
+							SecureDrive <em>{PANEL.name}</em>
+						</span>
+					</a>
+					{
+						search && (
+							<form class="ops-search" method="get" action="/ops/rezervasyonlar" role="search">
+								<Icon name="search" size={16} class="ops-search-icon" />
+								<input type="search" name="q" placeholder="Rezervasyon ara: no, ad, telefon" aria-label="Rezervasyon ara" />
+							</form>
+						)
+					}
+					{
+						user && (
+							<div class="ops-user">
+								{search && (
+									<a class="ops-icon-btn ops-search-link" href="/ops/rezervasyonlar" aria-label="Rezervasyon ara">
+										<Icon name="search" size={20} />
+									</a>
+								)}
+								{watch && (
+									<details class="ops-bell" data-ops-bell>
+										<summary aria-label="Bildirimler">
+											<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+												<path d="M10.27 21a2 2 0 0 0 3.46 0" />
+												<path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33" />
+											</svg>
+											<span class="ops-count" data-ops-total hidden={counts.requests + counts.bookings === 0}>
+												{counts.requests + counts.bookings}
+											</span>
+										</summary>
+										<div class="ops-bell-panel">
+											<div class="ops-bell-head">
+												<strong>Bildirimler</strong>
+												<button type="button" class="ops-link" data-ops-enable hidden>Masaüstü bildirimlerini aç</button>
+											</div>
+											<ul data-ops-feed>
+												{feed.map((item) => (
+													<li data-key={item.key} data-at={item.at}>
+														<a href={item.href}>
+															<span class:list={["ops-dot", item.kind]} aria-hidden="true" />
+															<span class="ops-feed-text">
+																<strong>{item.title}</strong>
+																<span>{item.detail}</span>
+															</span>
+															<time datetime={item.at}>{ago(item.at)}</time>
+														</a>
+													</li>
+												))}
+												{feed.length === 0 && <li class="ops-empty">Henüz bildirim yok.</li>}
+											</ul>
+										</div>
+									</details>
+								)}
+								{NAV.length === 0 && (
+									<form method="post" action={PANEL.logout}>
+										<button type="submit" class="ops-icon-btn" aria-label="Çıkış yap" title="Çıkış yap">
+											<Icon name="logout" size={18} />
+										</button>
+									</form>
+								)}
+							</div>
+						)
+					}
+				</header>
+				<main class="ops-main">
+					<div class="ops-head">
+						<div>
+							<h1>{title}</h1>
+							{subtitle && <p class="ops-sub">{subtitle}</p>}
+						</div>
+						{hasActions && (
+							<div class="ops-head-actions">
+								<slot name="actions" />
+							</div>
+						)}
+					</div>
+					<slot />
+				</main>
+			</div>
 		</div>
 		{watch && <div class="ops-toasts" data-ops-toasts aria-live="polite" />}
 		{watch && <script src="/ops-alerts.js" defer is:inline />}
@@ -188,40 +281,303 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 <style is:global>
 	@layer legacy {
 	body.ops {
+		--ops-bg: #f4f6f9;
+		--ops-line: #e4e8ee;
+		--ops-soft: #f8fafc;
+		--ops-radius: 14px;
+		--ops-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+		--ops-side-w: 248px;
+		--ops-top-h: 60px;
 		margin: 0;
-		background: var(--gray-100);
+		background: var(--ops-bg);
 		color: var(--ink-900);
-		font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+		font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 		font-size: 15px;
+		line-height: 1.5;
 	}
-	.ops-top {
-		position: relative;
-		z-index: 40;
+
+	/* ---------- shell */
+	.ops-menu-toggle {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.ops-app {
+		display: grid;
+		grid-template-columns: var(--ops-side-w) minmax(0, 1fr);
+		min-height: 100vh;
+		background: linear-gradient(to right, var(--navy-900) var(--ops-side-w), transparent 0);
+	}
+	.ops-solo .ops-app {
+		grid-template-columns: minmax(0, 1fr);
+		background: none;
+	}
+	.ops-side {
+		position: sticky;
+		top: 0;
+		display: flex;
+		flex-direction: column;
+		height: 100vh;
+		background: var(--navy-900);
+		color: #c9d4e2;
+		overflow: hidden;
+	}
+	.ops-side-head {
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
-		gap: 16px;
-		padding: 12px 20px;
-		background: var(--navy-900);
-		color: #fff;
+		height: var(--ops-top-h);
+		padding: 0 16px 0 18px;
+		border-bottom: 1px solid rgb(255 255 255 / 0.08);
+		flex-shrink: 0;
 	}
 	.ops-brand {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
 		color: #fff;
 		font-weight: 700;
+		font-size: 15px;
+		letter-spacing: -0.01em;
 		text-decoration: none;
+		white-space: nowrap;
 	}
-	.ops-brand span {
-		color: var(--gold-300);
+	.ops-brand em {
+		font-style: normal;
 		font-weight: 500;
+		color: var(--gold-300);
+	}
+	.ops-logo {
+		display: grid;
+		place-items: center;
+		width: 30px;
+		height: 30px;
+		border-radius: 8px;
+		background: linear-gradient(135deg, var(--gold-300), var(--gold-500));
+		color: var(--navy-900);
+		font-size: 12px;
+		font-weight: 800;
+		letter-spacing: 0;
+		flex-shrink: 0;
+	}
+	.ops-nav {
+		flex: 1;
+		overflow-y: auto;
+		padding: 10px 10px 16px;
+		scrollbar-width: thin;
+		scrollbar-color: rgb(255 255 255 / 0.15) transparent;
+	}
+	.ops-nav-group + .ops-nav-group {
+		margin-top: 14px;
+	}
+	.ops-nav-title {
+		margin: 0;
+		padding: 6px 12px 6px;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: rgb(255 255 255 / 0.4);
+	}
+	.ops-nav a {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: 11px;
+		padding: 7px 12px;
+		margin: 1px 0;
+		border-radius: 9px;
+		color: #c9d4e2;
+		font-size: 14px;
+		font-weight: 500;
+		text-decoration: none;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+	.ops-nav-label {
+		flex: 1;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ops-nav-icon {
+		flex-shrink: 0;
+		color: rgb(255 255 255 / 0.5);
+	}
+	.ops-nav a:hover {
+		background: rgb(255 255 255 / 0.06);
+		color: #fff;
+	}
+	.ops-nav a[aria-current="page"] {
+		background: rgb(255 255 255 / 0.1);
+		color: #fff;
+		font-weight: 600;
+	}
+	.ops-nav a[aria-current="page"]::before {
+		content: "";
+		position: absolute;
+		left: -10px;
+		top: 8px;
+		bottom: 8px;
+		width: 3px;
+		border-radius: 0 3px 3px 0;
+		background: var(--gold-300);
+	}
+	.ops-nav a[aria-current="page"] .ops-nav-icon {
+		color: var(--gold-300);
+	}
+	.ops-side-user {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 12px 12px 16px;
+		border-top: 1px solid rgb(255 255 255 / 0.08);
+		flex-shrink: 0;
+	}
+	.ops-side-user form {
+		margin: 0;
+	}
+	.ops-side-user .ops-icon-btn {
+		color: rgb(255 255 255 / 0.6);
+	}
+	.ops-side-user .ops-icon-btn:hover {
+		background: rgb(255 255 255 / 0.08);
+		color: #fff;
+	}
+	.ops-avatar {
+		display: grid;
+		place-items: center;
+		width: 34px;
+		height: 34px;
+		border-radius: 999px;
+		background: var(--navy-700);
+		color: #fff;
+		font-size: 13px;
+		font-weight: 700;
+		flex-shrink: 0;
+	}
+	.ops-who {
+		display: grid;
+		flex: 1;
+		min-width: 0;
+		line-height: 1.3;
+	}
+	.ops-who strong {
+		color: #fff;
+		font-size: 13px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ops-who span {
+		color: rgb(255 255 255 / 0.5);
+		font-size: 12px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.ops-icon-btn {
+		display: inline-grid;
+		place-items: center;
+		width: 36px;
+		height: 36px;
+		padding: 0;
+		border: 0;
+		border-radius: 10px;
+		background: transparent;
+		color: var(--gray-600);
+		cursor: pointer;
+		flex-shrink: 0;
+		transition:
+			background 0.15s,
+			color 0.15s;
+	}
+	.ops-icon-btn:hover {
+		background: var(--gray-100);
+		color: var(--ink-900);
+	}
+	.ops-close,
+	.ops-burger,
+	.ops-top-brand,
+	.ops-scrim,
+	.ops-search-link {
+		display: none;
+	}
+	.ops-body {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+	.ops-top {
+		position: sticky;
+		top: 0;
+		z-index: 40;
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		height: var(--ops-top-h);
+		padding: 0 24px;
+		background: rgb(255 255 255 / 0.92);
+		backdrop-filter: saturate(1.4) blur(8px);
+		border-bottom: 1px solid var(--ops-line);
+	}
+	/* Partner, company and agency panels: nothing for the bar on desktop, the menu has it all. */
+	@media (min-width: 1024px) {
+		.ops-top-min {
+			display: none;
+		}
+	}
+	.ops-top .ops-brand {
+		color: var(--navy-900);
+	}
+	.ops-top .ops-brand em {
+		color: var(--gold-500);
+	}
+	.ops-solo .ops-top-brand {
+		display: inline-flex;
+	}
+	.ops-search {
+		position: relative;
+		flex: 1;
+		max-width: 420px;
+		margin: 0;
+	}
+	.ops-search-icon {
+		position: absolute;
+		left: 12px;
+		top: 50%;
+		transform: translateY(-50%);
+		color: var(--gray-500);
+		pointer-events: none;
+	}
+	.ops-search input {
+		width: 100%;
+		height: 38px;
+		padding: 0 12px 0 36px;
+		border: 1px solid var(--ops-line);
+		border-radius: 10px;
+		background: var(--ops-soft);
+		font: inherit;
+		font-size: 14px;
+		color: inherit;
+		transition:
+			border-color 0.15s,
+			background 0.15s,
+			box-shadow 0.15s;
+	}
+	.ops-search input:focus {
+		outline: none;
+		background: #fff;
+		border-color: var(--navy-600);
+		box-shadow: 0 0 0 3px rgb(29 95 155 / 0.15);
 	}
 	.ops-user {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		font-size: 14px;
-	}
-	.ops-user > span {
-		opacity: 0.9;
+		gap: 4px;
+		margin-left: auto;
 	}
 	.ops-user form {
 		margin: 0;
@@ -229,122 +585,201 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 	.ops-link {
 		background: none;
 		border: 0;
-		color: var(--gold-300);
+		color: var(--navy-700);
 		cursor: pointer;
 		font: inherit;
 		padding: 0;
 		text-decoration: underline;
 	}
-	.ops-shell {
-		display: grid;
-		grid-template-columns: 200px 1fr;
-		min-height: calc(100vh - 48px);
-	}
-	/* Signed out (login, setup): no menu, so the page gets the whole width. */
-	.ops-shell.no-nav {
-		grid-template-columns: 1fr;
-	}
-	.ops-shell.no-nav .ops-main h1 {
-		max-width: 380px;
-		margin: 40px auto 16px;
-	}
-	.ops-shell.no-nav .auth-card {
-		margin-top: 0;
-	}
-	.ops-nav {
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-		padding: 16px 8px;
-		background: #fff;
-		border-right: 1px solid var(--gray-200);
-	}
-	.ops-nav a {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 9px 12px;
-		border-radius: 10px;
-		color: var(--gray-600);
-		font-weight: 500;
-		text-decoration: none;
-		transition:
-			background 0.15s,
-			color 0.15s;
-	}
-	.ops-nav a > span:first-of-type {
-		flex: 1;
-	}
-	.ops-nav-icon {
-		flex-shrink: 0;
-		color: var(--gray-500);
-	}
-	.ops-nav a:hover {
-		background: var(--gray-100);
-		color: var(--ink-900);
-	}
-	.ops-nav a[aria-current="page"] {
-		background: var(--navy-50);
-		color: var(--navy-800);
-		font-weight: 600;
-		box-shadow: inset 3px 0 0 var(--navy-700);
-	}
-	.ops-nav a[aria-current="page"] .ops-nav-icon {
-		color: var(--navy-700);
-	}
 	.ops-main {
-		padding: 24px 28px 48px;
+		width: 100%;
+		max-width: 1440px;
+		padding: 24px 28px 56px;
 		min-width: 0;
+		box-sizing: border-box;
+	}
+	.ops-head {
+		display: flex;
+		align-items: flex-end;
+		justify-content: space-between;
+		gap: 12px 20px;
+		flex-wrap: wrap;
+		margin-bottom: 20px;
+	}
+	.ops :is(h1, h2, h3, h4) {
+		font-family: inherit;
 	}
 	.ops-main h1 {
-		margin: 0 0 20px;
+		margin: 0;
 		font-size: 24px;
+		letter-spacing: -0.02em;
+	}
+	.ops-sub {
+		margin: 4px 0 0;
+		color: var(--gray-600);
+		font-size: 14px;
+	}
+	.ops-head-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 	.ops-main h2 {
 		margin: 28px 0 12px;
-		font-size: 18px;
+		font-size: 17px;
+		letter-spacing: -0.01em;
 	}
-	@media (max-width: 760px) {
-		.ops-shell {
-			grid-template-columns: 1fr;
+	.ops-main h3 {
+		font-size: 15px;
+	}
+	.ops-main a:not([class]) {
+		color: var(--navy-700);
+		font-weight: 500;
+	}
+	.ops-main a:not([class]):hover {
+		text-decoration: underline;
+		text-underline-offset: 3px;
+	}
+	.ops-main p {
+		margin-bottom: 12px;
+	}
+	/* Signed out (login, setup): no menu, the card sits in the middle. */
+	.ops-solo .ops-main {
+		max-width: 440px;
+		margin: 0 auto;
+		padding-top: 48px;
+	}
+	.ops-solo .ops-head {
+		justify-content: center;
+		text-align: center;
+	}
+	.ops-solo .auth-card {
+		margin-top: 0;
+	}
+
+	@media (max-width: 1023px) {
+		.ops-app {
+			grid-template-columns: minmax(0, 1fr);
+			background: none;
 		}
-		.ops-nav {
-			flex-direction: row;
-			overflow-x: auto;
-			padding: 8px;
-			border-right: 0;
-			border-bottom: 1px solid var(--gray-200);
-			scrollbar-width: none;
+		.ops-side {
+			position: fixed;
+			inset: 0 auto 0 0;
+			z-index: 70;
+			width: min(300px, 86vw);
+			transform: translateX(-100%);
+			transition: transform 0.25s ease;
 		}
-		.ops-nav a {
-			flex-shrink: 0;
-			white-space: nowrap;
+		.ops-menu-toggle:checked ~ .ops-app .ops-side {
+			transform: none;
+			box-shadow: 0 24px 48px -12px rgb(10 37 64 / 0.5);
 		}
-		.ops-nav a[aria-current="page"] {
-			box-shadow: inset 0 -3px 0 var(--navy-700);
+		.ops-scrim {
+			position: fixed;
+			inset: 0;
+			z-index: 65;
+			background: rgb(10 37 64 / 0.45);
+			opacity: 0;
+			pointer-events: none;
+			transition: opacity 0.25s;
+		}
+		.ops-menu-toggle:checked ~ .ops-app .ops-scrim {
+			display: block;
+			opacity: 1;
+			pointer-events: auto;
+		}
+		.ops-close,
+		.ops-burger {
+			display: inline-grid;
+		}
+		.ops-close {
+			color: rgb(255 255 255 / 0.7);
+		}
+		.ops-close:hover {
+			background: rgb(255 255 255 / 0.08);
+			color: #fff;
+		}
+		.ops-top {
+			padding: 0 12px;
+			gap: 6px;
+		}
+		.ops-top-brand {
+			display: inline-flex;
 		}
 		.ops-main {
-			padding: 16px;
+			padding: 20px 16px 48px;
+		}
+	}
+	@media (max-width: 1023px) and (prefers-reduced-motion: reduce) {
+		.ops-side,
+		.ops-scrim {
+			transition: none;
+		}
+	}
+	@media (max-width: 720px) {
+		.ops-search {
+			display: none;
+		}
+		.ops-search-link {
+			display: inline-grid;
+		}
+		.ops-top-brand span:last-child {
+			font-size: 14px;
+		}
+		.ops-main h1 {
+			font-size: 21px;
+		}
+		.ops-head-actions {
+			width: 100%;
+		}
+		.ops-head-actions > * {
+			flex: 1;
 		}
 	}
 
-	.card {
+	/* ---------- building blocks */
+	.ops-main .card {
+		display: block;
+		flex-direction: row;
+		position: static;
+		overflow: visible;
 		background: #fff;
-		border: 1px solid var(--gray-200);
-		border-radius: 10px;
+		border: 1px solid var(--ops-line);
+		border-radius: var(--ops-radius);
+		box-shadow: var(--ops-shadow);
 		padding: 20px;
-		margin-bottom: 20px;
+		margin-bottom: 16px;
+		transition: none;
+	}
+	.ops-main .card.form-grid {
+		display: grid;
+	}
+	.ops-main .card > h2:first-child,
+	.ops-main .card > summary + h2,
+	.ops-main .card > input[type="hidden"] + h2,
+	.ops-main .card > :first-child > h2:first-child {
+		margin-top: 0;
+	}
+	.ops-main details.card > summary {
+		cursor: pointer;
+		font-weight: 600;
+		list-style-position: inside;
+	}
+	.ops-main details.card[open] > summary {
+		margin-bottom: 12px;
 	}
 	.muted {
 		color: var(--gray-600);
 	}
 	.notice {
-		padding: 10px 14px;
-		border-radius: 8px;
+		padding: 12px 14px 12px 16px;
+		border-radius: 10px;
 		margin-bottom: 16px;
 		background: #ecfdf3;
-		color: var(--green-600);
+		color: #05603a;
 		border: 1px solid #abefc6;
+		border-left-width: 4px;
+		font-size: 14px;
 	}
 	/* Waiting on someone else (a quote the customer has not answered). */
 	.notice.warn {
@@ -357,63 +792,146 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		color: var(--red-600);
 		border-color: #fecdca;
 	}
+	.notice .actions {
+		margin-top: 10px;
+	}
 	.table-wrap {
 		overflow-x: auto;
+		background: #fff;
+		border: 1px solid var(--ops-line);
+		border-radius: var(--ops-radius);
+		box-shadow: var(--ops-shadow);
+		margin-bottom: 16px;
+	}
+	.card .table-wrap {
+		border: 0;
+		border-radius: 0;
+		box-shadow: none;
+		margin: 0 -20px;
+		margin-bottom: 0;
+	}
+	.card .table-wrap table.data th:first-child,
+	.card .table-wrap table.data td:first-child {
+		padding-left: 20px;
+	}
+	.card .table-wrap table.data th:last-child,
+	.card .table-wrap table.data td:last-child {
+		padding-right: 20px;
 	}
 	table.data {
 		width: 100%;
 		border-collapse: collapse;
-		background: #fff;
+		background: transparent;
+		font-size: 14px;
 	}
 	table.data th,
 	table.data td {
 		text-align: left;
-		padding: 8px 10px;
-		border-bottom: 1px solid var(--gray-200);
+		padding: 10px 12px;
+		border-bottom: 1px solid var(--ops-line);
 		vertical-align: middle;
 	}
-	table.data th {
-		font-size: 13px;
-		color: var(--gray-600);
+	table.data thead th {
+		font-size: 12px;
 		font-weight: 600;
-		background: var(--gray-100);
+		letter-spacing: 0.03em;
+		text-transform: uppercase;
+		color: var(--gray-500);
+		background: var(--ops-soft);
+		white-space: nowrap;
+	}
+	/* Label/value tables (a booking's details): the label column is quiet. */
+	table.data tbody th {
+		width: 180px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--gray-600);
+		background: transparent;
+	}
+	table.data tbody tr:last-child > * {
+		border-bottom: 0;
+	}
+	table.data thead + tbody tr:hover > td {
+		background: var(--ops-soft);
 	}
 	table.data td.num,
 	table.data th.num {
 		text-align: right;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	table.data .nowrap {
+		white-space: nowrap;
+	}
+	table.data a {
+		color: var(--navy-700);
 	}
 	.ops-main label {
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
+		gap: 6px;
 		font-size: 13px;
 		font-weight: 600;
 		color: var(--ink-800);
 	}
-	.ops-main label.inline {
+	.ops-main label.inline,
+	.ops-main label:has(> input[type="checkbox"]),
+	.ops-main label:has(> input[type="radio"]) {
 		flex-direction: row;
 		align-items: center;
 		gap: 8px;
 		font-weight: 500;
+		font-size: 14px;
+		cursor: pointer;
+	}
+	.ops-main input[type="checkbox"],
+	.ops-main input[type="radio"] {
+		width: 16px;
+		height: 16px;
+		margin: 0;
+		accent-color: var(--navy-700);
+		flex-shrink: 0;
 	}
 	.ops-main input[type="text"],
 	.ops-main input[type="email"],
 	.ops-main input[type="password"],
 	.ops-main input[type="number"],
+	.ops-main input[type="tel"],
+	.ops-main input[type="url"],
+	.ops-main input[type="search"],
 	.ops-main input[type="time"],
 	.ops-main input[type="date"],
-	.ops-main select {
+	.ops-main input[type="datetime-local"],
+	.ops-main input[type="month"],
+	.ops-main select,
+	.ops-main textarea {
+		box-sizing: border-box;
 		font: inherit;
+		font-size: 14px;
 		font-weight: 400;
-		padding: 7px 10px;
+		min-height: 38px;
+		padding: 7px 11px;
 		border: 1px solid var(--gray-300);
-		border-radius: 6px;
-		background: #fff;
+		border-radius: 9px;
+		background-color: #fff;
+		color: var(--ink-900);
 		min-width: 0;
+		transition:
+			border-color 0.15s,
+			box-shadow 0.15s;
+	}
+	.ops-main textarea {
+		line-height: 1.5;
+	}
+	.ops-main :is(input, select, textarea):focus {
+		outline: none;
+		border-color: var(--navy-600);
+		box-shadow: 0 0 0 3px rgb(29 95 155 / 0.15);
 	}
 	.ops-main input.money {
-		width: 110px;
+		width: 120px;
 		text-align: right;
+		font-variant-numeric: tabular-nums;
 	}
 	.form-grid {
 		display: grid;
@@ -421,68 +939,176 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		gap: 14px;
 		align-items: end;
 	}
+	.form-grid > .actions {
+		margin: 0;
+	}
+	.form-grid > label:has(> input[type="checkbox"]) {
+		min-height: 38px;
+	}
 	.actions {
 		display: flex;
-		gap: 10px;
+		gap: 8px;
 		align-items: center;
 		margin-top: 16px;
 		flex-wrap: wrap;
 	}
-	.btn {
-		font: inherit;
-		font-weight: 600;
-		padding: 8px 16px;
-		border-radius: 6px;
+	/* A long form's save row stays in reach at the bottom of the screen. */
+	.actions.save-bar {
+		position: sticky;
+		bottom: 0;
+		z-index: 5;
+		justify-content: flex-end;
+		padding: 12px 16px;
+		background: rgb(255 255 255 / 0.95);
+		backdrop-filter: blur(6px);
+		border: 1px solid var(--ops-line);
+		border-radius: var(--ops-radius);
+		box-shadow: 0 -8px 24px -16px rgb(16 24 40 / 0.35);
+	}
+	.ops-main .btn,
+	.ops-head .btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		min-height: 38px;
+		padding: 0 16px;
 		border: 1px solid var(--navy-700);
+		border-radius: 10px;
 		background: var(--navy-700);
 		color: #fff;
+		font: inherit;
+		font-size: 14px;
+		font-weight: 600;
+		line-height: 1.2;
+		text-decoration: none;
+		white-space: nowrap;
 		cursor: pointer;
+		box-shadow: 0 1px 2px rgb(16 24 40 / 0.08);
+		transition:
+			background 0.15s,
+			border-color 0.15s,
+			color 0.15s;
 	}
-	.btn.secondary {
+	.ops-main .btn:hover {
+		transform: none;
+		background: var(--navy-800);
+		border-color: var(--navy-800);
+	}
+	.ops-main .btn.secondary {
 		background: #fff;
-		color: var(--navy-700);
+		border-color: var(--gray-300);
+		color: var(--ink-800);
+	}
+	.ops-main .btn.secondary:hover {
+		background: var(--ops-soft);
+		border-color: var(--gray-500);
+	}
+	.ops-main .btn.danger {
+		background: #fff;
+		border-color: #fda29b;
+		color: var(--red-600);
+	}
+	.ops-main .btn.danger:hover {
+		background: #fef3f2;
+	}
+	.ops-main .btn.sm {
+		min-height: 32px;
+		padding: 0 12px;
+		font-size: 13px;
+	}
+	.ops-main .btn:focus-visible {
+		outline: 2px solid var(--color-focus);
+		outline-offset: 2px;
 	}
 	.badge {
-		display: inline-block;
-		padding: 2px 8px;
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 9px;
 		border-radius: 999px;
 		font-size: 12px;
 		font-weight: 600;
-		background: var(--gray-200);
+		line-height: 1.5;
+		white-space: nowrap;
+		background: #eef1f5;
 		color: var(--ink-800);
 	}
 	.badge.ok {
 		background: #ecfdf3;
-		color: var(--green-600);
+		color: #067647;
 	}
 	.badge.off {
 		background: #fef3f2;
 		color: var(--red-600);
 	}
+	.badge.warn {
+		background: #fffaeb;
+		color: #b54708;
+	}
+	.badge.info {
+		background: #eff8ff;
+		color: #175cd3;
+	}
 	.stats {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-		gap: 14px;
-		margin-bottom: 20px;
+		grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+		gap: 12px;
+		margin-bottom: 16px;
 	}
 	.stat {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 		background: #fff;
-		border: 1px solid var(--gray-200);
-		border-radius: 10px;
-		padding: 16px;
+		border: 1px solid var(--ops-line);
+		border-radius: var(--ops-radius);
+		box-shadow: var(--ops-shadow);
+		padding: 14px 16px;
+	}
+	.stat > .muted:first-child {
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		color: var(--gray-500);
 	}
 	.stat strong {
 		display: block;
-		font-size: 26px;
+		font-size: 24px;
+		line-height: 1.25;
+		letter-spacing: -0.01em;
+		font-variant-numeric: tabular-nums;
+	}
+	.stat > .muted:not(:first-child) {
+		font-size: 13px;
 	}
 	.auth-card {
-		max-width: 380px;
-		margin: 40px auto;
+		max-width: 400px;
+		margin: 0 auto;
 	}
 	.auth-card form {
 		display: flex;
 		flex-direction: column;
 		gap: 14px;
+	}
+	.auth-card .btn {
+		width: 100%;
+	}
+	/* Two columns on wide screens: the work on the left, context on the right. */
+	.ops-split {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+		gap: 16px;
+		align-items: start;
+	}
+	.ops-split > div {
+		min-width: 0;
+	}
+	@media (max-width: 1180px) {
+		.ops-split {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 	.ops-count {
 		display: inline-grid;
@@ -491,16 +1117,19 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		height: 20px;
 		padding: 0 6px;
 		border-radius: 999px;
-		background: #d92d20;
+		background: #f04438;
 		color: #fff;
-		font-size: 12px;
+		font-size: 11px;
 		font-weight: 700;
 		line-height: 1;
 		font-variant-numeric: tabular-nums;
+		flex-shrink: 0;
 	}
 	.ops-count[hidden] {
 		display: none;
 	}
+
+	/* ---------- notifications */
 	.ops-bell {
 		position: relative;
 	}
@@ -508,25 +1137,26 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		position: relative;
 		display: grid;
 		place-items: center;
-		width: 36px;
-		height: 36px;
-		border-radius: 999px;
+		width: 38px;
+		height: 38px;
+		border-radius: 10px;
 		cursor: pointer;
 		list-style: none;
-		color: #fff;
+		color: var(--gray-600);
 	}
 	.ops-bell summary::-webkit-details-marker {
 		display: none;
 	}
 	.ops-bell summary:hover,
 	.ops-bell[open] summary {
-		background: rgb(255 255 255 / 0.12);
+		background: var(--gray-100);
+		color: var(--ink-900);
 	}
 	.ops-bell summary .ops-count {
 		position: absolute;
-		top: -2px;
-		right: -4px;
-		box-shadow: 0 0 0 2px var(--navy-900);
+		top: 1px;
+		right: -1px;
+		box-shadow: 0 0 0 2px #fff;
 	}
 	.ops-bell.ring summary svg {
 		animation: ops-ring 0.9s ease-in-out 2;
@@ -541,13 +1171,13 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 	.ops-bell-panel {
 		position: absolute;
 		right: 0;
-		top: calc(100% + 8px);
+		top: calc(100% + 10px);
 		z-index: 50;
 		width: min(380px, calc(100vw - 24px));
 		background: #fff;
 		color: var(--ink-900);
-		border: 1px solid var(--gray-200);
-		border-radius: 12px;
+		border: 1px solid var(--ops-line);
+		border-radius: 14px;
 		box-shadow: 0 16px 40px -12px rgb(16 24 40 / 0.35);
 		overflow: hidden;
 	}
@@ -557,10 +1187,9 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		justify-content: space-between;
 		gap: 8px;
 		padding: 12px 16px;
-		border-bottom: 1px solid var(--gray-200);
+		border-bottom: 1px solid var(--ops-line);
 	}
 	.ops-bell-head .ops-link {
-		color: var(--navy-700);
 		font-size: 13px;
 	}
 	.ops-bell ul {
@@ -640,9 +1269,9 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 		padding: 14px 16px;
 		background: #fff;
 		color: var(--ink-900);
-		border: 1px solid var(--gray-200);
+		border: 1px solid var(--ops-line);
 		border-left: 4px solid #f79009;
-		border-radius: 10px;
+		border-radius: 12px;
 		box-shadow: 0 16px 40px -12px rgb(16 24 40 / 0.35);
 		text-decoration: none;
 		font-size: 14px;
