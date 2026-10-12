@@ -47,7 +47,7 @@ const tables: { title: string; rows: Group[]; first: string; showCost: boolean; 
 
 	<div class="stats">
 		<div class="stat"><span class="muted">Tamamlanan yolculuk</span><strong>{t.completed}</strong><span class="muted">{t.trips} rezervasyon · {t.cancelled} iptal · {report.noShow} gelmedi</span></div>
-		<div class="stat"><span class="muted">Gelir</span><strong>{tl(t.revenue)}</strong><span class="muted">yolculuk başı {t.completed ? tl(Math.round(t.revenue / t.completed)) : "—"}</span></div>
+		<div class="stat"><span class="muted">Gelir</span><strong>{tl(t.revenue)}</strong><span class="muted">yolculuk başı {t.completed ? tl(Math.round(t.revenue / t.completed / 100) * 100) : "—"}</span></div>
 		<div class="stat"><span class="muted">Sürücü / partner maliyeti</span><strong>{tl(t.cost)}</strong><span class="muted">{report.missingPayout ? `${report.missingPayout} yolculukta hakediş tutarı yok` : "hakediş tutarları tam"}</span></div>
 		<div class="stat"><span class="muted">Brüt kâr</span><strong>{tl(margin)}</strong><span class="muted">marj {pct(margin, t.revenue)}</span></div>
 		<div class="stat"><span class="muted">Yolcu puanı</span><strong>{avg(t)}</strong><span class="muted">{t.ratings} değerlendirme</span></div>
