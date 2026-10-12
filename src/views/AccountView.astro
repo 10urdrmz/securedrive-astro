@@ -56,7 +56,7 @@ const parts = (iso: string) => {
 };
 /** Status colours: waiting on the passenger amber, on its way green, done grey. */
 const tone = (status: string) =>
-	["quoted", "pending_payment"].includes(status)
+	["quoted", "bidding", "pending_payment"].includes(status)
 		? "bg-[#fffaeb] text-[#b54708]"
 		: ["driver_en_route", "driver_arrived", "on_board"].includes(status)
 			? "bg-[#ecfdf3] text-[#05603a]"
@@ -65,7 +65,7 @@ const tone = (status: string) =>
 				: ["cancelled", "no_show"].includes(status)
 					? "bg-gray-100 text-gray-500"
 					: "bg-navy-50 text-navy-700";
-const needsAction = (status: string) => status === "quoted" || status === "pending_payment";
+const needsAction = (status: string) => status === "quoted" || status === "bidding" || status === "pending_payment";
 const tabs = [
 	{ view: "account", action: "", label: t("account.nav.trips"), icon: "route" },
 	{ view: "profile", action: "profil", label: t("account.nav.profile"), icon: "user" },
@@ -333,7 +333,7 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 																					<span class:list={["inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold", tone(b.status)]}>
 																						{t(`book.status.${b.status}` as UiKey)}
 																					</span>
-																					<span class="hidden sm:inline tabular-nums">{formatTry(b.price_minor / 100, locale)}</span>
+																					{b.price_minor > 0 && <span class="hidden sm:inline tabular-nums">{formatTry(b.price_minor / 100, locale)}</span>}
 																				</span>
 																			</span>
 																			<Icon name="chevron" size={18} class="shrink-0 text-gray-400 -rotate-90 rtl:rotate-90" />

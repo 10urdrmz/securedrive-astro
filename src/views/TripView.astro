@@ -42,9 +42,11 @@ const STEPS = ["confirmed", "assigned", "driver_en_route", "completed"] as const
 const stepAt = ({ confirmed: 0, assigned: 1, driver_en_route: 2, driver_arrived: 2, on_board: 2, completed: 3 } as Record<string, number>)[status] ?? -1;
 const closed = ["cancelled", "no_show"].includes(status);
 const isQuote = status === "quoted";
+const isBidding = status === "bidding";
+const waiting = isQuote || isBidding;
 const live = ["driver_en_route", "driver_arrived", "on_board"].includes(status);
-const showDriver = !closed && !isQuote && (status !== "completed" || !!page.driver);
-const canManage = ["pending_payment", "confirmed", "assigned"].includes(status);
+const showDriver = !closed && !waiting && (status !== "completed" || !!page.driver);
+const canManage = ["pending_payment", "confirmed", "assigned", "bidding"].includes(status);
 const initials = (page.driver?.name ?? "")
 	.split(/\s+/)
 	.filter(Boolean)
@@ -52,7 +54,7 @@ const initials = (page.driver?.name ?? "")
 	.map((w) => w[0]!.toLocaleUpperCase(intl))
 	.join("");
 const vehicleLine = [page.driver?.vehicle, page.className].find(Boolean);
-const headTone = closed ? "from-gray-700 to-gray-800" : status === "completed" ? "from-emerald-700 to-emerald-800" : isQuote || status === "pending_payment" ? "from-amber-600 to-amber-700" : "from-navy-800 to-ink-900";
+const headTone = closed ? "from-gray-700 to-gray-800" : status === "completed" ? "from-emerald-700 to-emerald-800" : waiting || status === "pending_payment" ? "from-amber-600 to-amber-700" : "from-navy-800 to-ink-900";
 const payTone = booking.payment_status === "paid" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-gray-100 text-gray-700 ring-gray-200";
 const receiptHref = `${bookPath(locale, booking.code, booking.tracking_token)}&makbuz=1`;
 
@@ -62,6 +64,8 @@ const NOTICE: Partial<Record<NonNullable<BookingDetail["notice"]>, UiKey>> = {
 	quoteAccepted: "book.quoteAccepted",
 	quoteDeclined: "book.quoteDeclined",
 	cancelled: "book.cancelled",
+	requested: "book.requested",
+	picked: "book.picked",
 };
 const chatRoomName = await chatRoom(booking);
 ---
@@ -125,6 +129,79 @@ const chatRoomName = await chatRoom(booking);
 									{t("book.payNow")} · {money(booking.price_minor)}
 								</a>
 							</div>
+						)
+					}
+
+					{
+						isBidding && (
+							<section class:list={[card, "grid gap-4 p-5 sm:p-6"]} aria-labelledby="offers-title" data-offers>
+								<div class="grid gap-1">
+									<h2 id="offers-title" class="m-0 font-display text-xl font-bold">{t("offers.title")}</h2>
+									<p class="m-0 max-w-prose text-sm text-gray-600">{t("offers.lead")}</p>
+								</div>
+								{page.offers.length === 0 ? (
+									<div class="flex items-center gap-3 rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
+										<span class="relative flex size-3 shrink-0">
+											<span class="absolute inline-flex size-full animate-ping rounded-full bg-amber-300 opacity-75 motion-reduce:animate-none" />
+											<span class="relative inline-flex size-3 rounded-full bg-amber-400" />
+										</span>
+										{t("offers.empty")}
+									</div>
+								) : (
+									<ul class="m-0 grid list-none gap-3 p-0">
+										{page.offers.map((offer, i) => (
+											<li class:list={["grid gap-3 rounded-2xl border border-solid p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center", i === 0 ? "border-emerald-300 bg-emerald-50/40" : "border-gray-200"]}>
+												<div class="grid min-w-0 gap-1">
+													<div class="flex flex-wrap items-center gap-2">
+														<strong class="text-gray-900">{offer.display_name}</strong>
+														{i === 0 && page.offers.length > 1 && (
+															<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">{t("offers.best")}</span>
+														)}
+													</div>
+													<span class="text-sm text-gray-700">
+														{offer.class_name}
+														{offer.vehicle && <> · {offer.vehicle}</>}
+													</span>
+													<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+														<span class="inline-flex items-center gap-1">
+															<Icon name="users" size={14} />
+															{offer.pax_max}
+														</span>
+														<span class="inline-flex items-center gap-1">
+															<Icon name="luggage" size={14} />
+															{offer.bags_max}
+														</span>
+														{offer.rating !== null ? (
+															<span class="inline-flex items-center gap-1">
+																<Icon name="star-fill" size={14} class="text-amber-400" />
+																{offer.rating.toFixed(1)} ({offer.ratings})
+															</span>
+														) : (
+															<span>{t("offers.new")}</span>
+														)}
+														{offer.trips > 0 && <span>{t("offers.trips", { n: offer.trips })}</span>}
+													</span>
+													{offer.note && <p class="m-0 text-sm text-gray-600">{offer.note}</p>}
+												</div>
+												<form method="post" class="m-0 flex items-center justify-between gap-3 sm:grid sm:justify-items-end">
+													<input type="hidden" name="intent" value="pick" />
+													<input type="hidden" name="offer" value={offer.id} />
+													<strong class="font-display text-2xl tabular-nums text-gray-900" dir="ltr">{money(offer.price_minor)}</strong>
+													<button class="btn btn--primary btn--sm" type="submit">{t("offers.pick")}</button>
+												</form>
+											</li>
+										))}
+									</ul>
+								)}
+								{page.requestedExtras.length > 0 && (
+									<p class="m-0 text-sm text-gray-600">
+										{t("offers.extras", {
+											x: page.requestedExtras.map((e) => `${e.name}${e.qty > 1 ? ` × ${e.qty}` : ""}${e.price_minor ? ` (${money(e.price_minor * e.qty)})` : ""}`).join(", "),
+										})}
+									</p>
+								)}
+								<p class="m-0 text-xs text-gray-500">{t("offers.hint")}</p>
+							</section>
 						)
 					}
 
@@ -227,7 +304,7 @@ const chatRoomName = await chatRoom(booking);
 					}
 
 					{
-						!isQuote && (
+						!waiting && (
 							<ChatBox
 								messages={page.messages}
 								me="passenger"
@@ -352,7 +429,7 @@ const chatRoomName = await chatRoom(booking);
 						<dl class="m-0 grid grid-cols-2 gap-x-4 gap-y-3 border-0 border-t border-solid border-gray-100 pt-4 text-sm">
 							{[
 								{ icon: "calendar", label: t("book.pickupTime"), value: `${pickupLong} · ${pickup.time}`, wide: true },
-								{ icon: "car", label: t("form.vehicle"), value: page.className, wide: true },
+								!isBidding && { icon: "car", label: t("form.vehicle"), value: page.className, wide: true },
 								{ icon: "users", label: t("quick.passengers"), value: String(booking.pax) },
 								{ icon: "luggage", label: t("form.luggage"), value: String(booking.bags) },
 								booking.flight_no && !(page.flight && !closed) && { icon: "plane", label: t("track.flight"), value: booking.flight_no, ltr: true },
@@ -386,9 +463,11 @@ const chatRoomName = await chatRoom(booking);
 								<Icon name={booking.payment_method === "cash" ? "wallet" : "card"} size={18} class="text-gray-400" />
 								{t(`book.pay.${booking.payment_method}` as UiKey)}
 							</span>
-							<strong class="font-display text-2xl tabular-nums text-gray-900" dir="ltr">
-								{money(booking.price_minor)}
-							</strong>
+							{!isBidding && (
+								<strong class="font-display text-2xl tabular-nums text-gray-900" dir="ltr">
+									{money(booking.price_minor)}
+								</strong>
+							)}
 						</div>
 						{
 							page.lines.length > 0 && (
@@ -409,7 +488,7 @@ const chatRoomName = await chatRoom(booking);
 							)
 						}
 						{
-							status !== "cancelled" && !isQuote && (
+							status !== "cancelled" && !waiting && (
 								<a class="btn btn--ghost btn--sm btn--block" href={receiptHref}>
 									<Icon name="receipt" size={16} />
 									{t("book.receipt")}
@@ -430,7 +509,7 @@ const chatRoomName = await chatRoom(booking);
 						</div>
 						<div class="grid grid-cols-3 gap-2">
 							{
-								!isQuote && (
+								!waiting && (
 									<a class="flex flex-col items-center gap-1 rounded-xl bg-gray-50 px-2 py-3 text-xs font-semibold text-gray-800 no-underline hover:bg-gray-100" href="#mesajlar">
 										<Icon name="message" size={20} class="text-navy-700" />
 										{t("trip.message")}
@@ -459,10 +538,10 @@ const chatRoomName = await chatRoom(booking);
 									{page.canCancel ? (
 										<form method="post" class="m-0 grid gap-3">
 											<input type="hidden" name="intent" value="cancel" />
-											<p class="m-0 text-sm text-gray-600">{t("book.cancelFree", { h: page.freeCancelHours })}</p>
+											<p class="m-0 text-sm text-gray-600">{isBidding ? t("offers.withdrawHint") : t("book.cancelFree", { h: page.freeCancelHours })}</p>
 											<button type="submit" class="btn btn--sm justify-self-start border border-solid border-red-300 bg-white text-red-700 hover:bg-red-50">
 												<Icon name="x-circle" size={16} />
-												{t("book.cancel")}
+												{isBidding ? t("offers.withdraw") : t("book.cancel")}
 											</button>
 										</form>
 									) : (
@@ -486,4 +565,14 @@ const chatRoomName = await chatRoom(booking);
 		</div>
 	</section>
 	{live && page.driver && <script src="/live-map.js" defer is:inline />}
+	{
+		isBidding && (
+			<script is:inline>
+				// New offers arrive while the customer waits: reload every 30 s unless they are typing.
+				setInterval(() => {
+					if (document.visibilityState === "visible" && !document.querySelector("textarea:focus, input:focus")) location.replace(location.href);
+				}, 30000);
+			</script>
+		)
+	}
 </Base>

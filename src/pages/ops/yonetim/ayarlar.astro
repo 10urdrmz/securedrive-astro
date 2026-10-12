@@ -43,6 +43,7 @@ if (form) {
 			autoAssign: form.get("autoAssign") === "on",
 			autoAssignHours: num("autoAssignHours", 1, 168),
 			offerMinutes: num("offerMinutes", 2, 120),
+			offerCommissionPct: num("offerCommissionPct", 0, 100),
 		};
 		await saveSettings(db, next, user.id);
 		await audit(db, user, "settings.save", "settings", "business", { before: settings, after: next });
@@ -105,6 +106,16 @@ const dis = !canWrite;
 				>
 				<label>Alıştan kaç saat önce başlasın<input type="number" name="autoAssignHours" value={settings.autoAssignHours} disabled={dis} /></label>
 				<label>Sürücünün cevap süresi (dakika)<input type="number" name="offerMinutes" value={settings.offerMinutes} disabled={dis} /></label>
+			</div>
+		</div>
+		<div class="card">
+			<h2 style="margin-top:0">Müşteri talepleri ve teklifler</h2>
+			<p class="muted">
+				Sitedeki talepler partner filolara ve bağımsız sürücülere açılır. Taşıyıcı kendi kazancını yazar; müşteri bu tutarın üzerine aşağıdaki komisyon
+				eklenmiş fiyatı görür (10 TL'ye yukarı yuvarlanır). Kendi filomuz için verdiğimiz tekliflerde müşteri fiyatını doğrudan yazarız.
+			</p>
+			<div class="form-grid">
+				<label>Platform komisyonu (%)<input type="number" step="0.5" name="offerCommissionPct" value={settings.offerCommissionPct} disabled={dis} /></label>
 			</div>
 		</div>
 		{canWrite && <button class="btn" type="submit">Kaydet</button>}

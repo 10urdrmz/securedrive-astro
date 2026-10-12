@@ -32,6 +32,7 @@ import { isTracked } from "../../../server/live-location";
 import ChatBox from "../../../components/ChatBox.astro";
 import { listMessages, markRead, postMessage } from "../../../server/messages";
 import { CARRIER_JOB_LABELS, currentCarrierJob, listPartners, offerToPartner, PARTNER_ANSWER_MINUTES, withdrawFromPartner } from "../../../server/partners";
+import { classesFitting, offersFor, pickOffer, placeOffer, withdrawOffer } from "../../../server/offers";
 import { awardBid, cancelPool, currentPoolJob, openPool, poolBids, POOL_STATUS_LABELS } from "../../../server/pool";
 
 const ctx = await requireOps(Astro, "bookings.read");
@@ -40,6 +41,8 @@ const { db, user } = ctx;
 const canWrite = can(user, "bookings.write");
 const canPay = can(user, "payments.write");
 const actor = { kind: "ops" as const, userId: user.id };
+/** Ops offers once per request, for the own fleet. */
+const OWN_FLEET = { kind: "ops" as const, id: "own" };
 
 const code = (Astro.params.code ?? "").toUpperCase();
 let booking = await getBookingByCode(db, code);
@@ -116,6 +119,20 @@ if (form) {
 				const winner = await awardBid(db, pool, text(form, "bid_id", 40), actor);
 				notice = winner === "driver" ? "İhale verildi. Bağımsız sürücü işe atandı." : "İhale verildi. İş partnerin, sürücüsünü partner atayacak.";
 			}
+		} else if (intent === "offer_own" && canWrite) {
+			const price = parseMoney(text(form, "price", 20));
+			if (!price) throw new Error("Müşteri fiyatını yazın. Örnek: 2.400");
+			await placeOffer(db, booking, OWN_FLEET, { classKey: text(form, "class", 40), amountMinor: price, vehicle: text(form, "vehicle", 80) || null, note: null });
+			notice = `Kendi filomuz için ${formatMoney(price)} ₺ teklif müşteriye gösteriliyor.`;
+		} else if (intent === "offer_own_back" && canWrite) {
+			await withdrawOffer(db, booking, OWN_FLEET);
+			notice = "Kendi filo teklifimiz geri çekildi.";
+		} else if (intent === "offer_pick" && canWrite) {
+			await pickOffer(db, booking, text(form, "offer_id", 40), actor).catch((e) => {
+				if (e instanceof Error && (e.message === "gone" || e.message === "closed")) throw new Error("Bu teklif artık geçerli değil ya da talep kapandı.");
+				throw e;
+			});
+			notice = "Teklif müşteri adına seçildi, rezervasyon onaylandı.";
 		} else if (intent === "partner_back" && canWrite) {
 			await withdrawFromPartner(db, booking, actor);
 			notice = "İş partnerden geri alındı.";
@@ -184,6 +201,14 @@ const locale = isLocale(booking.locale) ? booking.locale : "tr";
 const passengerLink = new URL(bookPath(locale, booking.code, booking.tracking_token), Astro.url.origin).href;
 const assigned = drivers.find((d) => d.id === booking!.driver_id) ?? (booking.driver_id ? await db.selectFrom("sd_drivers").selectAll().where("id", "=", booking.driver_id).executeTakeFirst() : null);
 const isQuote = booking.status === "quoted";
+const isBidding = booking.status === "bidding";
+// A quote waits for the customer's yes, a request for the customer's pick: no carrier yet.
+const holdOff = isQuote || isBidding;
+const offers = await offersFor(db, booking, ["active", "won", "lost", "withdrawn"]);
+const ownOffer = offers.find((o) => o.bidder_kind === "ops" && o.status === "active");
+const offerClasses = isBidding ? await classesFitting(db, booking.pax, booking.bags) : [];
+const OFFER_STATUS: Record<string, string> = { active: "Geçerli", won: "Seçildi", lost: "Seçilmedi", withdrawn: "Geri çekildi" };
+const BIDDER_KIND: Record<string, string> = { partner: "Partner", driver: "Bağımsız sürücü", ops: "Kendi filomuz" };
 const messages = await listMessages(db, booking, "ops");
 if (Astro.request.method === "GET") await markRead(db, booking.id, "ops");
 const passengerMessage = isQuote
@@ -213,6 +238,9 @@ const EVENT_LABELS: Record<string, string> = {
 	pool_opened: "İş havuza kondu",
 	pool_cancelled: "İş havuzdan çekildi",
 	pool_awarded: "Havuzdan verildi",
+	offer_received: "Taşıyıcı teklif verdi",
+	offer_picked: "Müşteri teklif seçti",
+	offer_awarded: "Seçilen teklifin taşıyıcısına verildi",
 	pool_expired: "Havuz süresi doldu, alan olmadı",
 };
 const eventDriver = (data: unknown) => {
@@ -289,7 +317,7 @@ const chatRoomName = await chatRoom(booking);
 	<div class="stats">
 		<div class="stat"><span class="muted">Durum</span><strong style="font-size:20px">{STATUS_LABELS[booking.status]}</strong></div>
 		<div class="stat"><span class="muted">Alış (İstanbul)</span><strong style="font-size:20px">{at.date} {at.time}</strong></div>
-		<div class="stat"><span class="muted">Tutar</span><strong style="font-size:20px">{formatMoney(booking.price_minor)} ₺</strong></div>
+		<div class="stat"><span class="muted">Tutar</span><strong style="font-size:20px">{isBidding ? "Teklif bekleniyor" : `${formatMoney(booking.price_minor)} ₺`}</strong></div>
 		<div class="stat">
 			<span class="muted">Ödeme</span><strong style="font-size:20px">{PAYMENT_STATUS_LABELS[booking.payment_status] ?? booking.payment_status}</strong>
 			<span class="muted">{PAYMENT_METHOD_LABELS[booking.payment_method]}</span>
@@ -339,6 +367,74 @@ const chatRoomName = await chatRoom(booking);
 			{!isQuote && <a class="btn secondary" href={passengerLink} target="_blank" rel="noopener noreferrer">Yolcu sayfasını aç</a>}
 		</div>
 	</div>
+
+	{(isBidding || offers.length > 0) && (
+		<div class="card" id="teklifler">
+			<h2 style="margin-top:0">Taşıyıcı teklifleri</h2>
+			{isBidding && (
+				<p class="muted" style="margin-top:0">
+					Müşteri talebi partnerlere ve bağımsız sürücülere açık. Müşteri teklifleri yolcu sayfasında görüp seçer; telefonda anlaştıysanız aşağıdan onun adına
+					seçebilirsiniz. Alıştan 1 saat önce seçilmeyen talep kendiliğinden iptal olur. Komisyon oranı: %{settings.offerCommissionPct} (Kurallar).
+				</p>
+			)}
+			{offers.length === 0 ? (
+				<p class="muted">Henüz teklif yok.</p>
+			) : (
+				<table class="data">
+					<thead>
+						<tr><th>Taşıyıcı</th><th>Araç</th><th>Taşıyıcıya</th><th>Müşteriye</th><th>Durum</th><th></th></tr>
+					</thead>
+					<tbody>
+						{offers.map((o) => (
+							<tr>
+								<td>
+									<strong>{o.display_name}</strong>
+									<div class="muted">{BIDDER_KIND[o.bidder_kind]}{o.trips > 0 && ` · ${o.trips} yolculuk`}{o.rating !== null && ` · ★ ${o.rating.toFixed(1)}`}</div>
+								</td>
+								<td>{o.class_name}{o.vehicle && <div class="muted">{o.vehicle}</div>}</td>
+								<td>{o.bidder_kind === "ops" ? "—" : `${formatMoney(o.payout_minor)} ₺`}</td>
+								<td><strong>{formatMoney(o.price_minor)} ₺</strong></td>
+								<td><span class:list={["badge", o.status === "won" && "ok", o.status === "active" && "info", (o.status === "lost" || o.status === "withdrawn") && "off"]}>{OFFER_STATUS[o.status]}</span></td>
+								<td>
+									{canWrite && isBidding && o.status === "active" && (
+										<form method="post" style="margin:0">
+											<input type="hidden" name="intent" value="offer_pick" />
+											<input type="hidden" name="version" value={booking!.version} />
+											<input type="hidden" name="offer_id" value={o.id} />
+											<button class="btn sm secondary" type="submit">Müşteri adına seç</button>
+										</form>
+									)}
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			)}
+			{canWrite && isBidding && offerClasses.length > 0 && (
+				<form method="post" class="form-grid" style="margin-top:16px">
+					<input type="hidden" name="version" value={booking.version} />
+					<label>
+						Kendi filomuz · araç sınıfı
+						<select name="class" required>
+							{offerClasses.map((c) => <option value={c.key} selected={c.key === (ownOffer?.class_key ?? booking!.class_key)}>{c.name} ({c.pax_max} kişi)</option>)}
+						</select>
+					</label>
+					<label>
+						Müşteri fiyatı (₺)
+						<input type="text" name="price" inputmode="decimal" required value={ownOffer ? formatMoney(ownOffer.price_minor) : ""} placeholder="2.400" />
+					</label>
+					<label>
+						Araç notu
+						<input type="text" name="vehicle" maxlength="80" value={ownOffer?.vehicle ?? ""} placeholder="Mercedes Vito VIP" />
+					</label>
+					<div class="actions" style="margin:0">
+						<button class="btn" type="submit" name="intent" value="offer_own">{ownOffer ? "Teklifimizi güncelle" : "Kendi filomuzla teklif ver"}</button>
+						{ownOffer && <button class="btn secondary" type="submit" name="intent" value="offer_own_back" formnovalidate>Geri çek</button>}
+					</div>
+				</form>
+			)}
+		</div>
+	)}
 
 	{booking.flight_no && fromAirport && (
 		<div class="card" id="ucus">
@@ -410,7 +506,7 @@ const chatRoomName = await chatRoom(booking);
 		</div>
 	)}
 
-	{(pool?.status === "open" || (canWrite && !isFinal && !isQuote && !carrierJob && !booking.driver_id && poolBidders > 0)) && (
+	{(pool?.status === "open" || (canWrite && !isFinal && !holdOff && !carrierJob && !booking.driver_id && poolBidders > 0)) && (
 		<div class="card" id="havuz">
 			<h2 style="margin-top:0">İş havuzu</h2>
 			{pool?.status === "open" ? (
@@ -501,7 +597,7 @@ const chatRoomName = await chatRoom(booking);
 		</div>
 	)}
 
-	{(carrierJob || (canWrite && !isFinal && !isQuote && partners.length > 0)) && (
+	{(carrierJob || (canWrite && !isFinal && !holdOff && partners.length > 0)) && (
 		<div class="card">
 			<h2 style="margin-top:0">Partner filo</h2>
 			{carrierJob && carrier && (
@@ -514,7 +610,7 @@ const chatRoomName = await chatRoom(booking);
 					{carrierJob.status === "accepted" && !booking.driver_id && <span class="muted"> · partner henüz sürücü atamadı</span>}
 				</p>
 			)}
-			{canWrite && !isFinal && !isQuote && (
+			{canWrite && !isFinal && !holdOff && (
 				<form method="post" class="form-grid" style="margin-top:12px">
 					<input type="hidden" name="intent" value="partner" />
 					<input type="hidden" name="version" value={booking.version} />
@@ -563,7 +659,8 @@ const chatRoomName = await chatRoom(booking);
 			<p class="muted">Henüz atanmadı.</p>
 		)}
 		{isQuote && <p class="muted">Müşteri teklifi onaylayınca sürücü atanabilir.</p>}
-		{canWrite && !isFinal && !isQuote && (
+		{isBidding && <p class="muted">Müşteri bir teklif seçince iş o taşıyıcıya gider; kendi filomuz seçilirse sürücüyü buradan atarsınız.</p>}
+		{canWrite && !isFinal && !holdOff && (
 			<form method="post" class="form-grid" style="margin-top:16px">
 				<input type="hidden" name="intent" value="assign" />
 				<input type="hidden" name="version" value={booking.version} />
@@ -718,7 +815,7 @@ const chatRoomName = await chatRoom(booking);
 							{EVENT_LABELS[e.type] ?? e.type}
 							{["auto_offered", "offer_timed_out", "driver_accepted", "driver_declined"].includes(e.type) && eventDriver(e.data) && <> · {eventDriver(e.data)}</>}
 							{e.type === "flight_update" && eventFlight(e.data) && <> · {eventFlight(e.data)}</>}
-							{(e.type.startsWith("carrier_") || e.type === "pool_awarded") && eventPartner(e.data) && <> · {eventPartner(e.data)}</>}
+							{(e.type.startsWith("carrier_") || e.type === "pool_awarded" || e.type === "offer_awarded") && eventPartner(e.data) && <> · {eventPartner(e.data)}</>}
 							{e.to_status && e.type === "status_change" && <> → {STATUS_LABELS[e.to_status as BookingStatus] ?? e.to_status}</>}
 						</td>
 						<td class="muted">{e.user_name ?? ACTORS[e.actor] ?? e.actor}</td>

@@ -10,7 +10,7 @@ import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import { getLocalized, slugOf } from "../lib/content";
 import { formatApprox, formatTry } from "../lib/format";
-import { airportName, routeTitle } from "../lib/routes";
+import { airportName, bookHref, routeTitle } from "../lib/routes";
 import { breadcrumbJsonLd } from "../lib/schema";
 import { SITE } from "../lib/site";
 
@@ -33,8 +33,7 @@ const prices = [
 ].filter((p) => p.price);
 
 const description = `${title}: ${formatTry(d.vito_price_try, locale)} · ${t("common.perTrip")}. ${t("trust.flightText")}`;
-const transferHref = (vehicle: string) =>
-	`${pagePath(locale, "transfer")}?${new URLSearchParams({ from, to: d.destination, vehicle })}`;
+const transferHref = bookHref(locale, { from: d.origin, to: d.destination });
 
 const nearby = (await getLocalized(Astro, "routes", locale))
 	.filter((r) => r.data.origin === d.origin && slugOf(r) !== slug)
@@ -98,7 +97,7 @@ const jsonLd = [
 									<span>≈ {formatApprox(p.price, locale)}</span>
 								</p>
 								<p class="muted small">{t("common.perTrip")}</p>
-								<a href={transferHref(p.vehicle)} class="btn btn--primary btn--block">{t("common.book")}</a>
+								<a href={transferHref} class="btn btn--primary btn--block">{t("common.book")}</a>
 							</div>
 						</div>
 					))

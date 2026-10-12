@@ -5,7 +5,7 @@ import Icon from "../components/Icon.astro";
 import Photo from "../components/Photo.astro";
 import PageHero from "../components/sections/PageHero.astro";
 import CtaBand from "../components/sections/CtaBand.astro";
-import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { bookPath, pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import { imageUrl, slugOf, texts } from "../lib/content";
 import { breadcrumbJsonLd } from "../lib/schema";
@@ -26,7 +26,7 @@ const specs = [
 	{ label: t("fleet.transmission"), value: d.transmission },
 	{ label: t("fleet.year"), value: d.model_year },
 ].filter((s) => s.value);
-const transferHref = `${pagePath(locale, "transfer")}?vehicle=${encodeURIComponent(d.name)}`;
+const transferHref = bookPath(locale);
 ---
 
 <Base

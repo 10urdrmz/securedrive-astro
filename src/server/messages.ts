@@ -45,7 +45,7 @@ export const firstName = (name: string | null | undefined) => (name ?? "").trim(
 /** Whether this side may still write on the booking. */
 export function canWrite(booking: Booking, role: ChatRole): boolean {
 	if (role === "ops") return true;
-	if (booking.status === "cancelled" || booking.status === "quoted") return false;
+	if (booking.status === "cancelled" || booking.status === "quoted" || booking.status === "bidding") return false;
 	if (FINAL_STATUSES.includes(booking.status)) return Date.now() < Date.parse(booking.pickup_at) + OPEN_AFTER_PICKUP_MS;
 	return role === "passenger" || !!booking.driver_id;
 }

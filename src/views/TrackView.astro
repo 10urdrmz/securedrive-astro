@@ -8,7 +8,7 @@
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import StatusBadge from "../components/account/StatusBadge.astro";
-import { TRACK_SLUG, accountPath, lookupPath, pagePath, type Locale } from "../i18n/locales";
+import { TRACK_SLUG, accountPath, bookPath, lookupPath, pagePath, type Locale } from "../i18n/locales";
 import { useTranslations, type UiKey } from "../i18n/ui";
 import type { MemberRequest } from "../lib/members";
 import { presentRequest } from "../lib/requests-view";
@@ -68,7 +68,7 @@ const title = trip ? `${t("track.title")} · ${trip.reference}` : t("track.notFo
 		{
 			!trip && (
 				<div class="container flex flex-wrap gap-3">
-					<a href={pagePath(locale, "transfer")} class="btn btn--primary">{t("nav.book")}</a>
+					<a href={bookPath(locale)} class="btn btn--primary">{t("nav.book")}</a>
 					<a href={accountPath(locale)} class="btn btn--ghost">{t("nav.account")}</a>
 				</div>
 			)

@@ -6,7 +6,7 @@ import Photo from "../components/Photo.astro";
 import PageHero from "../components/sections/PageHero.astro";
 import ServiceCard from "../components/sections/ServiceCard.astro";
 import CtaBand from "../components/sections/CtaBand.astro";
-import { pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
+import { bookPath, pagePath, PAGE_SLUGS, type Locale } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import { byOrder, getLocalized, imageUrl, slugOf, texts } from "../lib/content";
 import { breadcrumbJsonLd } from "../lib/schema";
@@ -59,7 +59,7 @@ const jsonLd = [
 		crumbs={[{ href: pagePath(locale, "services"), label: t("nav.services") }]}
 	>
 		<div class="hero-actions">
-			<a href={pagePath(locale, "transfer")} class="btn btn--light">{entry.data.cta_label || t("common.book")}</a>
+			<a href={bookPath(locale)} class="btn btn--light">{entry.data.cta_label || t("common.book")}</a>
 			<a href={pagePath(locale, "contact")} class="btn btn--ghost-light">{t("nav.contact")}</a>
 		</div>
 	</PageHero>
@@ -82,7 +82,7 @@ const jsonLd = [
 								</li>
 							))}
 						</ul>
-						<a href={pagePath(locale, "transfer")} class="btn btn--primary btn--block">
+						<a href={bookPath(locale)} class="btn btn--primary btn--block">
 							{t("common.book")}
 						</a>
 					</aside>

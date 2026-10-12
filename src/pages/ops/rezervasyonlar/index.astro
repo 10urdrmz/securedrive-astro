@@ -76,7 +76,7 @@ const quick = [
 	{ label: "Sürücü bekleyen", href: `?from=${todayLocal}&to=${addDays(todayLocal, 7)}&unassigned=1`, on: !filtered && unassigned },
 ];
 const tone = (s: BookingStatus) =>
-	s === "completed" ? "ok" : s === "cancelled" || s === "no_show" ? "off" : s === "quoted" || s === "pending_payment" ? "warn" : ["driver_en_route", "driver_arrived", "on_board"].includes(s) ? "info" : "";
+	s === "completed" ? "ok" : s === "cancelled" || s === "no_show" ? "off" : s === "quoted" || s === "bidding" || s === "pending_payment" ? "warn" : ["driver_en_route", "driver_arrived", "on_board"].includes(s) ? "info" : "";
 ---
 
 <OpsLayout title="Rezervasyonlar" user={user} subtitle={summary}>
@@ -170,7 +170,7 @@ const tone = (s: BookingStatus) =>
 									<span class:list={["badge", tone(r.status as BookingStatus)]}>{STATUS_LABELS[r.status as BookingStatus] ?? r.status}</span>
 								</td>
 								<td class="num" data-label="Tutar">
-									<strong>{formatMoney(r.price_minor)} ₺</strong>
+									<strong>{r.status === "bidding" ? "Teklif bekliyor" : `${formatMoney(r.price_minor)} ₺`}</strong>
 									<div class:list={["sub", r.payment_status === "paid" && "paid"]}>{PAYMENT_STATUS_LABELS[r.payment_status] ?? r.payment_status}</div>
 								</td>
 							</tr>

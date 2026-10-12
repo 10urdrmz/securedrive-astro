@@ -11,6 +11,7 @@ import { randomToken, ulid } from "./ids";
 import type { ClassQuote, Quote } from "./pricing";
 
 export const BOOKING_STATUSES = [
+	"bidding",
 	"quoted",
 	"pending_payment",
 	"confirmed",
@@ -25,6 +26,7 @@ export const BOOKING_STATUSES = [
 export type BookingStatus = (typeof BOOKING_STATUSES)[number];
 
 export const STATUS_LABELS: Record<BookingStatus, string> = {
+	bidding: "Taşıyıcı teklifleri bekleniyor",
 	quoted: "Teklif, müşteri onayı bekleniyor",
 	pending_payment: "Ödeme bekleniyor",
 	confirmed: "Onaylandı",
@@ -42,6 +44,8 @@ export const FINAL_STATUSES: BookingStatus[] = ["completed", "no_show", "cancell
 
 /** What ops may move a booking to from each status (assignment has its own action). */
 export const OPS_TRANSITIONS: Record<BookingStatus, BookingStatus[]> = {
+	// A request becomes a booking when the customer picks an offer (see offers.ts).
+	bidding: ["cancelled"],
 	// A quote becomes a booking only when the customer accepts it; ops can withdraw it.
 	quoted: ["cancelled"],
 	pending_payment: ["confirmed", "cancelled"],
@@ -312,6 +316,7 @@ export async function transition(
 export async function assignDriver(db: Db, booking: Booking, driverId: string | null, actor: Actor, mode: "manual" | "auto" = "manual") {
 	if (FINAL_STATUSES.includes(booking.status)) throw new Error("Kapanmış bir rezervasyona atama yapılamaz.");
 	if (booking.status === "quoted") throw new Error("Müşteri teklifi onaylamadan sürücü atanamaz.");
+	if (booking.status === "bidding") throw new Error("Müşteri bir teklif seçmeden sürücü atanamaz.");
 	const now = new Date().toISOString();
 	await updateBooking(db, booking, {
 		driver_id: driverId,

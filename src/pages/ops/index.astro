@@ -96,7 +96,7 @@ const upcoming = showBookings
 			.select(["b.code", "b.status", "b.pickup_at", "b.pax", "b.contact_name", "b.flight_no", "f.name as from_name", "f.kind as from_kind", "t.name as to_name", "t.kind as to_kind", "d.name as driver_name"])
 			.where("b.pickup_at", ">=", new Date(Date.now() - 2 * 3600_000).toISOString())
 			.where("b.pickup_at", "<", new Date(Date.now() + 36 * 3600_000).toISOString())
-			.where("b.status", "not in", ["cancelled", "completed", "no_show", "quoted"])
+			.where("b.status", "not in", ["cancelled", "completed", "no_show", "quoted", "bidding"])
 			.orderBy("b.pickup_at")
 			.limit(8)
 			.execute()
