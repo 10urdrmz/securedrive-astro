@@ -4,6 +4,7 @@
  * 6-digit PIN, shown once, and can send it to the driver by WhatsApp.
  */
 import OpsLayout from "../../layouts/OpsLayout.astro";
+import Icon from "../../components/Icon.astro";
 import { can } from "../../server/auth/rbac";
 import { ulid } from "../../server/ids";
 import { audit, readForm, requireOps, text } from "../../server/ops";
@@ -128,27 +129,6 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 		)
 	}
 	{
-		logins.length > 0 && (
-			<details class="card logins" open={logins.some((l) => l.result !== "ok")}>
-				<summary>Son sürücü giriş denemeleri</summary>
-				<table>
-					<tbody>
-						{logins.map((l) => (
-							<tr>
-								<td class="muted">{clock(l.at)}</td>
-								<td>{l.name ?? "—"}</td>
-								<td class="muted">…{l.phone_tail}</td>
-								<td>
-									<span class:list={["badge", l.result === "ok" && "ok"]}>{LOGIN_OUTCOME_LABELS[l.result] ?? l.result}</span>
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</details>
-		)
-	}
-	{
 		applications.length > 0 && (
 			<section class="card" id="basvurular">
 				<h2 style="margin-top:0">Bağımsız sürücü başvuruları ({applications.length})</h2>
@@ -195,15 +175,42 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 			</section>
 		)
 	}
-	<p class="muted">
-		Atanabilir sürücüler. Bağımsız sürücüler otomatik atamaya girmez, işlerini iş havuzundan alır. Sürücü uygulamasına (<a href="/surucu">/surucu</a>) girmesi için sürücüye PIN verin; işlerini görür,
-		kabul eder ve yolculuk adımlarını kendisi işaretler. Pasif sürücü atama listesinde görünmez ve uygulamaya giremez.
-	</p>
+	<div class="list-head">
+		<h2>Sürücüler ({drivers.length})</h2>
+		<p class="muted">
+			Satıra tıklayınca bilgiler ve PIN açılır. Bağımsız sürücüler otomatik atamaya girmez, işlerini iş havuzundan alır. Sürücü uygulamasına (<a href="/surucu">/surucu</a>)
+			PIN ile girer; pasif sürücü atama listesinde görünmez ve uygulamaya giremez.
+		</p>
+	</div>
 	{
 		[...(canWrite ? [blank] : []), ...drivers].map((d) => (
-			<form class="card form-grid" method="post">
+			<details class:list={["card driver", !d.id && "new"]} open={(!d.id && drivers.length === 0) || (!!issued && issued.name === d.name)}>
+				{d.id ? (
+					<summary>
+						<span class="ops-avatar" aria-hidden="true">{d.name.split(/\s+/).slice(0, 2).map((w: string) => w[0]).join("").toLocaleUpperCase("tr-TR")}</span>
+						<span class="who">
+							<strong>{d.name}</strong>
+							<span class="muted">
+								{classes.find((c) => c.key === d.class_key)?.name ?? d.class_key}
+								{d.plate && ` · ${d.plate}`}
+								{` · ${d.phone}`}
+							</span>
+						</span>
+						<span class="tags">
+							<span class:list={["badge", d.kind === "independent" ? "info" : ""]}>{"partner_name" in d && d.partner_name ? d.partner_name : KINDS[d.kind] ?? d.kind}</span>
+							{d.status !== "active" && <span class="badge off">Pasif</span>}
+							<span class:list={["badge", withAccess.has(d.id) ? "ok" : "warn"]}>{withAccess.has(d.id) ? "Uygulama açık" : "PIN yok"}</span>
+							{lockedUntil.has(d.id) && <span class="badge off">Kilitli</span>}
+						</span>
+						<Icon name="chevron" size={18} class="chev" />
+					</summary>
+				) : (
+					<summary class="add">
+						<Icon name="plus" size={18} /> Yeni sürücü ekle
+					</summary>
+				)}
+			<form class="form-grid" method="post">
 				<input type="hidden" name="id" value={d.id} />
-				{!d.id && <strong style="grid-column:1/-1">Yeni sürücü</strong>}
 				{"partner_name" in d && d.partner_name && (
 					<div style="grid-column:1/-1">
 						<span class="badge">{d.partner_name} sürücüsü</span>{" "}
@@ -260,21 +267,118 @@ const blank = { id: "", name: "", phone: "", kind: "staff", class_key: classes[0
 							</button>
 						)}
 						{canWrite && withAccess.has(d.id) && (
-							<button class="btn secondary" type="submit" name="intent" value="revoke" formnovalidate>
+							<button class="btn danger" type="submit" name="intent" value="revoke" formnovalidate>
 								Erişimi kapat
 							</button>
 						)}
 					</div>
 				)}
 			</form>
+			</details>
 		))
+	}
+	{
+		logins.length > 0 && (
+			<details class="card logins" open={logins.some((l) => l.result !== "ok")}>
+				<summary>Son sürücü giriş denemeleri</summary>
+				<table>
+					<tbody>
+						{logins.map((l) => (
+							<tr>
+								<td class="muted">{clock(l.at)}</td>
+								<td>{l.name ?? "—"}</td>
+								<td class="muted">…{l.phone_tail}</td>
+								<td>
+									<span class:list={["badge", l.result === "ok" && "ok"]}>{LOGIN_OUTCOME_LABELS[l.result] ?? l.result}</span>
+								</td>
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</details>
+		)
 	}
 </OpsLayout>
 
 <style>
-	.logins summary {
-		cursor: pointer;
+	.list-head h2 {
+		margin: 8px 0 4px;
+	}
+	.list-head p {
+		max-width: 80ch;
+		font-size: 14px;
+	}
+	.driver {
+		padding: 0;
+		margin-bottom: 8px;
+	}
+	.driver > summary {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 16px;
+		list-style: none;
+		font-weight: 400;
+	}
+	.driver > summary::-webkit-details-marker {
+		display: none;
+	}
+	.driver[open] > summary {
+		margin-bottom: 0;
+		border-bottom: 1px solid var(--ops-line);
+	}
+	.driver > summary:hover {
+		background: var(--ops-soft);
+		border-radius: var(--ops-radius);
+	}
+	.driver .ops-avatar {
+		background: var(--navy-50);
+		color: var(--navy-700);
+	}
+	.who {
+		display: grid;
+		flex: 1;
+		min-width: 0;
+		line-height: 1.35;
+	}
+	.who .muted {
+		font-size: 13px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.tags {
+		display: flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		gap: 6px;
+	}
+	.chev {
+		flex-shrink: 0;
+		color: var(--gray-500);
+		transition: transform 0.15s;
+	}
+	.driver[open] .chev {
+		transform: rotate(180deg);
+	}
+	.driver > form {
+		padding: 16px;
+	}
+	.driver.new > summary.add {
+		gap: 8px;
+		color: var(--navy-700);
 		font-weight: 600;
+	}
+	@media (max-width: 720px) {
+		.driver > summary {
+			flex-wrap: wrap;
+		}
+		.tags {
+			order: 3;
+			width: 100%;
+			justify-content: flex-start;
+			padding-left: 46px;
+		}
 	}
 	.logins table {
 		width: 100%;

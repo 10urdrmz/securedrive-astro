@@ -5,6 +5,7 @@ import { can } from "../../../server/auth/rbac";
 import { BOOKING_STATUSES, PAYMENT_STATUS_LABELS, STATUS_LABELS, type BookingStatus } from "../../../server/bookings";
 import { formatMoney, requireOps } from "../../../server/ops";
 import { isoToIstanbul, istanbulToIso } from "../../../server/pricing";
+import Icon from "../../../components/Icon.astro";
 
 const ctx = await requireOps(Astro, "bookings.read");
 if (ctx instanceof Response) return ctx;
@@ -62,12 +63,40 @@ if (company) {
 if (status) query = query.where("b.status", "=", status);
 if (unassigned) query = query.where("b.driver_id", "is", null).where("b.status", "in", ["confirmed", "pending_payment"]);
 const rows = await query.orderBy("b.pickup_at").limit(300).execute();
+
+const shortDate = (date: string) => new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "short", weekday: "short", timeZone: "UTC" }).format(new Date(`${date}T00:00:00Z`));
+const range = from === to ? shortDate(from) : `${shortDate(from)} – ${shortDate(to)}`;
+const summary = `${rows.length} rezervasyon · ${company || agencyFilter ? "tüm tarihler" : q ? `"${q}" araması` : range}`;
+const tomorrow = addDays(todayLocal, 1);
+const filtered = !!(q || status || company || agencyFilter);
+const quick = [
+	{ label: "Bugün", href: `?from=${todayLocal}&to=${todayLocal}`, on: !filtered && !unassigned && from === todayLocal && to === todayLocal },
+	{ label: "Yarın", href: `?from=${tomorrow}&to=${tomorrow}`, on: !filtered && !unassigned && from === tomorrow && to === tomorrow },
+	{ label: "7 gün", href: "?", on: !filtered && !unassigned && from === todayLocal && to === addDays(todayLocal, 7) },
+	{ label: "Sürücü bekleyen", href: `?from=${todayLocal}&to=${addDays(todayLocal, 7)}&unassigned=1`, on: !filtered && unassigned },
+];
+const tone = (s: BookingStatus) =>
+	s === "completed" ? "ok" : s === "cancelled" || s === "no_show" ? "off" : s === "quoted" || s === "pending_payment" ? "warn" : ["driver_en_route", "driver_arrived", "on_board"].includes(s) ? "info" : "";
 ---
 
-<OpsLayout title="Rezervasyonlar" user={user}>
-	<form class="card form-grid" method="get">
+<OpsLayout title="Rezervasyonlar" user={user} subtitle={summary}>
+	{
+		can(user, "bookings.write") && (
+			<a slot="actions" class="btn" href="/ops/rezervasyonlar/yeni">
+				<Icon name="plus" size={16} /> Telefonla rezervasyon
+			</a>
+		)
+	}
+	<nav class="chips" aria-label="Hızlı filtre">
+		{quick.map((c) => (
+			<a href={c.href} aria-current={c.on ? "true" : undefined}>
+				{c.label}
+			</a>
+		))}
+	</nav>
+	<form class="card filters" method="get">
 		<label>
-			Alış tarihi (başlangıç)
+			Alış tarihi
 			<input type="date" name="from" value={from} />
 		</label>
 		<label>
@@ -81,33 +110,27 @@ const rows = await query.orderBy("b.pickup_at").limit(300).execute();
 				{BOOKING_STATUSES.map((s) => <option value={s} selected={s === status}>{STATUS_LABELS[s]}</option>)}
 			</select>
 		</label>
-		<label>
-			Ara (no, ad, telefon)
-			<input type="text" name="q" value={q} />
+		<label class="grow">
+			Ara
+			<input type="search" name="q" value={q} placeholder="No, ad veya telefon" />
 		</label>
-		<label class="inline">
+		<label class="check">
 			<input type="checkbox" name="unassigned" value="1" checked={unassigned} /> Sadece atanmamış
 		</label>
-		<div class="actions" style="margin:0">
-			<button class="btn secondary" type="submit">Filtrele</button>
-			{can(user, "bookings.write") && <a class="btn" href="/ops/rezervasyonlar/yeni">Telefonla rezervasyon</a>}
-		</div>
+		<button class="btn secondary" type="submit">Filtrele</button>
 	</form>
 
-	<p class="muted">{rows.length} rezervasyon{q ? ` · "${q}" araması` : ` · ${from} – ${to}`}</p>
 	<div class="table-wrap">
-		<table class="data">
+		<table class="data stack">
 			<thead>
 				<tr>
 					<th>No</th>
 					<th>Alış</th>
 					<th>Güzergâh</th>
-					<th>Araç</th>
 					<th>Yolcu</th>
 					<th>Sürücü</th>
 					<th>Durum</th>
 					<th class="num">Tutar</th>
-					<th>Ödeme</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -116,41 +139,48 @@ const rows = await query.orderBy("b.pickup_at").limit(300).execute();
 						const at = isoToIstanbul(r.pickup_at);
 						return (
 							<tr>
-								<td>
-									<a href={`/ops/rezervasyonlar/${r.code}`}>
-										<strong>{r.code}</strong>
+								<td class="nowrap">
+									<a class="code" href={`/ops/rezervasyonlar/${r.code}`}>
+										{r.code}
 									</a>
-									{r.source === "ops" && <span class="muted"> · tel</span>}
+									{r.source === "ops" && <span class="tag">tel</span>}
 								</td>
-								<td>
-									{at.date} <strong>{at.time}</strong>
-									{r.flight_no && <div class="muted">{r.flight_no}</div>}
+								<td class="nowrap" data-label="Alış">
+									<strong>{at.time}</strong> <span class="muted">{shortDate(at.date)}</span>
+									{r.flight_no && <div class="sub">{r.flight_no}</div>}
 								</td>
-								<td>
-									{r.from_name} → {r.to_name}
+								<td data-label="Güzergâh">
+									<div>
+										{r.from_name} → {r.to_name}
+									</div>
+									<div class="sub">
+										{r.class_name} · {r.pax} kişi
+									</div>
 								</td>
-								<td>
-									{r.class_name} · {r.pax} kişi
+								<td data-label="Yolcu">
+									<div>
+										{r.contact_name}
+										{r.company_name && <span class="badge info">{r.company_name}</span>}
+										{r.agency_name && <span class="badge info">{r.agency_name}</span>}
+									</div>
+									<div class="sub nowrap">{r.contact_phone}</div>
 								</td>
-								<td>
-									{r.company_name && <span class="badge">{r.company_name}</span>}
-									{r.agency_name && <span class="badge">{r.agency_name}</span>} {r.contact_name}
-									<div class="muted">{r.contact_phone}</div>
+								<td data-label="Sürücü">{r.driver_name ?? <span class="badge off">Atanmadı</span>}</td>
+								<td data-label="Durum">
+									<span class:list={["badge", tone(r.status as BookingStatus)]}>{STATUS_LABELS[r.status as BookingStatus] ?? r.status}</span>
 								</td>
-								<td>{r.driver_name ?? <span class="badge off">Atanmadı</span>}</td>
-								<td>
-									<span class:list={["badge", r.status === "completed" && "ok", r.status === "cancelled" && "off"]}>{STATUS_LABELS[r.status as BookingStatus] ?? r.status}</span>
+								<td class="num" data-label="Tutar">
+									<strong>{formatMoney(r.price_minor)} ₺</strong>
+									<div class:list={["sub", r.payment_status === "paid" && "paid"]}>{PAYMENT_STATUS_LABELS[r.payment_status] ?? r.payment_status}</div>
 								</td>
-								<td class="num">{formatMoney(r.price_minor)} ₺</td>
-								<td>{PAYMENT_STATUS_LABELS[r.payment_status] ?? r.payment_status}</td>
 							</tr>
 						);
 					})
 				}
 				{
 					rows.length === 0 && (
-						<tr>
-							<td colspan="9" class="muted">Bu filtreyle rezervasyon yok.</td>
+						<tr class="empty">
+							<td colspan="7">Bu filtreyle rezervasyon yok.</td>
 						</tr>
 					)
 				}
@@ -158,3 +188,151 @@ const rows = await query.orderBy("b.pickup_at").limit(300).execute();
 		</table>
 	</div>
 </OpsLayout>
+
+<style>
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-bottom: 12px;
+	}
+	.chips a {
+		padding: 6px 12px;
+		border: 1px solid var(--ops-line);
+		border-radius: 999px;
+		background: #fff;
+		color: var(--ink-800);
+		font-size: 13px;
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.chips a:hover {
+		border-color: var(--gray-500);
+	}
+	.chips a[aria-current] {
+		background: var(--navy-900);
+		border-color: var(--navy-900);
+		color: #fff;
+	}
+	.filters {
+		display: flex;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: flex-end;
+		gap: 12px;
+		padding: 16px;
+	}
+	.filters label {
+		flex: 0 1 170px;
+		min-width: 0;
+	}
+	.filters :is(input:not([type="checkbox"]), select) {
+		width: 100%;
+	}
+	.filters label.grow {
+		flex: 1 1 220px;
+	}
+	.filters label.check {
+		flex: 0 0 auto;
+		min-height: 38px;
+	}
+	.code {
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		text-decoration: none;
+	}
+	.tag {
+		margin-left: 6px;
+		padding: 1px 6px;
+		border-radius: 6px;
+		background: var(--gray-100);
+		color: var(--gray-600);
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+	}
+	.sub {
+		margin-top: 2px;
+		color: var(--gray-500);
+		font-size: 13px;
+	}
+	.sub.paid {
+		color: #067647;
+	}
+	td .badge {
+		margin-left: 4px;
+	}
+	td[data-label="Sürücü"] .badge,
+	td[data-label="Durum"] .badge {
+		margin-left: 0;
+	}
+	td[data-label="Güzergâh"] {
+		min-width: 220px;
+	}
+	.empty td {
+		padding: 32px 12px;
+		text-align: center;
+		color: var(--gray-600);
+	}
+	/* Phones: each booking becomes a card instead of a sideways-scrolling row. */
+	@media (max-width: 720px) {
+		.filters {
+			gap: 10px;
+			padding: 14px;
+		}
+		.filters label,
+		.filters label.grow {
+			flex: 1 1 calc(50% - 5px);
+		}
+		.filters label.check {
+			flex: 1 1 auto;
+		}
+		.filters .btn {
+			flex: 0 0 auto;
+		}
+		table.stack thead {
+			display: none;
+		}
+		table.stack,
+		table.stack tbody,
+		table.stack tr,
+		table.stack td {
+			display: block;
+		}
+		table.stack tr:not(.empty) {
+			display: grid;
+			grid-template-columns: 1fr auto;
+			gap: 6px 12px;
+			padding: 14px 16px;
+			border-bottom: 1px solid var(--ops-line);
+		}
+		table.stack tr:last-child {
+			border-bottom: 0;
+		}
+		table.stack td {
+			padding: 0;
+			border: 0;
+		}
+		table.stack thead + tbody tr:hover > td {
+			background: transparent;
+		}
+		table.stack td[data-label="Güzergâh"],
+		table.stack td[data-label="Yolcu"] {
+			grid-column: 1 / -1;
+		}
+		table.stack td.num {
+			grid-column: 2;
+			grid-row: 1 / span 2;
+			text-align: right;
+		}
+		table.stack td[data-label="Sürücü"],
+		table.stack td[data-label="Durum"] {
+			display: inline-block;
+		}
+		table.stack td[data-label="Sürücü"]::before {
+			content: "Sürücü: ";
+			color: var(--gray-500);
+			font-size: 13px;
+		}
+	}
+</style>

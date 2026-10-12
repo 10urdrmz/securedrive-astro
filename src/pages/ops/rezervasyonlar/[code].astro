@@ -268,7 +268,7 @@ const driverHasApp = booking.driver_id
 const chatRoomName = await chatRoom(booking);
 ---
 
-<OpsLayout title={`Rezervasyon ${booking.code}`} user={user} active="/ops/rezervasyonlar">
+<OpsLayout title={`Rezervasyon ${booking.code}`} subtitle={`${info.fromName} → ${info.toName} · ${info.className}`} user={user} active="/ops/rezervasyonlar">
 	{notice && <p class="notice">{notice}</p>}
 	{error && <p class="notice error">{error}</p>}
 	{
@@ -296,6 +296,8 @@ const chatRoomName = await chatRoom(booking);
 		</div>
 	</div>
 
+	<div class="ops-split">
+	<div>
 	<div class="card">
 		<h2 style="margin-top:0">Yolculuk</h2>
 		<table class="data">
@@ -614,7 +616,7 @@ const chatRoomName = await chatRoom(booking);
 						İade oranı (%) · politikaya göre şu an %{suggestedRefund}
 						<input type="number" name="refund_pct" min="0" max="100" value={suggestedRefund} />
 					</label>
-					<div><button class="btn secondary" type="submit">Rezervasyonu iptal et</button></div>
+					<div><button class="btn danger" type="submit">Rezervasyonu iptal et</button></div>
 				</form>
 			)}
 		</div>
@@ -670,6 +672,8 @@ const chatRoomName = await chatRoom(booking);
 		)}
 	</div>
 
+	</div>
+	<div>
 	{canWrite && (
 		<form class="card" method="post">
 			<h2 style="margin-top:0">İç not</h2>
@@ -722,6 +726,8 @@ const chatRoomName = await chatRoom(booking);
 				))}
 			</tbody>
 		</table>
+	</div>
+	</div>
 	</div>
 	<p><a href="/ops/rezervasyonlar">← Rezervasyonlar</a></p>
 </OpsLayout>
