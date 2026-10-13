@@ -2,51 +2,41 @@
  * Ops panel live alerts: keeps the menu counts and the bell current and announces new
  * price requests and web bookings (in-page toast, tab title, optional desktop
  * notification). Polls /ops/bildirim.json; the page works the same without it.
+ * Read and cleared state lives on the server per staff member, so it follows them
+ * across devices.
  */
 (() => {
 	const POLL_MS = 20000;
-	const SEEN_KEY = "sdOpsSeenAt";
 	const bell = document.querySelector("[data-ops-bell]");
 	const list = document.querySelector("[data-ops-feed]");
 	const toasts = document.querySelector("[data-ops-toasts]");
 	const enable = document.querySelector("[data-ops-enable]");
+	const actions = document.querySelector("[data-ops-actions]");
+	const readButton = document.querySelector("[data-ops-read]");
+	const total = document.querySelector("[data-ops-total]");
 	if (!bell || !list) return;
 
 	const baseTitle = document.title;
-	const read = (key) => {
-		try {
-			return localStorage.getItem(key);
-		} catch {
-			return null;
-		}
-	};
-	const write = (key, value) => {
-		try {
-			localStorage.setItem(key, value);
-		} catch {
-			// Private mode: alerts still work for this page view.
-		}
-	};
-
-	const newestAt = () => list.querySelector("li[data-at]")?.dataset.at ?? "";
-	// First visit: what is already there counts as seen.
-	if (!read(SEEN_KEY)) write(SEEN_KEY, newestAt() || new Date().toISOString());
-	let lastPollNewest = newestAt();
-
-	const markUnread = () => {
-		const seen = read(SEEN_KEY) ?? "";
-		let unread = 0;
-		for (const li of list.querySelectorAll("li[data-at]")) {
-			const isNew = li.dataset.at > seen;
-			li.classList.toggle("unread", isNew);
-			if (isNew) unread++;
-		}
-		document.title = unread ? `(${unread}) ${baseTitle}` : baseTitle;
-	};
+	let readAt = bell.dataset.readAt ?? "";
+	let lastPollNewest = list.querySelector("li[data-at]")?.dataset.at ?? "";
 
 	const setCount = (el, n) => {
 		el.textContent = String(n);
 		el.hidden = n === 0;
+	};
+
+	const markUnread = () => {
+		let unread = 0;
+		const items = list.querySelectorAll("li[data-at]");
+		for (const li of items) {
+			const isNew = li.dataset.at > readAt;
+			li.classList.toggle("unread", isNew);
+			if (isNew) unread++;
+		}
+		if (total) setCount(total, unread);
+		if (actions) actions.hidden = items.length === 0;
+		if (readButton) readButton.hidden = unread === 0;
+		document.title = unread ? `(${unread}) ${baseTitle}` : baseTitle;
 	};
 
 	const ago = (iso) => {
@@ -139,10 +129,9 @@
 				cache: "no-store",
 			});
 			if (!response.ok) return;
-			const { counts, feed } = await response.json();
+			const { counts, feed, readAt: serverReadAt } = await response.json();
 			for (const node of document.querySelectorAll("[data-ops-count]")) setCount(node, counts[node.dataset.opsCount] ?? 0);
-			const total = document.querySelector("[data-ops-total]");
-			if (total) setCount(total, (counts.requests ?? 0) + (counts.bookings ?? 0));
+			if (typeof serverReadAt === "string") readAt = serverReadAt;
 			const fresh = feed.filter((item) => item.at > lastPollNewest).reverse();
 			if (feed[0]) lastPollNewest = feed[0].at > lastPollNewest ? feed[0].at : lastPollNewest;
 			renderFeed(feed);
@@ -158,10 +147,24 @@
 		}
 	};
 
-	bell.addEventListener("toggle", () => {
-		if (!bell.open) return;
-		write(SEEN_KEY, newestAt() || new Date().toISOString());
-		setTimeout(markUnread, 1500);
+	// "Tümünü okundu işaretle" / "Tümünü temizle" without leaving the page.
+	actions?.addEventListener("submit", async (event) => {
+		event.preventDefault();
+		const button = event.submitter;
+		const body = new FormData();
+		body.set("action", button?.value ?? "read");
+		for (const b of actions.querySelectorAll("button")) b.disabled = true;
+		try {
+			const response = await fetch("/ops/bildirim.json", {
+				method: "POST",
+				body,
+				credentials: "same-origin",
+				headers: { Accept: "application/json" },
+			});
+			if (response.ok) await poll();
+		} finally {
+			for (const b of actions.querySelectorAll("button")) b.disabled = false;
+		}
 	});
 	document.addEventListener("click", (event) => {
 		if (bell.open && !bell.contains(event.target)) bell.open = false;

@@ -7,7 +7,7 @@
 import type { SessionUser } from "../server/auth/rbac";
 import { can, ROLE_LABELS } from "../server/auth/rbac";
 import { getDb } from "../server/db";
-import { opsCounts, opsFeed, type OpsCounts, type OpsFeedItem } from "../server/ops-alerts";
+import { opsAlertState, opsCounts, opsFeed, unreadCount, type OpsCounts, type OpsFeedItem } from "../server/ops-alerts";
 import Icon from "../components/Icon.astro";
 import "../styles/tailwind.css";
 
@@ -34,9 +34,14 @@ const PANEL = {
 const watch = !!user && can(user, "bookings.read");
 let counts: OpsCounts = { requests: 0, bookings: 0, applications: 0 };
 let feed: OpsFeedItem[] = [];
+let readAt = "";
+let unread = 0;
 if (user && watch) {
 	const db = await getDb(Astro.locals);
-	[counts, feed] = await Promise.all([opsCounts(db, user), opsFeed(db, user)]);
+	const state = await opsAlertState(db, user);
+	[counts, feed] = await Promise.all([opsCounts(db, user), opsFeed(db, user, state)]);
+	readAt = state.readAt;
+	unread = unreadCount(feed, state);
 }
 const ago = (iso: string) => {
 	const minutes = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60_000));
@@ -213,14 +218,14 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 									</a>
 								)}
 								{watch && (
-									<details class="ops-bell" data-ops-bell>
+									<details class="ops-bell" data-ops-bell data-read-at={readAt}>
 										<summary aria-label="Bildirimler">
 											<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
 												<path d="M10.27 21a2 2 0 0 0 3.46 0" />
 												<path d="M3.26 15.33A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.67C19.41 13.96 18 12.5 18 8A6 6 0 0 0 6 8c0 4.5-1.41 5.96-2.74 7.33" />
 											</svg>
-											<span class="ops-count" data-ops-total hidden={counts.requests + counts.bookings === 0}>
-												{counts.requests + counts.bookings}
+											<span class="ops-count" data-ops-total hidden={unread === 0}>
+												{unread}
 											</span>
 										</summary>
 										<div class="ops-bell-panel">
@@ -228,9 +233,17 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 												<strong>Bildirimler</strong>
 												<button type="button" class="ops-link" data-ops-enable hidden>Masaüstü bildirimlerini aç</button>
 											</div>
+											<form class="ops-bell-actions" method="post" action="/ops/bildirim.json" data-ops-actions hidden={feed.length === 0}>
+												<button type="submit" name="action" value="read" class="ops-link" data-ops-read hidden={unread === 0}>
+													Tümünü okundu işaretle
+												</button>
+												<button type="submit" name="action" value="clear" class="ops-link danger">
+													Tümünü temizle
+												</button>
+											</form>
 											<ul data-ops-feed>
 												{feed.map((item) => (
-													<li data-key={item.key} data-at={item.at}>
+													<li data-key={item.key} data-at={item.at} class:list={{ unread: item.at > readAt }}>
 														<a href={item.href}>
 															<span class:list={["ops-dot", item.kind]} aria-hidden="true" />
 															<span class="ops-feed-text">
@@ -1191,6 +1204,26 @@ Astro.response.headers.set("Referrer-Policy", "same-origin");
 	}
 	.ops-bell-head .ops-link {
 		font-size: 13px;
+	}
+	.ops-bell-actions {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 8px 16px;
+		border-bottom: 1px solid var(--ops-line);
+		background: var(--gray-100);
+	}
+	.ops-bell-actions[hidden],
+	.ops-bell-actions .ops-link[hidden] {
+		display: none;
+	}
+	.ops-bell-actions .ops-link {
+		font-size: 13px;
+		font-weight: 600;
+	}
+	.ops-bell-actions .ops-link.danger {
+		margin-left: auto;
+		color: #b42318;
 	}
 	.ops-bell ul {
 		list-style: none;
