@@ -549,4 +549,17 @@ export const MIGRATIONS: Migration[] = [
 			`CREATE INDEX IF NOT EXISTS sd_offers_booking ON sd_offers(booking_id, status)`,
 		],
 	},
+	{
+		name: "0017_ops_alert_state",
+		statements: [
+			// Per staff member: the bell shows items newer than cleared_at and highlights
+			// those newer than read_at. The items themselves are never deleted.
+			`CREATE TABLE IF NOT EXISTS sd_ops_alert_state (
+				user_id TEXT PRIMARY KEY REFERENCES sd_users(id),
+				read_at TEXT,
+				cleared_at TEXT,
+				updated_at TEXT NOT NULL DEFAULT (${NOW})
+			)`,
+		],
+	},
 ];

@@ -9,6 +9,7 @@ import { countPendingApplications } from "./driver-applications";
 import type { Db } from "./db";
 import { can, type SessionUser } from "./auth/rbac";
 import { sql } from "kysely";
+import { nowIso } from "./db";
 import { opsUnread } from "./messages";
 import { FLIGHT_STATUS_LABELS, type FlightStatus } from "./flights";
 
@@ -30,7 +31,56 @@ export interface OpsFeedItem {
 	at: string;
 }
 
+/** Per staff member: items at or before clearedAt are hidden, those after readAt are unread. */
+export interface OpsAlertState {
+	readAt: string;
+	clearedAt: string | null;
+}
+
 const EMPTY: OpsCounts = { requests: 0, bookings: 0, applications: 0 };
+
+/**
+ * Timestamps come from our tables (ISO with Z) and from EmDash ("YYYY-MM-DD HH:MM:SS",
+ * UTC). Comparing them as strings goes wrong on the same day, so everything in the feed
+ * is ISO.
+ */
+const toIso = (value: unknown): string => {
+	const raw = String(value ?? "");
+	const zoned = /[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : `${raw.replace(" ", "T")}Z`;
+	const ms = Date.parse(zoned);
+	return Number.isNaN(ms) ? raw : new Date(ms).toISOString();
+};
+
+export async function opsAlertState(db: Db, user: SessionUser): Promise<OpsAlertState> {
+	const row = await db
+		.selectFrom("sd_ops_alert_state")
+		.select(["read_at", "cleared_at"])
+		.where("user_id", "=", user.id)
+		.executeTakeFirst();
+	if (row) return { readAt: row.read_at ?? "", clearedAt: row.cleared_at ?? null };
+	// First look at the bell: what is already there counts as read.
+	const now = nowIso();
+	await db
+		.insertInto("sd_ops_alert_state")
+		.values({ user_id: user.id, read_at: now, cleared_at: null, updated_at: now })
+		.onConflict((oc) => oc.column("user_id").doNothing())
+		.execute();
+	return { readAt: now, clearedAt: null };
+}
+
+/** "Tümünü okundu işaretle" and "Temizle". Clearing also marks everything read. */
+export async function updateOpsAlertState(db: Db, user: SessionUser, action: "read" | "clear"): Promise<OpsAlertState> {
+	const now = nowIso();
+	const values = action === "clear" ? { read_at: now, cleared_at: now, updated_at: now } : { read_at: now, updated_at: now };
+	await db
+		.insertInto("sd_ops_alert_state")
+		.values({ user_id: user.id, cleared_at: null, ...values })
+		.onConflict((oc) => oc.column("user_id").doUpdateSet(values))
+		.execute();
+	return opsAlertState(db, user);
+}
+
+export const unreadCount = (feed: OpsFeedItem[], state: OpsAlertState) => feed.filter((item) => item.at > state.readAt).length;
 
 export async function opsCounts(db: Db, user: SessionUser): Promise<OpsCounts> {
 	if (!can(user, "bookings.read")) return EMPTY;
@@ -58,7 +108,7 @@ export async function opsCounts(db: Db, user: SessionUser): Promise<OpsCounts> {
 	};
 }
 
-export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<OpsFeedItem[]> {
+export async function opsFeed(db: Db, user: SessionUser, state: OpsAlertState | null = null, limit = 12): Promise<OpsFeedItem[]> {
 	if (!can(user, "bookings.read")) return [];
 	const [requests, bookings, events, messages, flights] = await Promise.all([
 		db
@@ -226,5 +276,10 @@ export async function opsFeed(db: Db, user: SessionUser, limit = 12): Promise<Op
 			};
 		}),
 	];
-	return items.sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, limit);
+	const cleared = state?.clearedAt ?? "";
+	return items
+		.map((item) => ({ ...item, at: toIso(item.at) }))
+		.filter((item) => item.at > cleared)
+		.sort((a, b) => (a.at < b.at ? 1 : -1))
+		.slice(0, limit);
 }
