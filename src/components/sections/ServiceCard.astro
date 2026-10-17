@@ -10,12 +10,14 @@ interface Props {
 	icon?: string | null;
 	features?: unknown;
 	cta?: string | null;
+	/** How many feature lines to list; the homepage keeps cards short. */
+	maxFeatures?: number;
 }
 
-const { href, title, summary, badge, icon, features, cta } = Astro.props;
+const { href, title, summary, badge, icon, features, cta, maxFeatures = 4 } = Astro.props;
 const ICONS = ["plane", "clock", "building", "route", "shield", "star"] as const;
 const iconName = (ICONS as readonly string[]).includes(icon ?? "") ? (icon as (typeof ICONS)[number]) : "star";
-const list = texts(features).slice(0, 4);
+const list = texts(features).slice(0, maxFeatures);
 ---
 
 <article class="card service reveal">
