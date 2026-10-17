@@ -129,7 +129,7 @@ async function loadVehicleCatalog(Astro: AstroGlobal, locale: Locale): Promise<R
 	const entries = await getLocalized(Astro, "vehicles", locale);
 	const map: Record<string, VehicleCatalogEntry> = {};
 	for (const entry of entries) {
-		const d = entry.data as Record<string, unknown>;
+		const d = entry.data as unknown as Record<string, unknown>;
 		map[slugOf(entry)] = {
 			name: typeof d.name === "string" ? d.name : "",
 			classLabel: typeof d.class_label === "string" ? d.class_label : null,

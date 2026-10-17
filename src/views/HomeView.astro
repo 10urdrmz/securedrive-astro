@@ -70,19 +70,36 @@ const today = new Date().toISOString().slice(0, 10);
 			</div>
 
 			<form class="quick" action={bookPath(locale)} method="get">
-				<h2>{t("quick.title")}</h2>
+				<div class="flex items-center justify-between mb-2">
+					<h2 class="text-xl font-bold text-gray-900 m-0">{t("quick.title")}</h2>
+					<span class="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700">
+						<span class="size-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+						{t("quick.live")}
+					</span>
+				</div>
+				<p class="text-xs text-gray-500 -mt-1 mb-4">{t("quick.lead")}</p>
 				<div class="field">
 					<label for="q-from">{t("quick.from")}</label>
 					<select id="q-from" name="from" required>
 						<option value="">{t("form.choose")}</option>
-						{(["IST", "SAW"] as const).map((code) => <option value={code.toLowerCase()}>{airportName(code, locale)}</option>)}
+						<optgroup label={t("quick.airports")}>
+							{(["IST", "SAW"] as const).map((code) => <option value={code.toLowerCase()}>{airportName(code, locale)}</option>)}
+						</optgroup>
+						<optgroup label={t("quick.districts")}>
+							{ISTANBUL_DISTRICTS.filter((d) => d.serviceable).map((d) => <option value={d.id}>{d.name}</option>)}
+						</optgroup>
 					</select>
 				</div>
 				<div class="field">
 					<label for="q-to">{t("quick.to")}</label>
 					<select id="q-to" name="to" required>
 						<option value="">{t("form.choose")}</option>
-						{ISTANBUL_DISTRICTS.filter((d) => d.serviceable).map((d) => <option value={d.id}>{d.name}</option>)}
+						<optgroup label={t("quick.districts")}>
+							{ISTANBUL_DISTRICTS.filter((d) => d.serviceable).map((d) => <option value={d.id}>{d.name}</option>)}
+						</optgroup>
+						<optgroup label={t("quick.airports")}>
+							{(["IST", "SAW"] as const).map((code) => <option value={code.toLowerCase()}>{airportName(code, locale)}</option>)}
+						</optgroup>
 					</select>
 				</div>
 				<div class="quick-row">
@@ -109,6 +126,12 @@ const today = new Date().toISOString().slice(0, 10);
 					{t("quick.submit")}
 					<Icon name="arrow" size={18} class="flip-rtl" />
 				</button>
+				<div class="mt-3 grid grid-cols-2 gap-2 text-[11px] text-gray-500">
+					<div class="flex items-center gap-1.5"><Icon name="tick" size={12} class="text-emerald-600" /> {t("perk.freeCancel")}</div>
+					<div class="flex items-center gap-1.5"><Icon name="tick" size={12} class="text-emerald-600" /> {t("perk.verified")}</div>
+					<div class="flex items-center gap-1.5"><Icon name="tick" size={12} class="text-emerald-600" /> {t("perk.firmPrice")}</div>
+					<div class="flex items-center gap-1.5"><Icon name="tick" size={12} class="text-emerald-600" /> {t("perk.wait60")}</div>
+				</div>
 			</form>
 		</div>
 	</section>
