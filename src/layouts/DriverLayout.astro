@@ -8,13 +8,36 @@ import type { Driver } from "../server/driver-app";
 interface Props {
 	title: string;
 	driver?: Driver | null;
-	/** Show a back link to the job list. */
+	/** Show a back link to the job list (job screen). */
 	back?: boolean;
-	/** Reload the page every n seconds (job list), so new jobs show up. */
+	/** Re-fetch the page every n seconds and swap in the new content (public/driver-shell.js). */
 	refresh?: number;
+	/** The bottom tab this page belongs to. */
+	tab?: "jobs" | "pool" | "earn" | "cars";
+	/** Counts shown on the bottom tabs. */
+	badges?: { jobs?: number; pool?: number };
 }
 
-const { title, driver, back = false, refresh } = Astro.props;
+const { title, driver, back = false, refresh, tab, badges = {} } = Astro.props;
+const initials = (driver?.name ?? "")
+	.split(/\s+/)
+	.filter(Boolean)
+	.slice(0, 2)
+	.map((w) => w[0]!.toLocaleUpperCase("tr-TR"))
+	.join("");
+// A partner's drivers use their firm's cars and are paid by the firm.
+const tabs = driver
+	? [
+			{ key: "jobs", href: "/surucu", label: "İşlerim", count: badges.jobs ?? 0, icon: "M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m-6 9 2 2 4-4" },
+			{ key: "pool", href: "/surucu/havuz", label: "Havuz", count: badges.pool ?? 0, icon: "M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" },
+			...(driver.org_id
+				? []
+				: [
+						{ key: "earn", href: "/surucu/kazanc", label: "Kazanç", count: 0, icon: "M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0 0 4h14a2 2 0 0 1 2 2v3m0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5m18 7h-4a2 2 0 0 0 0 4h4v-4z" },
+						{ key: "cars", href: "/surucu/araclarim", label: "Araçlarım", count: 0, icon: "M19 17h2v-4.5a2 2 0 0 0-.6-1.4L18 9l-1.8-3.6A2 2 0 0 0 14.4 4H9.6a2 2 0 0 0-1.8 1.1L6 9l-2.4 2.1a2 2 0 0 0-.6 1.4V17h2m14 0a2 2 0 1 1-4 0m4 0a2 2 0 0 0-4 0m0 0H9m-4 0a2 2 0 1 0 4 0m-4 0a2 2 0 0 1 4 0M6 9h12" },
+					]),
+		]
+	: [];
 
 Astro.response.headers.set("Cache-Control", "no-store");
 Astro.response.headers.set("X-Robots-Tag", "noindex, nofollow");
@@ -34,13 +57,12 @@ Astro.response.headers.set("Permissions-Policy", "camera=(), microphone=(), geol
 		<meta name="apple-mobile-web-app-capable" content="yes" />
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<meta name="apple-mobile-web-app-title" content="SD Sürücü" />
-		{refresh && <meta http-equiv="refresh" content={String(refresh)} />}
 		<title>{title} · SecureDrive Sürücü</title>
 		<link rel="manifest" href="/surucu.webmanifest" />
 		<link rel="icon" href="/favicon.svg" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 	</head>
-	<body class="drv">
+	<body class:list={["drv", tabs.length > 0 && "has-tabs"]}>
 		<header class="drv-top">
 			{
 				back ? (
@@ -51,24 +73,60 @@ Astro.response.headers.set("Permissions-Policy", "camera=(), microphone=(), geol
 						İşlerim
 					</a>
 				) : (
-					<span class="drv-brand">
+					<a class="drv-brand" href={driver ? "/surucu" : "/surucu/giris"}>
+						<span class="drv-logo" aria-hidden="true">SD</span>
 						SecureDrive <span>Sürücü</span>
-					</span>
+					</a>
 				)
 			}
 			{
 				driver && (
-					<form method="post" action="/surucu/cikis">
-						<button type="submit" class="drv-out">
-							Çıkış
-						</button>
-					</form>
+					<div class="drv-me">
+						{refresh && (
+							<button type="button" class="drv-live" data-live-refresh aria-label="Yenile" title="Otomatik yenileniyor">
+								<span class="drv-live-dot" aria-hidden="true" />
+								Canlı
+							</button>
+						)}
+						<details class="drv-menu">
+							<summary aria-label="Hesap">
+								<span class="drv-avatar">{initials || "S"}</span>
+							</summary>
+							<div class="drv-menu-pop">
+								<strong>{driver.name}</strong>
+								{driver.plate && <span class="drv-muted">{driver.plate}</span>}
+								<form method="post" action="/surucu/cikis">
+									<button type="submit" class="drv-btn ghost">
+										Çıkış yap
+									</button>
+								</form>
+							</div>
+						</details>
+					</div>
 				)
 			}
 		</header>
-		<main class="drv-main">
+		<main class="drv-main" data-refresh={refresh}>
 			<slot />
 		</main>
+		{
+			tabs.length > 0 && (
+				<nav class="drv-tabs" aria-label="Sürücü menüsü">
+					{tabs.map((t) => (
+						<a href={t.href} class:list={[t.key === tab && "is-on"]} aria-current={t.key === tab ? "page" : undefined}>
+							<span class="drv-tab-icon">
+								<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+									<path d={t.icon} />
+								</svg>
+								{t.count > 0 && <span class="drv-tab-count">{t.count > 9 ? "9+" : t.count}</span>}
+							</span>
+							{t.label}
+						</a>
+					))}
+				</nav>
+			)
+		}
+		{refresh && <script src="/driver-shell.js" defer is:inline />}
 	</body>
 </html>
 
@@ -96,7 +154,7 @@ Astro.response.headers.set("Permissions-Policy", "camera=(), microphone=(), geol
 	.drv-top {
 		position: sticky;
 		top: 0;
-		z-index: 10;
+		z-index: 20;
 		display: flex;
 		align-items: center;
 		justify-content: space-between;
@@ -107,11 +165,28 @@ Astro.response.headers.set("Permissions-Policy", "camera=(), microphone=(), geol
 		color: #fff;
 	}
 	.drv-brand {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		color: #fff;
 		font-weight: 700;
+		text-decoration: none;
 	}
-	.drv-brand span {
+	.drv-brand span:not(.drv-logo) {
 		color: #dcc49a;
 		font-weight: 500;
+	}
+	.drv-logo {
+		display: grid;
+		place-items: center;
+		width: 30px;
+		height: 30px;
+		border-radius: 9px;
+		background: #dcc49a;
+		color: var(--drv-navy);
+		font-size: 12px;
+		font-weight: 800;
+		letter-spacing: 0.02em;
 	}
 	.drv-back {
 		display: inline-flex;
@@ -122,22 +197,148 @@ Astro.response.headers.set("Permissions-Policy", "camera=(), microphone=(), geol
 		text-decoration: none;
 		margin-left: -6px;
 	}
-	.drv-top form {
-		margin: 0;
+	.drv-me {
+		display: flex;
+		align-items: center;
+		gap: 10px;
 	}
-	.drv-out {
-		background: none;
-		border: 1px solid rgb(255 255 255 / 0.35);
-		color: #fff;
+	.drv-live {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 10px;
+		border: 1px solid rgb(255 255 255 / 0.2);
 		border-radius: 999px;
-		padding: 6px 14px;
+		background: rgb(255 255 255 / 0.06);
+		color: #d1fadf;
 		font: inherit;
+		font-size: 13px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.drv-live-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 999px;
+		background: #32d583;
+		box-shadow: 0 0 0 0 rgb(50 213 131 / 0.6);
+		animation: drv-pulse 2s infinite;
+	}
+	.drv-live.is-busy .drv-live-dot {
+		animation: none;
+		background: #fdb022;
+	}
+	@keyframes drv-pulse {
+		70% {
+			box-shadow: 0 0 0 7px rgb(50 213 131 / 0);
+		}
+		100% {
+			box-shadow: 0 0 0 0 rgb(50 213 131 / 0);
+		}
+	}
+	.drv-menu {
+		position: relative;
+	}
+	.drv-menu summary {
+		list-style: none;
+		cursor: pointer;
+	}
+	.drv-menu summary::-webkit-details-marker {
+		display: none;
+	}
+	.drv-avatar {
+		display: grid;
+		place-items: center;
+		width: 36px;
+		height: 36px;
+		border-radius: 999px;
+		background: #144c7f;
+		border: 2px solid rgb(255 255 255 / 0.25);
 		font-size: 14px;
+		font-weight: 700;
+	}
+	.drv-menu-pop {
+		position: absolute;
+		right: 0;
+		top: calc(100% + 8px);
+		display: grid;
+		gap: 4px;
+		min-width: 210px;
+		padding: 14px;
+		border-radius: 14px;
+		background: #fff;
+		color: var(--drv-ink);
+		box-shadow: 0 12px 32px rgb(16 24 40 / 0.18);
+	}
+	.drv-menu-pop form {
+		margin: 8px 0 0;
+	}
+	.drv-menu-pop .drv-btn {
+		min-height: 44px;
+		font-size: 15px;
 	}
 	.drv-main {
 		max-width: 640px;
 		margin: 0 auto;
 		padding: 16px 16px calc(32px + env(safe-area-inset-bottom));
+	}
+	.has-tabs .drv-main {
+		padding-bottom: calc(96px + env(safe-area-inset-bottom));
+	}
+	.drv-tabs {
+		position: fixed;
+		inset: auto 0 0;
+		z-index: 20;
+		display: flex;
+		justify-content: center;
+		padding: 6px 8px env(safe-area-inset-bottom);
+		background: rgb(255 255 255 / 0.96);
+		backdrop-filter: blur(10px);
+		border-top: 1px solid var(--drv-line);
+	}
+	.drv-tabs a {
+		flex: 1;
+		max-width: 160px;
+		display: grid;
+		justify-items: center;
+		gap: 2px;
+		padding: 6px 4px 8px;
+		border-radius: 12px;
+		color: #667085;
+		font-size: 12px;
+		font-weight: 600;
+		text-decoration: none;
+	}
+	.drv-tabs a.is-on {
+		color: var(--drv-blue);
+	}
+	.drv-tab-icon {
+		position: relative;
+		display: grid;
+		place-items: center;
+		width: 52px;
+		height: 30px;
+		border-radius: 999px;
+		transition: background 0.15s;
+	}
+	.drv-tabs a.is-on .drv-tab-icon {
+		background: #e0ecf8;
+	}
+	.drv-tab-count {
+		position: absolute;
+		top: -3px;
+		right: 4px;
+		min-width: 18px;
+		height: 18px;
+		padding: 0 5px;
+		box-sizing: border-box;
+		border-radius: 999px;
+		background: #d92d20;
+		color: #fff;
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 18px;
+		text-align: center;
 	}
 	.drv-main h1 {
 		font-size: 22px;
