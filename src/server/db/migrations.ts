@@ -562,4 +562,12 @@ export const MIGRATIONS: Migration[] = [
 			)`,
 		],
 	},
+	{
+		name: "0018_booking_passengers",
+		statements: [
+			// One entry per traveller on web requests: [{ name, nationality, doc }] as JSON.
+			// The first is the contact person. Null on bookings made before this or by ops.
+			`ALTER TABLE sd_bookings ADD COLUMN passengers TEXT`,
+		],
+	},
 ];

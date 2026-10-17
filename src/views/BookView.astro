@@ -13,6 +13,7 @@ import { BOOK_SLUG, LOCALE_META, accountPath, bookPath, localizePath } from "../
 import { useTranslations } from "../i18n/ui";
 import type { WizardPage } from "../lib/booking-page";
 import { formatTry } from "../lib/format";
+import { NATIONALITIES, nationalityName } from "../lib/nationalities";
 import { SITE, telHref, whatsappHref } from "../lib/site";
 import { istanbulToIso } from "../server/pricing";
 
@@ -39,6 +40,8 @@ const when = pickupIso
 	? `${new Intl.DateTimeFormat(intl, { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${trip.date}T00:00:00Z`))} · ${trip.time}`
 	: "";
 const promises = ["book.why1", "book.why2", "book.why3"] as const;
+const paxCount = Math.min(Math.max(trip.pax ?? 1, 1), 60);
+const travellers = Array.from({ length: paxCount }, (_, i) => i);
 ---
 
 <Base locale={locale} path={BOOK_SLUG} title={t("book.title")} description={t("book.lead")} noindex={Astro.url.search.length > 0}>
@@ -83,93 +86,160 @@ const promises = ["book.why1", "book.why2", "book.why3"] as const;
 					<small class="text-sm text-gray-600">{t("book.timeHint")}</small>
 				</div>
 
-				{/* Step 2: passenger, extras, payment. Sending it asks carriers for prices. */}
+				{/* Step 2: travellers, trip details, extras, payment. Sending it asks carriers for prices. */}
 				{
 					page.step === 2 && (
-						<form id="bilgiler" class:list={[card, "form p-6 sm:p-8"]} method="post" action={`${bookPath(locale)}?${tripQuery}#bilgiler`}>
-							<p class="fieldset-title">{t("book.passenger")}</p>
-							<div class="form-row">
-								<div class="field">
-									<label for="bk-name">{t("form.name")}</label>
-									<input id="bk-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={page.values.name} />
-								</div>
-								<div class="field">
-									<label for="bk-phone">{t("form.phone")}</label>
-									<input id="bk-phone" name="phone" type="tel" required maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={page.values.phone} />
-								</div>
-							</div>
-							<div class="form-row">
-								<div class="field">
-									<label for="bk-email">{t("form.emailOptional")}</label>
-									<input id="bk-email" name="email" type="email" maxlength="120" autocomplete="email" dir="ltr" value={page.values.email} />
-								</div>
-								<div class="field">
-									<label for="bk-flight">{t("form.flight")}</label>
-									<input id="bk-flight" name="flight" maxlength="12" autocomplete="off" dir="ltr" placeholder="TK 1984" value={page.values.flight} />
-								</div>
-							</div>
-							<div class="form-row">
-								<div class="field">
-									<label for="bk-address">{page.addressOnPickup ? t("book.pickupAddress") : t("book.dropoffAddress")}</label>
-									<input id="bk-address" name="address" maxlength="200" autocomplete="street-address" value={page.values.address} />
-								</div>
-								<div class="field">
-									<label for="bk-sign">{t("book.signName")}</label>
-									<input id="bk-sign" name="sign" maxlength="60" value={page.values.sign} />
-								</div>
-							</div>
-							{page.extras && page.extras.length > 0 && (
-								<>
-									<p class="fieldset-title">{t("book.extras")}</p>
-									<div class="form-row">
-										{page.extras.map((extra) => (
+						<form id="bilgiler" class="bk-form" method="post" action={`${bookPath(locale)}?${tripQuery}#bilgiler`}>
+							<section class:list={[card, "bk-section"]}>
+								<header class="bk-head">
+									<span class="bk-num">1</span>
+									<div>
+										<h2>{t("book.travellers")}</h2>
+										<p>{t("book.travellersHint", { n: paxCount })}</p>
+									</div>
+								</header>
+								{travellers.map((i) => (
+									<fieldset class="bk-traveller">
+										<legend>
+											<span class="bk-avatar" aria-hidden="true"><Icon name="user" size={16} /></span>
+											{t("book.travellerN", { n: i + 1 })}
+											{i === 0 && <span class="bk-tag">{t("book.leadTraveller")}</span>}
+										</legend>
+										<div class="bk-grid">
+											<div class="field bk-span-2">
+												<label for={`bk-p${i}-name`}>{t("form.name")}</label>
+												{i === 0 ? (
+													<input id="bk-p0-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={page.values.name} />
+												) : (
+													<input id={`bk-p${i}-name`} name={`p${i}_name`} required minlength="2" maxlength="80" autocomplete="off" value={page.values[`p${i}_name`] ?? ""} />
+												)}
+											</div>
+											{i === 0 && (
+												<>
+													<div class="field">
+														<label for="bk-phone">{t("form.phone")}</label>
+														<input id="bk-phone" name="phone" type="tel" required maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={page.values.phone} />
+													</div>
+													<div class="field">
+														<label for="bk-email">{t("form.emailOptional")}</label>
+														<input id="bk-email" name="email" type="email" maxlength="120" autocomplete="email" dir="ltr" value={page.values.email} />
+													</div>
+												</>
+											)}
 											<div class="field">
-												<label for={`bk-extra-${extra.key}`}>
-													{extra.name} · {extra.price_minor ? money(extra.price_minor) : t("book.free")}
-												</label>
+												<label for={`bk-p${i}-nat`}>{t("form.nationality")}</label>
+												<select id={`bk-p${i}-nat`} name={`p${i}_nat`}>
+													{NATIONALITIES.map((code) => (
+														<option value={code} selected={(page.values[`p${i}_nat`] || page.values.p0_nat || "TR") === code}>
+															{nationalityName(code, intl, t("form.nationalityOther"))}
+														</option>
+													))}
+												</select>
+											</div>
+											<div class="field">
+												<label for={`bk-p${i}-doc`}>{t("form.idDoc")}</label>
+												<input id={`bk-p${i}-doc`} name={`p${i}_doc`} maxlength="20" autocomplete="off" dir="ltr" value={page.values[`p${i}_doc`] ?? ""} />
+											</div>
+										</div>
+										{i === 0 && <p class="bk-note">{t("book.leadHint")}</p>}
+									</fieldset>
+								))}
+							</section>
+
+							<section class:list={[card, "bk-section"]}>
+								<header class="bk-head">
+									<span class="bk-num">2</span>
+									<div>
+										<h2>{t("book.tripDetails")}</h2>
+										<p>{zoneName(trip.from)} → {zoneName(trip.to)} · {when}</p>
+									</div>
+								</header>
+								<div class="bk-grid">
+									<div class="field">
+										<label for="bk-flight">{t("form.flight")}</label>
+										<input id="bk-flight" name="flight" maxlength="12" autocomplete="off" dir="ltr" placeholder="TK 1984" value={page.values.flight} />
+									</div>
+									<div class="field">
+										<label for="bk-sign">{t("book.signName")}</label>
+										<input id="bk-sign" name="sign" maxlength="60" value={page.values.sign} />
+									</div>
+									<div class="field bk-span-2">
+										<label for="bk-address">{page.addressOnPickup ? t("book.pickupAddress") : t("book.dropoffAddress")}</label>
+										<input id="bk-address" name="address" maxlength="200" autocomplete="street-address" value={page.values.address} />
+									</div>
+									<div class="field bk-span-2">
+										<label for="bk-notes">{t("form.notes")}</label>
+										<textarea id="bk-notes" name="notes" rows="3" maxlength="1000">{page.values.notes}</textarea>
+									</div>
+								</div>
+							</section>
+
+							{page.extras && page.extras.length > 0 && (
+								<section class:list={[card, "bk-section"]}>
+									<header class="bk-head">
+										<span class="bk-num">3</span>
+										<div>
+											<h2>{t("book.extras")}</h2>
+										</div>
+									</header>
+									<div class="bk-extras">
+										{page.extras.map((extra) => (
+											<label class="bk-extra" for={`bk-extra-${extra.key}`}>
+												<span class="bk-extra-text">
+													<strong>{extra.name}</strong>
+													<small>{extra.price_minor ? money(extra.price_minor) : t("book.free")}</small>
+												</span>
 												<select id={`bk-extra-${extra.key}`} name={`extra_${extra.key}`}>
 													{Array.from({ length: extra.max_qty + 1 }, (_, n) => (
 														<option value={n} selected={String(n) === (page.values[`extra_${extra.key}`] ?? "0")}>{n}</option>
 													))}
 												</select>
-											</div>
+											</label>
 										))}
 									</div>
-								</>
+								</section>
 							)}
-							<div class="field">
-								<label for="bk-notes">{t("form.notes")}</label>
-								<textarea id="bk-notes" name="notes" rows="3" maxlength="1000">{page.values.notes}</textarea>
-							</div>
-							<p class="fieldset-title">{t("book.payment")}</p>
-							<div class="grid gap-2">
-								{(["cash", "card_in_vehicle"] as const).map((method) => (
-									<label class="checkbox">
-										<input type="radio" name="payment" value={method} checked={(page.values.payment || "cash") === method} />
-										<span>{t(`book.pay.${method}`)}</span>
-									</label>
-								))}
-							</div>
-							<div class="hp-field" aria-hidden="true">
-								<label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
-							</div>
-							<label class="checkbox">
-								<input type="checkbox" name="terms" required />
-								<span>
-									<a href={localizePath(locale, "mesafeli-satis-sozlesmesi")} target="_blank">{t("book.termsLink")}</a> ·{" "}
-									<a href={localizePath(locale, "iptal-ve-iade")} target="_blank">{t("book.cancelLink")}</a> — {t("book.terms")}
-								</span>
-							</label>
-							{!page.member && (
-								<p class="text-sm text-gray-600">
-									<a class="underline" href={accountPath(locale, "giris")}>{t("account.loginButton")}</a> · {t("book.loginHint")}
-								</p>
-							)}
-							<button type="submit" class="btn btn--primary btn--block">
-								{t("book.sendRequest")}
-								<Icon name="arrow" size={18} class="flip-rtl" />
-							</button>
-							<small class="text-sm text-gray-600">{t("book.requestHint")}</small>
+
+							<section class:list={[card, "bk-section"]}>
+								<header class="bk-head">
+									<span class="bk-num">{page.extras && page.extras.length > 0 ? 4 : 3}</span>
+									<div>
+										<h2>{t("book.payment")}</h2>
+									</div>
+								</header>
+								<div class="bk-pay">
+									{(["cash", "card_in_vehicle"] as const).map((method) => (
+										<label class="bk-pay-option">
+											<input type="radio" name="payment" value={method} checked={(page.values.payment || "cash") === method} />
+											<span class="bk-pay-icon" aria-hidden="true"><Icon name={method === "cash" ? "wallet" : "card"} size={20} /></span>
+											<span class="bk-pay-text">
+												<strong>{t(`book.pay.${method}`)}</strong>
+												<small>{t(`book.payHint.${method}`)}</small>
+											</span>
+										</label>
+									))}
+								</div>
+								<div class="hp-field" aria-hidden="true">
+									<label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
+								</div>
+								<label class="checkbox">
+									<input type="checkbox" name="terms" required />
+									<span>
+										<a href={localizePath(locale, "mesafeli-satis-sozlesmesi")} target="_blank">{t("book.termsLink")}</a> ·{" "}
+										<a href={localizePath(locale, "iptal-ve-iade")} target="_blank">{t("book.cancelLink")}</a> — {t("book.terms")}
+									</span>
+								</label>
+								{!page.member && (
+									<p class="text-sm text-gray-600 m-0">
+										<a class="underline" href={accountPath(locale, "giris")}>{t("account.loginButton")}</a> · {t("book.loginHint")}
+									</p>
+								)}
+								<button type="submit" class="btn btn--primary btn--block bk-submit">
+									{t("book.sendRequest")}
+									<Icon name="arrow" size={18} class="flip-rtl" />
+								</button>
+								<small class="text-sm text-gray-600 text-center">{t("book.requestHint")}</small>
+							</section>
 						</form>
 					)
 				}
@@ -210,3 +280,225 @@ const promises = ["book.why1", "book.why2", "book.why3"] as const;
 		</div>
 	</section>
 </Base>
+
+<style>
+	.bk-form {
+		display: grid;
+		gap: var(--space-5);
+	}
+
+	.bk-section {
+		display: grid;
+		gap: var(--space-5);
+		padding: var(--space-6);
+	}
+
+	@media (min-width: 640px) {
+		.bk-section {
+			padding: var(--space-8);
+		}
+	}
+
+	.bk-head {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-4);
+	}
+
+	.bk-head h2 {
+		margin: 0;
+		font-size: var(--text-xl);
+	}
+
+	.bk-head p {
+		margin: 2px 0 0;
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+
+	.bk-num {
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+		width: 34px;
+		height: 34px;
+		border-radius: 50%;
+		background: var(--navy-700, #1e4f86);
+		color: #fff;
+		font-weight: 700;
+	}
+
+	.bk-traveller {
+		display: grid;
+		gap: var(--space-4);
+		margin: 0;
+		padding: var(--space-5);
+		border: 1px solid var(--color-border);
+		border-radius: 14px;
+		background: var(--gray-50, #f9fafb);
+		min-width: 0;
+	}
+
+	.bk-traveller legend {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		float: left;
+		width: 100%;
+		margin: 0;
+		padding: 0;
+		font-weight: 700;
+	}
+
+	.bk-traveller legend + * {
+		clear: both;
+	}
+
+	.bk-avatar {
+		display: grid;
+		place-items: center;
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: #fff;
+		border: 1px solid var(--color-border);
+		color: var(--navy-700, #1e4f86);
+	}
+
+	.bk-tag {
+		padding: 2px 10px;
+		border-radius: 999px;
+		background: #e8f0fa;
+		color: var(--navy-700, #1e4f86);
+		font-size: var(--text-xs);
+		font-weight: 600;
+	}
+
+	.bk-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-4);
+	}
+
+	.bk-grid .field {
+		margin: 0;
+	}
+
+	.bk-span-2 {
+		grid-column: 1 / -1;
+	}
+
+	@media (max-width: 560px) {
+		.bk-grid {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+
+	.bk-traveller input,
+	.bk-traveller select {
+		background-color: #fff;
+	}
+
+	.bk-note {
+		margin: 0;
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+
+	.bk-extras {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+		gap: var(--space-3);
+	}
+
+	.bk-extra {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: var(--space-3);
+		margin: 0;
+		padding: var(--space-4);
+		border: 1px solid var(--color-border);
+		border-radius: 14px;
+		cursor: pointer;
+	}
+
+	.bk-extra:has(option:checked:not([value="0"])) {
+		border-color: var(--navy-700, #1e4f86);
+		background: #f4f8fd;
+	}
+
+	.bk-extra-text {
+		display: grid;
+		min-width: 0;
+	}
+
+	.bk-extra-text small {
+		color: var(--color-muted);
+	}
+
+	.bk-extra select {
+		width: auto;
+		min-width: 4.5rem;
+	}
+
+	.bk-pay {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: var(--space-3);
+	}
+
+	.bk-pay-option {
+		position: relative;
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+		margin: 0;
+		padding: var(--space-4);
+		border: 1.5px solid var(--color-border);
+		border-radius: 14px;
+		cursor: pointer;
+	}
+
+	.bk-pay-option input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	.bk-pay-option:has(input:checked) {
+		border-color: var(--navy-700, #1e4f86);
+		background: #f4f8fd;
+		box-shadow: 0 0 0 1px var(--navy-700, #1e4f86);
+	}
+
+	.bk-pay-option:has(input:focus-visible) {
+		outline: 2px solid var(--navy-700, #1e4f86);
+		outline-offset: 2px;
+	}
+
+	.bk-pay-icon {
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+		width: 40px;
+		height: 40px;
+		border-radius: 12px;
+		background: var(--gray-100, #f3f4f6);
+		color: var(--navy-700, #1e4f86);
+	}
+
+	.bk-pay-text {
+		display: grid;
+	}
+
+	.bk-pay-text small {
+		color: var(--color-muted);
+		font-size: var(--text-sm);
+	}
+
+	.bk-submit {
+		min-height: 56px;
+		font-size: var(--text-lg);
+	}
+</style>

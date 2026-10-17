@@ -19,6 +19,7 @@ import {
 	STATUS_LABELS,
 	addEvent,
 	assignDriver,
+	bookingPassengers,
 	getBookingByCode,
 	recordPayment,
 	transition,
@@ -188,6 +189,7 @@ const events = await db
 	.where("e.booking_id", "=", booking.id)
 	.orderBy("e.at", "desc")
 	.execute();
+const travellers = bookingPassengers(booking);
 const review = await db.selectFrom("sd_reviews").select(["rating", "comment", "created_at"]).where("booking_id", "=", booking.id).executeTakeFirst();
 const inquiryLink = await db.selectFrom("sd_inquiry_bookings").select("inquiry_id").where("booking_code", "=", booking.code).executeTakeFirst();
 const payments = await db.selectFrom("sd_payments").selectAll().where("booking_id", "=", booking.id).orderBy("created_at").execute();
@@ -351,6 +353,16 @@ const chatRoomName = await chatRoom(booking);
 					</tr>
 				)}
 				<tr><th>Yolcu</th><td>{booking.contact_name} · <a href={`tel:${booking.contact_phone}`}>{booking.contact_phone}</a>{booking.contact_email && <> · {booking.contact_email}</>}</td></tr>
+				{travellers.length > 0 && (
+					<tr>
+						<th>Yolcu listesi</th>
+						<td>
+							<ol style="margin:0;padding-inline-start:1.2em">
+								{travellers.map((p) => <li>{p.name} · {p.nationality === "XX" ? "diğer uyruk" : p.nationality}{p.doc && <> · {p.doc}</>}</li>)}
+							</ol>
+						</td>
+					</tr>
+				)}
 				{booking.sign_name && <tr><th>Tabela</th><td>{booking.sign_name}</td></tr>}
 				{booking.notes && <tr><th>Yolcu notu</th><td>{booking.notes}</td></tr>}
 				{booking.cancel_reason && <tr><th>İptal</th><td>{booking.cancel_reason} · iade %{booking.refund_pct ?? 0}</td></tr>}

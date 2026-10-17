@@ -22,6 +22,7 @@ import {
   updateBooking,
   type Actor,
   type Booking,
+  type Passenger,
   type PaymentMethod,
 } from "./bookings";
 import { handToCarrier } from "./pool";
@@ -78,6 +79,8 @@ export interface NewRequest {
   contact: { name: string; phone: string; email: string | null };
   flightNo: string | null;
   signName: string | null;
+  /** Web requests: one entry per traveller, the contact person first. */
+  passengers?: Passenger[] | null;
   pickupAddress: string | null;
   dropoffAddress: string | null;
   notes: string | null;
@@ -181,6 +184,7 @@ export async function createRequest(
     contact_phone: input.contact.phone,
     contact_email: input.contact.email,
     sign_name: input.signName,
+    passengers: input.passengers?.length ? JSON.stringify(input.passengers) : null,
     notes: input.notes,
     internal_notes: input.internalNotes ?? null,
     price_minor: 0,

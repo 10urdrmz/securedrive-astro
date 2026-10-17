@@ -97,6 +97,8 @@ export interface Booking {
 	contact_phone: string;
 	contact_email: string | null;
 	sign_name: string | null;
+	/** JSON list of travellers, see Passenger; null when not collected. */
+	passengers: string | null;
 	notes: string | null;
 	internal_notes: string | null;
 	price_minor: number;
@@ -118,6 +120,23 @@ export interface Booking {
 	tracking_token: string;
 	created_at: string;
 	updated_at: string;
+}
+
+/** One traveller on a booking. nationality is an ISO country code; doc a TC or passport number. */
+export interface Passenger {
+	name: string;
+	nationality: string;
+	doc: string | null;
+}
+
+export function bookingPassengers(booking: Pick<Booking, "passengers">): Passenger[] {
+	if (!booking.passengers) return [];
+	try {
+		const list = JSON.parse(booking.passengers);
+		return Array.isArray(list) ? list : [];
+	} catch {
+		return [];
+	}
 }
 
 /** Who did it: an ops user, the passenger (through the site), the driver (through the driver app) or the system. */
@@ -232,7 +251,7 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 			.execute();
 	}
 	await addEvent(db, id, actor, "created", null, status, { source: input.source, price_minor: price });
-	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null, carrier_org_id: null, settlement_id: null } as Booking;
+	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null, carrier_org_id: null, settlement_id: null, passengers: null } as Booking;
 }
 
 export async function addEvent(
