@@ -104,6 +104,7 @@ const left = (iso: string) => {
 							<div class="muted">
 								{r.pax} kişi · {r.bags} bavul{r.flight_no && ` · uçuş ${r.flight_no}`}
 							</div>
+							{r.class_pref && <div><span class="badge warn">Müşteri tercihi: {classes.find((c) => c.key === r.class_pref)?.name ?? r.class_pref}</span></div>}
 							{r.extras && <div class="muted">Ekstralar: {r.extras}</div>}
 							{r.notes && <div class="muted">Not: {r.notes}</div>}
 						</div>

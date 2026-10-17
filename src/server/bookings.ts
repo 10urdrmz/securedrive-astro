@@ -99,6 +99,8 @@ export interface Booking {
 	sign_name: string | null;
 	/** JSON list of travellers, see Passenger; null when not collected. */
 	passengers: string | null;
+	/** The vehicle class the customer asked for on a request; null means any that fits. */
+	class_pref: string | null;
 	notes: string | null;
 	internal_notes: string | null;
 	price_minor: number;
@@ -251,7 +253,7 @@ export async function createBooking(db: Db, input: NewBooking, actor: Actor): Pr
 			.execute();
 	}
 	await addEvent(db, id, actor, "created", null, status, { source: input.source, price_minor: price });
-	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null, carrier_org_id: null, settlement_id: null, passengers: null } as Booking;
+	return { ...row, cancel_reason: null, refund_pct: null, driver_id: null, carrier_org_id: null, settlement_id: null, passengers: null, class_pref: null } as Booking;
 }
 
 export async function addEvent(

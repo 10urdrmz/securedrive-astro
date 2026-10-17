@@ -1,0 +1,218 @@
+---
+/**
+ * Vehicle type choice on the booking request: "any" or one active class, as photo
+ * tiles. Plain radios, so it works without JavaScript. In step 1 the radios join the
+ * trip search bar with form="…"; in step 2 they sit in the details form.
+ */
+import Icon from "./Icon.astro";
+import Photo from "./Photo.astro";
+import type { Locale } from "../i18n/locales";
+import { useTranslations } from "../i18n/ui";
+import type { VehicleChoice } from "../lib/booking-page";
+
+interface Props {
+	locale: Locale;
+	vehicles: VehicleChoice[];
+	selected?: string;
+	/** The id of the form the radios belong to, when they sit outside it. */
+	form?: string;
+	/** The group size; classes too small for it are shown but cannot be picked. */
+	pax?: number;
+	bags?: number;
+	/** Step 2 heading style: a plain h2 inside the form section. */
+	compact?: boolean;
+}
+
+const { locale, vehicles, selected = "", form, pax, bags, compact = false } = Astro.props;
+const t = useTranslations(locale);
+const fits = (v: VehicleChoice) => (pax === undefined || v.pax_max >= pax) && (bags === undefined || v.bags_max >= bags);
+---
+
+<fieldset class:list={["vp", compact && "vp--compact"]}>
+	<legend class="vp-legend">
+		<span class="vp-title">{t("book.vehicle")}</span>
+		<span class="vp-hint">{t("book.vehicleHint")}</span>
+	</legend>
+	<div class="vp-grid">
+		<label class="vp-tile">
+			<input type="radio" name="class" value="" form={form} checked={!selected} />
+			<span class="vp-media vp-media--any" aria-hidden="true"><Icon name="car" size={28} /></span>
+			<span class="vp-text">
+				<strong>{t("book.vehicleAny")}</strong>
+				<small>{t("book.vehicleAnyHint")}</small>
+			</span>
+			<span class="vp-check" aria-hidden="true"><Icon name="tick" size={14} /></span>
+		</label>
+		{
+			vehicles.map((v) => {
+				const ok = fits(v);
+				return (
+					<label class:list={["vp-tile", !ok && "is-off"]}>
+						<input type="radio" name="class" value={v.key} form={form} checked={ok && selected === v.key} disabled={!ok} />
+						<span class="vp-media">
+							{v.image || v.fallbackImage ? (
+								<Photo image={v.image} fallback={v.fallbackImage} alt="" sizes="200px" width={400} height={250} />
+							) : (
+								<Icon name="car" size={28} />
+							)}
+						</span>
+						<span class="vp-text">
+							<strong>{v.name}</strong>
+							<small>{ok ? t("book.vehicleUpTo", { pax: v.pax_max, bags: v.bags_max }) : t("book.vehicleTooSmall")}</small>
+						</span>
+						<span class="vp-check" aria-hidden="true"><Icon name="tick" size={14} /></span>
+					</label>
+				);
+			})
+		}
+	</div>
+</fieldset>
+
+<style>
+	.vp {
+		margin: 0;
+		padding: 0;
+		border: 0;
+		min-width: 0;
+		display: grid;
+		gap: 12px;
+	}
+	.vp-legend {
+		display: grid;
+		gap: 2px;
+		padding: 0;
+		margin-bottom: 12px;
+	}
+	.vp-title {
+		font-family: var(--font-display, inherit);
+		font-weight: 700;
+		font-size: 1.0625rem;
+		color: var(--color-gray-900, #111827);
+	}
+	.vp--compact .vp-title {
+		font-size: 1rem;
+	}
+	.vp-hint {
+		font-size: 0.875rem;
+		color: var(--color-gray-600, #4b5563);
+	}
+	.vp-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr));
+		gap: 12px;
+	}
+	.vp-tile {
+		position: relative;
+		display: grid;
+		grid-template-rows: auto 1fr;
+		background: #fff;
+		border: 1px solid var(--color-gray-200, #e5e7eb);
+		border-radius: 14px;
+		overflow: hidden;
+		cursor: pointer;
+		transition:
+			border-color 0.15s,
+			box-shadow 0.15s;
+	}
+	.vp-tile:hover {
+		border-color: var(--color-gray-300, #d1d5db);
+	}
+	.vp-tile:has(input:checked) {
+		border-color: var(--color-navy-700, #1d4f85);
+		box-shadow: 0 0 0 1px var(--color-navy-700, #1d4f85);
+	}
+	.vp-tile:has(input:focus-visible) {
+		outline: 2px solid var(--color-sky-500, #0ea5e9);
+		outline-offset: 2px;
+	}
+	.vp-tile.is-off {
+		cursor: not-allowed;
+		opacity: 0.55;
+	}
+	.vp-tile input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+	.vp-media {
+		display: grid;
+		place-items: center;
+		aspect-ratio: 16 / 9;
+		background: var(--color-gray-100, #f3f4f6);
+		color: var(--color-gray-400, #9ca3af);
+		overflow: hidden;
+	}
+	.vp-media :global(img) {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
+	.vp-media--any {
+		background: linear-gradient(135deg, var(--color-navy-50, #eef4fb), var(--color-gray-100, #f3f4f6));
+		color: var(--color-navy-700, #1d4f85);
+	}
+	.vp-text {
+		display: grid;
+		align-content: start;
+		gap: 2px;
+		padding: 10px 12px 12px;
+	}
+	.vp-text strong {
+		font-size: 0.9375rem;
+		color: var(--color-gray-900, #111827);
+		line-height: 1.3;
+	}
+	.vp-text small {
+		font-size: 0.8125rem;
+		color: var(--color-gray-600, #4b5563);
+	}
+	.vp-check {
+		position: absolute;
+		top: 8px;
+		inset-inline-end: 8px;
+		display: grid;
+		place-items: center;
+		width: 22px;
+		height: 22px;
+		border-radius: 999px;
+		background: var(--color-navy-700, #1d4f85);
+		color: #fff;
+		opacity: 0;
+		transform: scale(0.8);
+		transition:
+			opacity 0.15s,
+			transform 0.15s;
+	}
+	.vp-tile:has(input:checked) .vp-check {
+		opacity: 1;
+		transform: none;
+	}
+	@media (max-width: 560px) {
+		.vp-grid {
+			grid-template-columns: 1fr;
+			gap: 8px;
+		}
+		.vp-tile {
+			grid-template-rows: none;
+			grid-template-columns: 96px minmax(0, 1fr);
+			align-items: center;
+		}
+		.vp-media {
+			width: 96px;
+			height: 72px;
+			aspect-ratio: auto;
+		}
+		.vp-media :global(picture) {
+			display: contents;
+		}
+		.vp-text {
+			padding-block: 10px;
+			padding-inline: 12px 36px;
+		}
+		.vp-check {
+			top: 50%;
+			margin-top: -11px;
+		}
+	}
+</style>

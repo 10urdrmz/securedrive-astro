@@ -49,6 +49,18 @@ export interface Trip {
 	time: string;
 	pax: number;
 	bags: number;
+	/** The vehicle class the customer wants offers for; empty means any that fits. */
+	class?: string;
+}
+
+/** A vehicle class the customer can ask for, with its fleet photo. */
+export interface VehicleChoice {
+	key: string;
+	name: string;
+	pax_max: number;
+	bags_max: number;
+	image: unknown;
+	fallbackImage: string | null;
 }
 
 export interface WizardPage {
@@ -58,6 +70,8 @@ export interface WizardPage {
 	step: 1 | 2;
 	zones: Zone[];
 	trip: Partial<Trip>;
+	/** Active vehicle classes, smallest first; the customer may pick one or leave it open. */
+	vehicles: VehicleChoice[];
 	/** Extras the customer may ask for in step 2 (child seat …), with their price. */
 	extras?: { key: string; name: string; price_minor: number; max_qty: number }[];
 	/** The address field is the pickup (district → airport) rather than the drop-off. */
@@ -195,7 +209,14 @@ function readTrip(params: URLSearchParams): Partial<Trip> {
 		time: clean(params.get("time"), 5) || undefined,
 		pax: int(params.get("pax"), 2),
 		bags: int(params.get("bags"), 2),
+		class: clean(params.get("class"), 40) || undefined,
 	};
+}
+
+async function loadVehicleChoices(Astro: AstroGlobal, db: Db, locale: Locale): Promise<VehicleChoice[]> {
+	const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name", "pax_max", "bags_max"]).where("active", "=", 1).orderBy("pax_max").orderBy("sort").execute();
+	const catalog = await loadVehicleCatalog(Astro, locale);
+	return classes.map((c) => ({ ...c, name: catalog[c.key]?.name || c.name, image: catalog[c.key]?.image ?? null, fallbackImage: catalog[c.key]?.fallbackImage ?? null }));
 }
 
 export async function runBookPage(Astro: AstroGlobal, locale: Locale, rest: string): Promise<Response | BookPage | null> {
@@ -216,7 +237,10 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	const params = Astro.url.searchParams;
 	const trip = readTrip(params);
 	const online = iyzicoEnabled();
-	const page: WizardPage = { view: "wizard", locale, member, step: 1, zones, trip, values: {}, online, sandbox: online && iyzicoIsSandbox() };
+	const vehicles = await loadVehicleChoices(Astro, db, locale);
+	// A class that is unknown or too small for the group falls back to "any".
+	if (trip.class && !vehicles.some((v) => v.key === trip.class && v.pax_max >= (trip.pax ?? 1) && v.bags_max >= (trip.bags ?? 0))) trip.class = undefined;
+	const page: WizardPage = { view: "wizard", locale, member, step: 1, zones, trip, vehicles, values: {}, online, sandbox: online && iyzicoIsSandbox() };
 	if (!trip.from || !trip.to || !trip.date || !trip.time) return page;
 	const tripError = await checkTrip(db, trip as Trip);
 	if (tripError) {
@@ -230,7 +254,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	page.extras = await db.selectFrom("sd_extras").select(["key", "name", "price_minor", "max_qty"]).where("active", "=", 1).orderBy("sort").execute();
 	const fromZone = zones.find((z) => z.id === trip.from);
 	page.addressOnPickup = !!fromZone && fromZone.kind !== "airport";
-	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: "cash", p0_nat: defaultNationality(locale) };
+	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: "cash", class: trip.class ?? "", p0_nat: defaultNationality(locale) };
 	if (Astro.request.method !== "POST") return page;
 	if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
 	const form = await Astro.request.formData();
@@ -249,6 +273,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 		address: field("address", 200),
 		notes: field("notes", 1000),
 		payment: field("payment", 20),
+		class: field("class", 40),
 	};
 	for (const [key, qty] of Object.entries(extras)) page.values[`extra_${key}`] = String(qty);
 	// One entry per traveller; the first is the contact person (name above).
@@ -297,6 +322,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 		memberId: member?.id ?? null,
 		agencyId: agency?.id ?? null,
 		extras,
+		classKey: v.class || null,
 	});
 	if (!result.ok) return fail(result.error);
 	return redirect(Astro, `${bookPath(locale, result.booking.code, result.booking.tracking_token)}&ok=requested`);

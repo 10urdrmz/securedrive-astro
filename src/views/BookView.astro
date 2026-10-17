@@ -9,6 +9,7 @@ import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import Notice from "../components/Notice.astro";
 import TripSearch from "../components/TripSearch.astro";
+import VehiclePicker from "../components/VehiclePicker.astro";
 import { BOOK_SLUG, LOCALE_META, accountPath, bookPath, localizePath } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import type { WizardPage } from "../lib/booking-page";
@@ -40,6 +41,7 @@ const whenShort = trip.date && trip.time
 	: "";
 const paxCount = Math.min(Math.max(trip.pax ?? 1, 1), 60);
 const travellers = Array.from({ length: paxCount }, (_, i) => i);
+const chosenVehicle = page.vehicles.find((v) => v.key === trip.class);
 ---
 
 <Base locale={locale} path={BOOK_SLUG} title={t("book.title")} description={t("book.lead")} noindex={Astro.url.search.length > 0}>
@@ -75,14 +77,20 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 				{page.step === 1 ? (
 					<div class="grid gap-2">
 						<TripSearch
+						id="trip-search"
 						locale={locale}
 						action={bookPath(locale)}
 						tone="light"
 						places={[...airports.map((z) => ({ id: z.id, name: z.name, airport: true })), ...districts.map((z) => ({ id: z.id, name: z.name, airport: false }))]}
 						values={trip}
-						submitLabel={page.step === 1 ? t("book.next") : t("book.update")}
+						submitLabel={t("book.next")}
 					/>
 					<small class="text-sm text-gray-600">{t("book.timeHint")}</small>
+					{page.vehicles.length > 0 && (
+						<div class:list={[card, "mt-4 p-5 sm:p-6"]}>
+							<VehiclePicker locale={locale} vehicles={page.vehicles} selected={trip.class} form="trip-search" />
+						</div>
+					)}
 					</div>
 				) : (
 					<details class="bk-trip" open={!!page.error && !page.values.name}>
@@ -96,6 +104,7 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 							<span class="bk-trip-meta">
 								<span><Icon name="calendar" size={16} />{whenShort}</span>
 								<span><Icon name="users" size={16} />{t("book.capacity", { pax: trip.pax ?? 1, bags: trip.bags ?? 0 })}</span>
+								{chosenVehicle && <span><Icon name="car" size={16} />{chosenVehicle.name}</span>}
 							</span>
 							<span class="bk-trip-edit">{t("book.editTrip")}</span>
 						</summary>
@@ -106,6 +115,7 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 						tone="light"
 						places={[...airports.map((z) => ({ id: z.id, name: z.name, airport: true })), ...districts.map((z) => ({ id: z.id, name: z.name, airport: false }))]}
 						values={trip}
+						keep={{ class: trip.class }}
 						submitLabel={t("book.update")}
 					/>
 					<small class="text-sm text-gray-600">{t("book.timeHint")}</small>
@@ -117,6 +127,11 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 				{
 					page.step === 2 && (
 						<form id="bilgiler" class:list={[card, "bk-form"]} method="post" action={`${bookPath(locale)}?${tripQuery}#bilgiler`}>
+							{page.vehicles.length > 0 && (
+								<section class="bk-section">
+									<VehiclePicker locale={locale} vehicles={page.vehicles} selected={page.values.class} pax={paxCount} bags={trip.bags ?? 0} compact />
+								</section>
+							)}
 							<section class="bk-section">
 								<h2>{t("book.travellers")}</h2>
 								<div class="bk-grid bk-grid--3">
