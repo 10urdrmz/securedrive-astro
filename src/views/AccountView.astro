@@ -1,7 +1,6 @@
 ---
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
-import PageHero from "../components/sections/PageHero.astro";
 import StatusBadge from "../components/account/StatusBadge.astro";
 import { ACCOUNT_SLUG, LOCALE_META, accountPath, localizePath, bookPath, lookupPath, trackPath, type AccountAction } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
@@ -82,70 +81,118 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 ---
 
 <Base locale={locale} path={path} title={title} description={lead} noindex>
-	{guest && <PageHero locale={locale} title={title} lead={lead} />}
-
 	{
 		guest && (
-			<section class="section">
-				<div class="container guest">
-				{
-					view === "login" && (
-						<div class="panel">
-							<form class="form" method="post" action={accountPath(locale, "giris")}>
+			<section class="auth">
+				<div class="container auth-inner">
+					<aside class="auth-side">
+						<img class="auth-bg" src="/images/fleet/vito-vip-sm.webp" alt="" width="688" height="384" loading="eager" />
+						<div class="auth-side-body">
+							<p class="auth-eyebrow">SecureDrive VIP</p>
+							<h2>{t("account.sideTitle")}</h2>
+							<ul class="auth-perks">
+								{([
+									["calendar", "account.perk1"],
+									["route", "account.perk2"],
+									["message", "account.perk3"],
+									["receipt", "account.perk4"],
+								] as const).map(([icon, key]) => (
+									<li>
+										<span class="auth-perk-icon" aria-hidden="true"><Icon name={icon} size={18} /></span>
+										{t(key)}
+									</li>
+								))}
+							</ul>
+						</div>
+					</aside>
+
+					<div class="auth-card">
+						<nav class="auth-tabs" aria-label={t("account.title")}>
+							<a href={accountPath(locale, "giris")} aria-current={view === "login" ? "page" : undefined}>{t("account.loginButton")}</a>
+							<a href={accountPath(locale, "uye-ol")} aria-current={view === "register" ? "page" : undefined}>{t("account.registerTitle")}</a>
+						</nav>
+						<header class="auth-head">
+							<h1>{title}</h1>
+							{lead && <p>{lead}</p>}
+						</header>
+
+						{view === "login" && (
+							<form class="auth-form" method="post" action={accountPath(locale, "giris")}>
 								{error && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
 								{values.next && <input type="hidden" name="next" value={values.next} />}
 								<div class="field">
 									<label for="login-identifier">{t("account.identifier")}</label>
-									<input id="login-identifier" name="identifier" required autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr" value={values.identifier} />
+									<span class="auth-input">
+										<Icon name="user" size={18} />
+										<input id="login-identifier" name="identifier" required autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr" value={values.identifier} />
+									</span>
 								</div>
 								<div class="field">
 									<label for="login-password">{t("account.password")}</label>
-									<input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength={PASSWORD_MAX} dir="ltr" />
+									<span class="auth-input">
+										<Icon name="shield" size={18} />
+										<input id="login-password" name="password" type="password" required autocomplete="current-password" maxlength={PASSWORD_MAX} dir="ltr" />
+										<button type="button" class="auth-eye" data-reveal aria-label={t("account.showPassword")}>{t("account.show")}</button>
+									</span>
 								</div>
-								<button type="submit" class="btn btn--primary btn--block">{t("account.loginButton")}</button>
+								<button type="submit" class="btn btn--primary btn--block auth-submit">
+									{t("account.loginButton")}
+									<Icon name="arrow" size={18} class="flip-rtl" />
+								</button>
+								<p class="auth-switch">
+									{t("account.noAccount")} <a href={accountPath(locale, "uye-ol")}>{t("account.registerTitle")}</a>
+								</p>
 							</form>
-							<p class="switch">
-								{t("account.noAccount")} <a href={accountPath(locale, "uye-ol")}>{t("account.registerTitle")}</a>
-							</p>
-						</div>
-					)
-				}
+						)}
 
-				{
-					view === "register" && (
-						<div class="panel">
-							<form class="form" method="post" action={accountPath(locale, "uye-ol")}>
+						{view === "register" && (
+							<form class="auth-form" method="post" action={accountPath(locale, "uye-ol")}>
 								{error && <p class="form-status" data-state="error" role="alert">{t(error)}</p>}
-								<div class="form-row">
+								<div class="auth-grid">
 									<div class="field">
 										<label for="reg-name">{t("form.name")}</label>
-										<input id="reg-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={values.name} />
+										<span class="auth-input">
+											<Icon name="user" size={18} />
+											<input id="reg-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={values.name} />
+										</span>
 									</div>
 									<div class="field">
 										<label for="reg-username">{t("account.username")}</label>
-										<input id="reg-username" name="username" required minlength="3" maxlength="24" pattern="[A-Za-z0-9][A-Za-z0-9._\-]+[A-Za-z0-9]" autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr" aria-describedby="reg-username-hint" value={values.username} />
+										<span class="auth-input">
+											<span class="auth-at" aria-hidden="true">@</span>
+											<input id="reg-username" name="username" required minlength="3" maxlength="24" pattern="[A-Za-z0-9][A-Za-z0-9._\-]+[A-Za-z0-9]" autocomplete="username" autocapitalize="none" spellcheck="false" dir="ltr" aria-describedby="reg-username-hint" value={values.username} />
+										</span>
 										<small id="reg-username-hint">{t("account.usernameHint")}</small>
 									</div>
-								</div>
-								<div class="form-row">
 									<div class="field">
 										<label for="reg-email">{t("form.email")}</label>
-										<input id="reg-email" name="email" type="email" required maxlength="120" autocomplete="email" dir="ltr" value={values.email} />
+										<span class="auth-input">
+											<Icon name="mail" size={18} />
+											<input id="reg-email" name="email" type="email" required maxlength="120" autocomplete="email" dir="ltr" value={values.email} />
+										</span>
 									</div>
 									<div class="field">
 										<label for="reg-phone">{t("form.phone")}</label>
-										<input id="reg-phone" name="phone" type="tel" maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={values.phone} />
+										<span class="auth-input">
+											<Icon name="phone" size={18} />
+											<input id="reg-phone" name="phone" type="tel" maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={values.phone} />
+										</span>
 									</div>
-								</div>
-								<div class="form-row">
 									<div class="field">
 										<label for="reg-password">{t("account.password")}</label>
-										<input id="reg-password" name="password" type="password" autocomplete="new-password" dir="ltr" aria-describedby="reg-password-hint" {...password} />
+										<span class="auth-input">
+											<Icon name="shield" size={18} />
+											<input id="reg-password" name="password" type="password" autocomplete="new-password" dir="ltr" aria-describedby="reg-password-hint" {...password} />
+											<button type="button" class="auth-eye" data-reveal aria-label={t("account.showPassword")}>{t("account.show")}</button>
+										</span>
 										<small id="reg-password-hint">{t("account.passwordHint", { n: PASSWORD_MIN })}</small>
 									</div>
 									<div class="field">
 										<label for="reg-password-repeat">{t("account.passwordRepeat")}</label>
-										<input id="reg-password-repeat" name="password_repeat" type="password" autocomplete="new-password" dir="ltr" {...password} />
+										<span class="auth-input">
+											<Icon name="shield" size={18} />
+											<input id="reg-password-repeat" name="password_repeat" type="password" autocomplete="new-password" dir="ltr" {...password} />
+										</span>
 									</div>
 								</div>
 								<div class="hp-field" aria-hidden="true">
@@ -155,15 +202,28 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 									<input type="checkbox" name="consent" required />
 									<span>{t("account.consent")} <a href={localizePath(locale, "kvkk")} target="_blank">{t("form.consentLink")}</a></span>
 								</label>
-								<button type="submit" class="btn btn--primary btn--block">{t("account.registerButton")}</button>
+								<button type="submit" class="btn btn--primary btn--block auth-submit">
+									{t("account.registerButton")}
+									<Icon name="arrow" size={18} class="flip-rtl" />
+								</button>
+								<p class="auth-switch">
+									{t("account.haveAccount")} <a href={accountPath(locale, "giris")}>{t("account.loginButton")}</a>
+								</p>
 							</form>
-							<p class="switch">
-								{t("account.haveAccount")} <a href={accountPath(locale, "giris")}>{t("account.loginButton")}</a>
-							</p>
-						</div>
-					)
-				}
+						)}
+					</div>
 				</div>
+				<script is:inline define:vars={{ show: t("account.show"), hide: t("account.hide") }}>
+					// Show or hide a password field's text.
+					for (const btn of document.querySelectorAll("[data-reveal]")) {
+						btn.addEventListener("click", () => {
+							const input = btn.parentElement.querySelector("input");
+							const visible = input.type === "text";
+							input.type = visible ? "password" : "text";
+							btn.textContent = visible ? show : hide;
+						});
+					}
+				</script>
 			</section>
 		)
 	}
@@ -457,8 +517,249 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 </Base>
 
 <style>
-	.guest {
-		max-width: 560px;
+	.auth {
+		padding-block: clamp(2rem, 1rem + 4vw, 4.5rem);
+		background:
+			radial-gradient(800px 360px at 100% 0%, rgb(29 95 155 / 0.08), transparent 70%),
+			var(--gray-100, #f3f4f6);
+	}
+
+	.auth-inner {
+		display: grid;
+		grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+		max-width: 1080px;
+		background: #fff;
+		border-radius: 24px;
+		box-shadow: 0 30px 60px -30px rgb(16 24 40 / 0.35);
+		overflow: hidden;
+		padding: 0;
+	}
+
+	.auth-side {
+		position: relative;
+		display: flex;
+		align-items: flex-end;
+		min-height: 100%;
+		padding: var(--space-10, 2.5rem);
+		color: #fff;
+		background: var(--ink-950, #0b0d10);
+		isolation: isolate;
+	}
+
+	.auth-bg {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		opacity: 0.55;
+		z-index: -2;
+	}
+
+	.auth-side::after {
+		content: "";
+		position: absolute;
+		inset: 0;
+		z-index: -1;
+		background: linear-gradient(180deg, rgb(11 13 16 / 0.2) 0%, rgb(11 13 16 / 0.92) 65%);
+	}
+
+	.auth-eyebrow {
+		margin: 0 0 var(--space-2);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--gold-400, #d4b06a);
+	}
+
+	.auth-side h2 {
+		margin: 0 0 var(--space-6);
+		font-size: var(--text-2xl);
+		line-height: 1.2;
+		color: #fff;
+	}
+
+	.auth-perks {
+		display: grid;
+		gap: var(--space-3);
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		color: #dbe2ea;
+	}
+
+	.auth-perks li {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	.auth-perk-icon {
+		display: grid;
+		place-items: center;
+		flex-shrink: 0;
+		width: 34px;
+		height: 34px;
+		border-radius: 10px;
+		background: rgb(255 255 255 / 0.12);
+		color: #fff;
+	}
+
+	.auth-card {
+		display: grid;
+		align-content: start;
+		gap: var(--space-6);
+		padding: clamp(1.5rem, 1rem + 2.5vw, 3rem);
+	}
+
+	.auth-tabs {
+		display: inline-grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(0, 1fr);
+		gap: 4px;
+		padding: 4px;
+		border-radius: 12px;
+		background: var(--gray-100, #f3f4f6);
+	}
+
+	.auth-tabs a {
+		padding: 10px var(--space-4);
+		border-radius: 9px;
+		text-align: center;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--gray-600, #4b5563);
+		text-decoration: none;
+	}
+
+	.auth-tabs a[aria-current="page"] {
+		background: #fff;
+		color: var(--ink-900);
+		box-shadow: 0 1px 3px rgb(16 24 40 / 0.12);
+	}
+
+	.auth-head h1 {
+		margin: 0;
+		font-size: var(--text-2xl);
+	}
+
+	.auth-head p {
+		margin: var(--space-1) 0 0;
+		color: var(--color-muted);
+	}
+
+	.auth-form {
+		display: grid;
+		gap: var(--space-4);
+	}
+
+	.auth-grid {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: var(--space-4);
+	}
+
+	.auth-input {
+		position: relative;
+		display: block;
+	}
+
+	.auth-input > :global(svg),
+	.auth-at {
+		position: absolute;
+		inset-inline-start: 14px;
+		top: 50%;
+		translate: 0 -50%;
+		color: var(--gray-400, #9ca3af);
+		pointer-events: none;
+	}
+
+	.auth-at {
+		font-weight: 700;
+	}
+
+	.auth-input input {
+		padding-inline-start: 2.75rem;
+	}
+
+	.auth-input:has(.auth-eye) input {
+		padding-inline-end: 4.5rem;
+	}
+
+	.auth-input:focus-within > :global(svg),
+	.auth-input:focus-within .auth-at {
+		color: var(--color-brand);
+	}
+
+	.auth-eye {
+		position: absolute;
+		inset-inline-end: 8px;
+		top: 50%;
+		translate: 0 -50%;
+		padding: 4px 10px;
+		border: 0;
+		border-radius: 8px;
+		background: transparent;
+		font: inherit;
+		font-size: var(--text-xs);
+		font-weight: 600;
+		color: var(--color-brand);
+		cursor: pointer;
+	}
+
+	.auth-eye:hover {
+		background: var(--gray-100, #f3f4f6);
+	}
+
+	.auth-submit {
+		min-height: 52px;
+		font-size: var(--text-base);
+	}
+
+	.auth-switch {
+		margin: 0;
+		text-align: center;
+		font-size: var(--text-sm);
+		color: var(--color-muted);
+	}
+
+	.auth-switch a {
+		color: var(--color-brand);
+		font-weight: 600;
+	}
+
+	@media (max-width: 900px) {
+		.auth-inner {
+			grid-template-columns: minmax(0, 1fr);
+			margin-inline: var(--space-4);
+			width: auto;
+		}
+
+		.auth-side {
+			order: 2;
+			padding: var(--space-8) var(--space-6);
+		}
+
+		.auth-side h2 {
+			font-size: var(--text-xl);
+		}
+	}
+
+	@media (max-width: 560px) {
+		.auth {
+			padding-block: var(--space-4);
+		}
+
+		.auth-inner {
+			margin-inline: 0;
+			border-radius: 0;
+			box-shadow: none;
+		}
+
+		.auth-grid {
+			grid-template-columns: minmax(0, 1fr);
+		}
 	}
 
 	/* Keep inputs level when only one field of a row has a hint below it. */
@@ -476,14 +777,4 @@ const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0
 		color: var(--gray-600);
 	}
 
-	.switch {
-		margin: var(--space-6) 0 0;
-		text-align: center;
-	}
-
-	.switch a {
-		color: var(--color-brand);
-		font-weight: 600;
-		text-decoration: underline;
-	}
 </style>
