@@ -23,7 +23,7 @@ const classes = await vehicleClasses(db);
 const vehicles = await ownerVehicles(db, owner);
 ---
 
-<DriverLayout title="Araçlarım" driver={driver} back>
+<DriverLayout title="Araçlarım" driver={driver} tab="cars">
 	<h1>Araçlarım</h1>
 	{result.notice && <p class="drv-notice">{result.notice}</p>}
 	{result.error && <p class="drv-notice error" role="alert">{result.error}</p>}

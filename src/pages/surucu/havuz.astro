@@ -78,199 +78,297 @@ const left = (iso: string) => {
 	const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60_000));
 	return minutes >= 120 ? `${Math.floor(minutes / 60)} saat` : `${minutes} dk`;
 };
+const postedCode = form ? text(form, "code", 20).toUpperCase() : "";
+const fresh = requests.filter((r) => !r.my_status).length;
+const view = independent && Astro.url.searchParams.get("tab") === "havuz" ? "pool" : "requests";
+const unanswered = fresh + (independent ? jobs.filter((j) => j.my_bid_status !== "active").length : 0);
 ---
 
-<DriverLayout title="İş havuzu" driver={driver} back refresh={form ? undefined : 60}>
+<DriverLayout title="İş havuzu" driver={driver} tab="pool" refresh={form ? undefined : 30} badges={{ pool: unanswered }}>
 	<h1>İş havuzu</h1>
 	{
-		!driver.org_id && (
-			<a class="drv-card cars-link" href="/surucu/araclarim">
-				<span>
-					<strong>Araçlarım</strong>
-					<span class="drv-muted">{hasCars ? "Teklifte müşteri seçtiğiniz aracı görür." : "Araç ekleyin; müşteri teklifinizde aracınızın fotoğrafını görsün."}</span>
-				</span>
-				<span aria-hidden="true">›</span>
-			</a>
+		independent && (
+			<nav class="seg" aria-label="Havuz">
+				<a href="/surucu/havuz" class:list={[view === "requests" && "is-on"]}>
+					Müşteri talepleri <span>{requests.length}</span>
+				</a>
+				<a href="/surucu/havuz?tab=havuz" class:list={[view === "pool" && "is-on"]}>
+					Operasyon havuzu <span>{jobs.length}</span>
+				</a>
+			</nav>
 		)
 	}
-	{driver.org_id && <p class="drv-muted">Teklifleriniz firmanız adına ve firmanızın araçlarıyla verilir.</p>}
 	{notice && <p class="drv-notice">{notice}</p>}
 	{error && <p class="drv-notice error" role="alert">{error}</p>}
-	<h2 class="sec">Müşteri talepleri</h2>
-	<p class="drv-muted">
-		Müşteri yolculuğunu yazdı, fiyat bekliyor. <strong>Müşterinin ödeyeceği fiyatı</strong> yazın; müşteri bu fiyatı aynen görür. SecureDrive komisyonu
-		(<strong>%{commissionPct}</strong>) bu fiyattan düşülür, kalanı sizindir. Müşterinin adını, telefonunu ve diğer teklifleri görmezsiniz.
-	</p>
 	{
-		requests.length === 0 && (
-			<div class="drv-card" style="text-align:center;padding:20px 16px">
-				<span class="drv-muted">Araçlarınıza uygun açık talep yok.</span>
-			</div>
-		)
-	}
-	{
-		requests.map((r) => {
-			const w = when(r.pickup_at);
-			const active = r.my_status === "active";
-			return (
-				<div class="drv-card pool">
-					<div class="top">
-						<div class="whenx">
-							<strong>{w.time}</strong>
-							<span>{w.day}</span>
-						</div>
-						<span class:list={["drv-pill", active ? "ok" : "warn"]}>{active ? "Teklif verdiniz" : "Talep"}</span>
-					</div>
-					<div class="route">{r.from_name} → {r.to_name}</div>
-					<div class="drv-muted meta">
-						{r.pax} kişi · {r.bags} bavul{r.flight_no && ` · ${r.flight_no}`} · {r.offers} teklif
-					</div>
-					{r.extras && <div class="drv-muted meta">Ekstralar: {r.extras}</div>}
-					{r.notes && <div class="drv-muted meta">Not: {r.notes}</div>}
-					<form method="post">
-						<input type="hidden" name="code" value={r.code} />
-						{active && r.my_price != null && (
-							<div class="split">
-								<span>Teklifiniz <strong>{formatMoney(r.my_price)} ₺</strong></span>
-								<span>Komisyon {formatMoney(r.my_price - (r.my_amount ?? 0))} ₺</span>
-								<span>Size kalan <strong>{formatMoney(r.my_amount ?? 0)} ₺</strong></span>
-							</div>
-						)}
-						<label class="drv-field">
-							Müşteri fiyatı (₺)
-							<input type="text" name="amount" inputmode="decimal" required placeholder="2.000" value={active && r.my_price != null ? formatMoney(r.my_price) : undefined} data-commission={commissionPct} />
-						</label>
-						<p class="drv-muted calc" data-calc aria-live="polite">Komisyon %{commissionPct} · size kalan tutar burada görünür</p>
-						<label class="drv-field">
-							{hasCars ? "Araç" : "Araç tipi"}
-							<select name="option" required>
-								{fitting(r).map((o) => (
-									<option value={o.value} selected={r.my_vehicle ? o.label.startsWith(r.my_vehicle) : o.class_key === r.my_class}>
-										{o.label}
-									</option>
-								))}
-							</select>
-						</label>
-						<button class="drv-btn" type="submit" name="intent" value="offer">
-							{active ? "Teklifi güncelle" : "Teklif ver"}
-						</button>
-						{active && (
-							<button class="drv-btn ghost" type="submit" name="intent" value="offer_withdraw" formnovalidate style="margin-top:8px">
-								Teklifi geri çek
-							</button>
-						)}
-					</form>
+		view === "requests" && (
+			<>
+				<div class="info">
+					<span class="info-pct">%{commissionPct}</span>
+					<span>
+						Müşterinin ödeyeceği fiyatı yazın, müşteri aynen görür. Komisyon bu fiyattan düşülür. Müşterinin adını, telefonunu ve diğer teklifleri görmezsiniz.
+						{driver.org_id && " Teklifler firmanız adına ve firmanızın araçlarıyla verilir."}
+					</span>
 				</div>
-			);
-		})
-	}
-	{independent && <h2 class="sec">Operasyon havuzu</h2>}
-	{
-		independent && jobs.length === 0 && (
-			<div class="drv-card" style="text-align:center;padding:32px 16px">
-				<strong>Şu an havuzda iş yok.</strong>
-				<p class="drv-muted" style="margin:6px 0 0">Sayfa dakikada bir yenilenir.</p>
-			</div>
-		)
-	}
-	{
-		jobs.map((j) => {
-			const w = when(j.pickup_at);
-			const active = j.my_bid_status === "active";
-			return (
-				<div class="drv-card pool">
-					<div class="top">
-						<div class="whenx">
-							<strong>{w.time}</strong>
-							<span>{w.day}</span>
-						</div>
-						<span class="drv-pill warn">{j.mode === "auction" ? "İhale" : "Sabit"}</span>
-					</div>
-					<div class="route">{j.from_name} → {j.to_name}</div>
-					<div class="drv-muted meta">
-						{j.class_name} · {j.pax} kişi · {j.bags} bavul{j.flight_no && ` · ${j.flight_no}`}
-					</div>
-					{j.note && <div class="drv-muted meta">Not: {j.note}</div>}
-					<div class="money">
-						<strong>{formatMoney(j.payout_minor)} ₺</strong>
-						<span class="drv-muted">
-							{j.mode === "auction" ? "tavan" : "kazancınız"} · {left(j.deadline_at)} kaldı
-							{j.mode === "auction" && ` · ${j.bids} teklif`}
+				{!driver.org_id && !hasCars && (
+					<a class="drv-card cars-link" href="/surucu/araclarim">
+						<span>
+							<strong>Aracınızı ekleyin</strong>
+							<span class="drv-muted">Müşteri teklifinizde aracınızın fotoğrafını görsün.</span>
 						</span>
+						<span aria-hidden="true">›</span>
+					</a>
+				)}
+				{requests.length === 0 && (
+					<div class="drv-card empty">
+						<strong>Araçlarınıza uygun açık talep yok</strong>
+						<span class="drv-muted">Yeni talepler geldiğinde liste kendiliğinden güncellenir.</span>
 					</div>
-					{j.mode === "fixed" ? (
-						<form method="post">
-							<input type="hidden" name="code" value={j.code} />
-							<button class="drv-btn green" type="submit" name="intent" value="take">
-								İşi al
-							</button>
-						</form>
-					) : (
-						<form method="post">
-							<input type="hidden" name="code" value={j.code} />
-							<label class="drv-field">
-								Teklifiniz (₺){active && ` · şu an ${formatMoney(j.my_bid)} ₺`}
-								<input type="text" name="amount" inputmode="decimal" required placeholder={formatMoney(j.payout_minor)} />
-							</label>
-							<button class="drv-btn" type="submit" name="intent" value="bid">
-								{active ? "Teklifi güncelle" : "Teklif ver"}
-							</button>
-							{active && (
-								<button class="drv-btn ghost" type="submit" name="intent" value="withdraw" formnovalidate style="margin-top:8px">
-									Teklifi geri çek
-								</button>
+				)}
+				{requests.map((r) => {
+					const w = when(r.pickup_at);
+					const active = r.my_status === "active";
+					const choices = fitting(r);
+					return (
+						<article class:list={["drv-card", "pool", active && "mine"]}>
+							<div class="top">
+								<div class="whenx">
+									<strong>{w.time}</strong>
+									<span>{w.day}</span>
+								</div>
+								<span class:list={["drv-pill", active ? "ok" : "warn"]}>{active ? "Teklif verdiniz" : "Fiyat bekliyor"}</span>
+							</div>
+							<div class="route">
+								<span>
+									<i class="dot" aria-hidden="true" />
+									{r.from_name}
+								</span>
+								<span>
+									<i class="dot to" aria-hidden="true" />
+									{r.to_name}
+								</span>
+							</div>
+							<div class="chips">
+								<span>{r.pax} kişi</span>
+								<span>{r.bags} bavul</span>
+								{r.flight_no && <span>{r.flight_no}</span>}
+								<span>{r.offers} teklif</span>
+							</div>
+							{r.extras && <div class="drv-muted meta">Ekstralar: {r.extras}</div>}
+							{r.notes && <div class="drv-muted meta">Not: {r.notes}</div>}
+							{active && r.my_price != null && (
+								<div class="split">
+									<span>
+										Teklifiniz <strong>{formatMoney(r.my_price)} ₺</strong>
+									</span>
+									<span>Komisyon {formatMoney(r.my_price - (r.my_amount ?? 0))} ₺</span>
+									<span>
+										Size kalan <strong>{formatMoney(r.my_amount ?? 0)} ₺</strong>
+									</span>
+								</div>
 							)}
-						</form>
-					)}
-				</div>
-			);
-		})
+							<details class="bid" open={!!error && postedCode === r.code}>
+								<summary class:list={["drv-btn", active && "ghost"]}>{active ? "Teklifi değiştir" : "Teklif ver"}</summary>
+								<form method="post">
+									<input type="hidden" name="code" value={r.code} />
+									<label class="drv-field">
+										Müşteri fiyatı (₺)
+										<input
+											type="text"
+											name="amount"
+											inputmode="decimal"
+											required
+											placeholder="2.000"
+											value={active && r.my_price != null ? formatMoney(r.my_price) : undefined}
+											data-commission={commissionPct}
+										/>
+									</label>
+									<p class="calc" data-calc aria-live="polite">
+										Komisyon %{commissionPct} · size kalan tutar burada görünür
+									</p>
+									{choices.length === 1 ? (
+										<p class="one-car">
+											<input type="hidden" name="option" value={choices[0]!.value} />
+											<span class="drv-muted">{hasCars ? "Araç" : "Araç tipi"}</span>
+											<strong>{choices[0]!.label}</strong>
+										</p>
+									) : (
+										<label class="drv-field">
+											{hasCars ? "Araç" : "Araç tipi"}
+											<select name="option" required>
+												{choices.map((o) => (
+													<option value={o.value} selected={r.my_vehicle ? o.label.startsWith(r.my_vehicle) : o.class_key === r.my_class}>
+														{o.label}
+													</option>
+												))}
+											</select>
+										</label>
+									)}
+									<button class="drv-btn green" type="submit" name="intent" value="offer">
+										{active ? "Teklifi güncelle" : "Teklifi gönder"}
+									</button>
+									{active && (
+										<button class="drv-btn danger" type="submit" name="intent" value="offer_withdraw" formnovalidate style="margin-top:8px">
+											Teklifi geri çek
+										</button>
+									)}
+								</form>
+							</details>
+						</article>
+					);
+				})}
+			</>
+		)
+	}
+	{
+		view === "pool" && (
+			<>
+				{jobs.length === 0 && (
+					<div class="drv-card empty">
+						<strong>Şu an havuzda iş yok</strong>
+						<span class="drv-muted">Liste kendiliğinden güncellenir.</span>
+					</div>
+				)}
+				{jobs.map((j) => {
+					const w = when(j.pickup_at);
+					const active = j.my_bid_status === "active";
+					return (
+						<article class:list={["drv-card", "pool", active && "mine"]}>
+							<div class="top">
+								<div class="whenx">
+									<strong>{w.time}</strong>
+									<span>{w.day}</span>
+								</div>
+								<span class="drv-pill warn">{j.mode === "auction" ? "İhale" : "Sabit"}</span>
+							</div>
+							<div class="route">
+								<span>
+									<i class="dot" aria-hidden="true" />
+									{j.from_name}
+								</span>
+								<span>
+									<i class="dot to" aria-hidden="true" />
+									{j.to_name}
+								</span>
+							</div>
+							<div class="chips">
+								<span>{j.class_name}</span>
+								<span>{j.pax} kişi</span>
+								<span>{j.bags} bavul</span>
+								{j.flight_no && <span>{j.flight_no}</span>}
+							</div>
+							{j.note && <div class="drv-muted meta">Not: {j.note}</div>}
+							<div class="money">
+								<strong>{formatMoney(j.payout_minor)} ₺</strong>
+								<span class="drv-muted">
+									{j.mode === "auction" ? "tavan" : "kazancınız"} · {left(j.deadline_at)} kaldı
+									{j.mode === "auction" && ` · ${j.bids} teklif`}
+								</span>
+							</div>
+							{j.mode === "fixed" ? (
+								<form method="post">
+									<input type="hidden" name="code" value={j.code} />
+									<button class="drv-btn green" type="submit" name="intent" value="take">
+										İşi al
+									</button>
+								</form>
+							) : (
+								<details class="bid" open={!!error && postedCode === j.code}>
+									<summary class:list={["drv-btn", active && "ghost"]}>{active ? `Teklifiniz ${formatMoney(j.my_bid)} ₺ · değiştir` : "Teklif ver"}</summary>
+									<form method="post">
+										<input type="hidden" name="code" value={j.code} />
+										<label class="drv-field">
+											Teklifiniz (₺)
+											<input type="text" name="amount" inputmode="decimal" required placeholder={formatMoney(j.payout_minor)} />
+										</label>
+										<button class="drv-btn green" type="submit" name="intent" value="bid">
+											{active ? "Teklifi güncelle" : "Teklifi gönder"}
+										</button>
+										{active && (
+											<button class="drv-btn danger" type="submit" name="intent" value="withdraw" formnovalidate style="margin-top:8px">
+												Teklifi geri çek
+											</button>
+										)}
+									</form>
+								</details>
+							)}
+						</article>
+					);
+				})}
+			</>
+		)
 	}
 </DriverLayout>
 
 <style>
-	.sec {
-		font-size: 18px;
-		margin: 20px 0 4px;
+	.seg {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 4px;
+		padding: 4px;
+		margin-bottom: 14px;
+		border-radius: 14px;
+		background: #e4e7ec;
+	}
+	.seg a {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		min-height: 42px;
+		border-radius: 11px;
+		color: var(--drv-muted);
+		font-size: 14px;
+		font-weight: 700;
+		text-decoration: none;
+	}
+	.seg a.is-on {
+		background: #fff;
+		color: var(--drv-ink);
+		box-shadow: 0 1px 3px rgb(16 24 40 / 0.12);
+	}
+	.seg a span {
+		min-width: 20px;
+		padding: 0 6px;
+		border-radius: 999px;
+		background: rgb(16 24 40 / 0.08);
+		font-size: 12px;
+		line-height: 20px;
+		text-align: center;
+	}
+	.info {
+		display: flex;
+		gap: 12px;
+		align-items: flex-start;
+		padding: 12px 14px;
+		margin-bottom: 14px;
+		border-radius: 14px;
+		background: #eff8ff;
+		color: #1849a9;
+		font-size: 14px;
+	}
+	.info-pct {
+		flex: none;
+		display: grid;
+		place-items: center;
+		width: 44px;
+		height: 44px;
+		border-radius: 12px;
+		background: #175cd3;
+		color: #fff;
+		font-weight: 800;
 	}
 	.pool {
 		display: grid;
-		gap: 8px;
+		gap: 10px;
 		min-width: 0;
+	}
+	.pool.mine {
+		border-color: #abefc6;
 	}
 	.pool select {
 		font-size: 16px;
 		text-overflow: ellipsis;
-	}
-	.split {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 4px 14px;
-		padding: 8px 10px;
-		border-radius: 10px;
-		background: #ecfdf3;
-		color: #067647;
-		font-size: 14px;
-	}
-	.calc {
-		margin: -4px 0 8px;
-		font-size: 14px;
-	}
-	.cars-link {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 12px;
-		color: inherit;
-		text-decoration: none;
-		margin-top: 12px;
-	}
-	.cars-link > span:first-child {
-		display: grid;
-		gap: 2px;
-	}
-	.cars-link .drv-muted {
-		font-size: 14px;
 	}
 	.top {
 		display: flex;
@@ -291,17 +389,117 @@ const left = (iso: string) => {
 		font-weight: 600;
 	}
 	.route {
+		display: grid;
+		gap: 4px;
+		font-weight: 600;
+	}
+	.route span {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+	.dot {
+		width: 10px;
+		height: 10px;
+		border-radius: 999px;
+		border: 2px solid var(--drv-blue);
+		flex: none;
+	}
+	.dot.to {
+		background: var(--drv-blue);
+	}
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+	}
+	.chips span {
+		padding: 3px 10px;
+		border-radius: 999px;
+		background: #f2f4f7;
+		color: #344054;
+		font-size: 13px;
 		font-weight: 600;
 	}
 	.meta {
 		font-size: 14px;
+	}
+	.split {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 14px;
+		padding: 8px 10px;
+		border-radius: 10px;
+		background: #ecfdf3;
+		color: #067647;
+		font-size: 14px;
+	}
+	.bid summary {
+		list-style: none;
+		min-height: 50px;
+	}
+	.bid summary::-webkit-details-marker {
+		display: none;
+	}
+	.bid[open] summary {
+		display: none;
+	}
+	.bid form {
+		padding-top: 4px;
+		animation: drv-open 0.18s ease-out;
+	}
+	@keyframes drv-open {
+		from {
+			opacity: 0;
+			transform: translateY(-4px);
+		}
+	}
+	.calc {
+		margin: -6px 0 12px;
+		padding: 8px 10px;
+		border-radius: 10px;
+		background: #f9fafb;
+		color: var(--drv-muted);
+		font-size: 14px;
+		font-weight: 600;
+	}
+	.calc.on {
+		background: #ecfdf3;
+		color: #067647;
+	}
+	.one-car {
+		display: grid;
+		gap: 2px;
+		margin: 0 0 14px;
+		font-size: 15px;
+	}
+	.cars-link {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		color: inherit;
+		text-decoration: none;
+		border-style: dashed;
+	}
+	.cars-link > span:first-child {
+		display: grid;
+		gap: 2px;
+	}
+	.cars-link .drv-muted {
+		font-size: 14px;
+	}
+	.empty {
+		display: grid;
+		gap: 4px;
+		padding: 28px 16px;
+		text-align: center;
 	}
 	.money {
 		display: flex;
 		align-items: baseline;
 		gap: 8px;
 		flex-wrap: wrap;
-		margin-bottom: 4px;
 	}
 	.money strong {
 		font-size: 22px;
@@ -310,6 +508,7 @@ const left = (iso: string) => {
 
 <script is:inline>
 	// Shows the commission and what the driver keeps while they type the customer's price.
+	// Delegated, so it keeps working after the live list swaps the cards (driver-shell.js).
 	(() => {
 		const money = (n) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
 		const parse = (v) => {
@@ -318,18 +517,33 @@ const left = (iso: string) => {
 			const n = Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : /^\d{1,3}(\.\d{3})+$/.test(t) ? t.replace(/\./g, "") : t);
 			return Number.isFinite(n) ? n : 0;
 		};
-		for (const input of document.querySelectorAll("input[data-commission]")) {
+		const render = (input) => {
 			const out = input.closest("form")?.querySelector("[data-calc]");
-			if (!out) continue;
+			const price = parse(input.value);
+			if (!out || !price) return;
 			const pct = Number(input.dataset.commission) || 0;
-			const render = () => {
-				const price = parse(input.value);
-				if (!price) return;
-				const commission = Math.round(price * pct) / 100;
-				out.textContent = `Komisyon %${pct}: ${money(commission)} ₺ · Size kalan: ${money(price - commission)} ₺`;
-			};
-			input.addEventListener("input", render);
-			render();
-		}
+			const commission = Math.round(price * pct) / 100;
+			out.textContent = `Komisyon %${pct}: ${money(commission)} ₺ · Size kalan: ${money(price - commission)} ₺`;
+			out.classList.add("on");
+		};
+		document.addEventListener("input", (e) => {
+			if (e.target instanceof HTMLInputElement && e.target.matches("[data-commission]")) render(e.target);
+		});
+		// Opening a card's offer form puts the cursor in the price field.
+		document.addEventListener(
+			"toggle",
+			(e) => {
+				if (e.target instanceof HTMLDetailsElement && e.target.matches(".bid") && e.target.open) {
+					const input = e.target.querySelector("input[name=amount]");
+					if (input) {
+						render(input);
+						input.focus();
+						input.select();
+					}
+				}
+			},
+			true,
+		);
+		document.querySelectorAll("input[data-commission]").forEach(render);
 	})();
 </script>
