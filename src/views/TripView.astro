@@ -142,6 +142,7 @@ const chatRoomName = await chatRoom(booking);
 								data-code={booking.code}
 								data-token={booking.tracking_token}
 								data-count={page.offers.length}
+								data-count-label={t("offers.liveCount")}
 							>
 								<div class="grid gap-1">
 									<h2 id="offers-title" class="m-0 font-display text-xl font-bold">{t("offers.title")}</h2>
@@ -155,14 +156,14 @@ const chatRoomName = await chatRoom(booking);
 												<Icon name="plane" size={24} />
 											</span>
 										</div>
-										<h3 class="m-0 font-display text-lg font-bold text-gray-900">Taşıyıcılardan Teklifler Toplanıyor</h3>
+										<h3 class="m-0 font-display text-lg font-bold text-gray-900">{t("offers.waitTitle")}</h3>
 										<p class="mx-auto mt-2 max-w-md text-sm text-gray-600">
-											Talebiniz bölgedeki onaylı VIP taşıyıcılara ve sürücülere iletildi. En uygun araç ve fiyat alternatifleri dakikalar içinde bu ekrana düşecek.
+											{t("offers.waitBody")}
 										</p>
 										<div class="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs font-medium text-gray-500 border-t border-solid border-amber-100 pt-3">
-											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> Ücretsiz İptal</span>
-											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> Otoyol & Köprü Dahil</span>
-											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> 60 Dk Ücretsiz Bekleme</span>
+											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> {t("perk.freeCancel")}</span>
+											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> {t("perk.tolls")}</span>
+											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> {t("perk.wait60")}</span>
 										</div>
 									</div>
 								) : (

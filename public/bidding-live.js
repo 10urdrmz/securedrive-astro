@@ -60,7 +60,7 @@
 						});
 
 						// Also show a brief floating alert if it's not the initial state
-						showToast(`${currentCount} teklif mevcut!`);
+						showToast((container.dataset.countLabel || "{n}").replace("{n}", String(currentCount)));
 					}
 				}
 				isUpdating = false;
