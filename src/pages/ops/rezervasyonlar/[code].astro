@@ -30,7 +30,7 @@ import { airportCode, FLIGHT_STATUS_LABELS, FLIGHT_STATUSES, flightApiEnabled, f
 import { getSettings } from "../../../server/settings";
 import { isTracked } from "../../../server/live-location";
 import ChatBox from "../../../components/ChatBox.astro";
-import { listMessages, markRead, postMessage } from "../../../server/messages";
+import { canWrite as canChat, listMessages, markRead, postMessage } from "../../../server/messages";
 import { CARRIER_JOB_LABELS, currentCarrierJob, listPartners, offerToPartner, PARTNER_ANSWER_MINUTES, withdrawFromPartner } from "../../../server/partners";
 import { classesFitting, offersFor, pickOffer, placeOffer, withdrawOffer } from "../../../server/offers";
 import { awardBid, cancelPool, currentPoolJob, openPool, poolBids, POOL_STATUS_LABELS } from "../../../server/pool";
@@ -53,7 +53,7 @@ let error = "";
 const form = canWrite || canPay ? await readForm(Astro) : null;
 if (form) {
 	const intent = text(form, "intent", 20);
-	if (intent === "message" && canWrite) {
+	if (intent === "message" && canWrite && canChat(booking, "ops")) {
 		await postMessage(db, booking, "ops", user.id, "Operasyon", String(form.get("message") ?? ""));
 		return Astro.redirect(`/ops/rezervasyonlar/${booking.code}#mesajlar`, 303);
 	}
@@ -787,14 +787,14 @@ const chatRoomName = await chatRoom(booking);
 			me="ops"
 			src={`/ops/mesajlar.json?code=${encodeURIComponent(booking.code)}`}
 			room={chatRoomName}
-			writable={canWrite}
+			writable={canWrite && canChat(booking, "ops")}
 			labels={{
 				title: "Mesajlar",
 				privacy: "Yolcu, atanan sürücü ve operasyon aynı yazışmayı görür. Yolcu ve sürücünün yazdığı telefon ve e-postalar otomatik gizlenir; sizin yazdıklarınız gizlenmez.",
 				empty: "Henüz mesaj yok.",
 				placeholder: "Yolcuya ve sürücüye yazın",
 				send: "Gönder",
-				closed: "Mesaj yazma yetkiniz yok.",
+				closed: canWrite ? "Rezervasyon kapandı; mesajlaşma kapatıldı. Geçmiş mesajlar görünür." : "Mesaj yazma yetkiniz yok.",
 				passenger: "Yolcu",
 				driver: "Sürücü",
 				ops: "Operasyon",

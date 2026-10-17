@@ -25,8 +25,6 @@ export interface ChatMessage {
 }
 
 export const MAX_MESSAGE = 1000;
-/** How long after pickup the passenger and the driver can still write. */
-const OPEN_AFTER_PICKUP_MS = 24 * 3600_000;
 
 const PHONE = /\+?\d[\d\s().\-/]{6,}\d/g;
 const EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/g;
@@ -42,11 +40,14 @@ export function maskContacts(text: string): string {
 
 export const firstName = (name: string | null | undefined) => (name ?? "").trim().split(/\s+/)[0] ?? "";
 
-/** Whether this side may still write on the booking. */
+/**
+ * Whether this side may still write on the booking. Once the trip is completed, a no-show or
+ * cancelled, the thread is closed for everyone: the history stays readable, nobody writes.
+ */
 export function canWrite(booking: Booking, role: ChatRole): boolean {
+	if (FINAL_STATUSES.includes(booking.status)) return false;
 	if (role === "ops") return true;
-	if (booking.status === "cancelled" || booking.status === "quoted" || booking.status === "bidding") return false;
-	if (FINAL_STATUSES.includes(booking.status)) return Date.now() < Date.parse(booking.pickup_at) + OPEN_AFTER_PICKUP_MS;
+	if (booking.status === "quoted" || booking.status === "bidding") return false;
 	return role === "passenger" || !!booking.driver_id;
 }
 

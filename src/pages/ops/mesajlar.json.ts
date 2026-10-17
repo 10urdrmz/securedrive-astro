@@ -4,7 +4,7 @@ import { getDb } from "../../server/db";
 import { getSessionUser } from "../../server/auth/session";
 import { can } from "../../server/auth/rbac";
 import { getBookingByCode } from "../../server/bookings";
-import { chatJson, listMessages, markRead } from "../../server/messages";
+import { canWrite, chatJson, listMessages, markRead } from "../../server/messages";
 
 export const GET: APIRoute = async ({ locals, cookies, url }) => {
 	const headers = { "Content-Type": "application/json", "Cache-Control": "no-store" };
@@ -15,5 +15,5 @@ export const GET: APIRoute = async ({ locals, cookies, url }) => {
 	if (!booking) return new Response('{"error":"not_found"}', { status: 404, headers });
 	const messages = await listMessages(db, booking, "ops");
 	await markRead(db, booking.id, "ops");
-	return chatJson(messages, can(user, "bookings.write"));
+	return chatJson(messages, can(user, "bookings.write") && canWrite(booking, "ops"));
 };
