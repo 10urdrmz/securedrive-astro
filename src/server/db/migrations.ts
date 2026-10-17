@@ -570,4 +570,12 @@ export const MIGRATIONS: Migration[] = [
 			`ALTER TABLE sd_bookings ADD COLUMN passengers TEXT`,
 		],
 	},
+	{
+		name: "0019_booking_class_pref",
+		statements: [
+			// The vehicle class the customer asked for on a request; offers must use it.
+			// Null means any class that fits.
+			`ALTER TABLE sd_bookings ADD COLUMN class_pref TEXT`,
+		],
+	},
 ];

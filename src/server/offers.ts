@@ -81,6 +81,8 @@ export interface NewRequest {
   signName: string | null;
   /** Web requests: one entry per traveller, the contact person first. */
   passengers?: Passenger[] | null;
+  /** The vehicle class the customer wants; bidders must offer it. Empty means any. */
+  classKey?: string | null;
   pickupAddress: string | null;
   dropoffAddress: string | null;
   notes: string | null;
@@ -142,6 +144,17 @@ export async function createRequest(
     .orderBy("sort")
     .executeTakeFirst();
   if (!fitting) return { ok: false, error: "tooMany" };
+  // A chosen class must exist and fit the group; otherwise any class is fine.
+  const preferred = input.classKey
+    ? await db
+        .selectFrom("sd_vehicle_classes")
+        .select("key")
+        .where("key", "=", input.classKey)
+        .where("active", "=", 1)
+        .where("pax_max", ">=", input.pax)
+        .where("bags_max", ">=", input.bags)
+        .executeTakeFirst()
+    : undefined;
 
   const extrasCatalog = await db
     .selectFrom("sd_extras")
@@ -179,7 +192,8 @@ export async function createRequest(
     flight_no: input.flightNo,
     pax: input.pax,
     bags: input.bags,
-    class_key: fitting.key,
+    class_key: preferred?.key ?? fitting.key,
+    class_pref: preferred?.key ?? null,
     contact_name: input.contact.name,
     contact_phone: input.contact.phone,
     contact_email: input.contact.email,
@@ -239,22 +253,30 @@ async function extrasOf(db: Db, bookingId: string) {
  */
 export async function buyerTerms(
   db: Db,
-  booking: Pick<Booking, "org_id" | "agency_id" | "payment_method">,
+  booking: Pick<Booking, "org_id" | "agency_id" | "payment_method"> & {
+    class_pref?: string | null;
+  },
 ): Promise<{ discountPct: number; classes: string[] }> {
+  // The class the customer asked for narrows the allowed classes to that one.
+  const narrow = (classes: string[]) =>
+    booking.class_pref &&
+    (classes.length === 0 || classes.includes(booking.class_pref))
+      ? [booking.class_pref]
+      : classes;
   if (booking.org_id) {
     const company = await getCompany(db, booking.org_id);
     if (company)
       return {
         discountPct: company.settings.discountPct,
-        classes: company.settings.classes,
+        classes: narrow(company.settings.classes),
       };
   }
   if (booking.agency_id && booking.payment_method === "account") {
     const agency = await getAgency(db, booking.agency_id);
     if (agency)
-      return { discountPct: agency.settings.discountPct, classes: [] };
+      return { discountPct: agency.settings.discountPct, classes: narrow([]) };
   }
-  return { discountPct: 0, classes: [] };
+  return { discountPct: 0, classes: narrow([]) };
 }
 
 /** The buyer's price for an offer after its discount, never below what the carrier gets. */
@@ -291,6 +313,8 @@ async function offerProblem(
     booking.bags > vehicleClass.bags_max
   )
     return "Bu araç sınıfı yolcu ve bavul sayısına yetmiyor.";
+  if (booking.class_pref && booking.class_pref !== classKey)
+    return "Müşteri bu talep için belirli bir araç sınıfı istedi; teklif o sınıfla verilmeli.";
   const { classes } = await buyerTerms(db, booking);
   if (classes.length > 0 && !classes.includes(classKey))
     return "Bu kurumsal müşteri sözleşmesinde bu araç sınıfı yok.";
@@ -647,6 +671,8 @@ export interface OpenRequest {
   offers: number;
   best_price: number | null;
   my_class: string | null;
+  /** The class the customer asked for, or null for any. */
+  class_pref: string | null;
   my_amount: number | null;
   my_vehicle: string | null;
   my_status: string | null;
@@ -683,6 +709,7 @@ export async function openRequestsFor(
       "b.org_id",
       "b.agency_id",
       "b.payment_method",
+      "b.class_pref",
       "f.name as from_name",
       "t.name as to_name",
       "f.kind as from_kind",
@@ -735,6 +762,7 @@ export async function openRequestsFor(
       org_id,
       agency_id,
       payment_method,
+      class_pref: r.class_pref,
     } as Booking);
     out.push({
       ...r,

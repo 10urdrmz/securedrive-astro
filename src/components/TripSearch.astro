@@ -24,9 +24,13 @@ interface Props {
 	submitLabel: string;
 	/** "dark" sits on the hero photo; "light" on a grey page. */
 	tone?: "dark" | "light";
+	/** Lets fields outside the bar join it with form="…" (booking step 1 vehicle choice). */
+	id?: string;
+	/** Values the bar carries along unchanged, such as the chosen vehicle class. */
+	keep?: Record<string, string | undefined>;
 }
 
-const { locale, action, places, values = {}, submitLabel, tone = "dark" } = Astro.props;
+const { locale, action, places, values = {}, submitLabel, tone = "dark", id, keep = {} } = Astro.props;
 const t = useTranslations(locale);
 const today = new Date().toISOString().slice(0, 10);
 const airports = places.filter((p) => p.airport);
@@ -51,6 +55,7 @@ const fields = [
 ---
 
 <form
+	id={id}
 	class:list={["ts", `ts--${tone}`]}
 	action={action}
 	method="get"
@@ -60,6 +65,7 @@ const fields = [
 	data-bags-label={t("quick.bagCount")}
 	data-time-empty={t("quick.pickTime")}
 >
+	{Object.entries(keep).map(([name, value]) => value && <input type="hidden" name={name} value={value} />)}
 	<div class="ts-route">
 		{
 			fields.map((f, i) => (

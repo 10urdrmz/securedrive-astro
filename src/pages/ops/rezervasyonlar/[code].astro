@@ -208,7 +208,7 @@ const isBidding = booking.status === "bidding";
 const holdOff = isQuote || isBidding;
 const offers = await offersFor(db, booking, ["active", "won", "lost", "withdrawn"]);
 const ownOffer = offers.find((o) => o.bidder_kind === "ops" && o.status === "active");
-const offerClasses = isBidding ? await classesFitting(db, booking.pax, booking.bags) : [];
+const offerClasses = isBidding ? (await classesFitting(db, booking.pax, booking.bags)).filter((c) => !booking!.class_pref || c.key === booking!.class_pref) : [];
 const OFFER_STATUS: Record<string, string> = { active: "Geçerli", won: "Seçildi", lost: "Seçilmedi", withdrawn: "Geri çekildi" };
 const BIDDER_KIND: Record<string, string> = { partner: "Partner", driver: "Bağımsız sürücü", ops: "Kendi filomuz" };
 const messages = await listMessages(db, booking, "ops");
@@ -335,7 +335,7 @@ const chatRoomName = await chatRoom(booking);
 				<tr><th>Güzergâh</th><td>{info.fromName} → {info.toName}</td></tr>
 				{booking.pickup_address && <tr><th>Alış adresi</th><td>{booking.pickup_address}</td></tr>}
 				{booking.dropoff_address && <tr><th>Varış adresi</th><td>{booking.dropoff_address}</td></tr>}
-				<tr><th>Araç</th><td>{info.className} · {booking.pax} kişi · {booking.bags} bavul</td></tr>
+				<tr><th>Araç</th><td>{info.className}{isBidding && (booking.class_pref ? " (müşteri tercihi)" : " (fark etmez)")} · {booking.pax} kişi · {booking.bags} bavul</td></tr>
 				{booking.flight_no && (
 					<tr>
 						<th>Uçuş</th>
