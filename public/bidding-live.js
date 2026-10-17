@@ -26,9 +26,13 @@
 
 			const data = await res.json();
 
-			// If the booking transitioned away from bidding (e.g. accepted elsewhere or expired), refresh page
+			// The offer was picked elsewhere (another device, or ops for the customer) or the request
+			// closed: reload with the same notice the pick on this page would have shown.
 			if (data.status && data.status !== "bidding") {
-				window.location.reload();
+				const next = new URL(window.location.href);
+				next.searchParams.set("ok", data.status === "cancelled" ? "cancelled" : "picked");
+				next.hash = "";
+				window.location.replace(next.toString());
 				return;
 			}
 
