@@ -4,7 +4,7 @@
  * keeps the live map and the chat working; it waits while the passenger is typing.
  */
 (() => {
-	const code = document.querySelector("header.relative strong[dir='ltr']")?.textContent.trim().toUpperCase() ?? "";
+	const code = document.querySelector("[data-booking-code]")?.dataset.bookingCode?.toUpperCase() ?? "";
 	const token = new URLSearchParams(location.search).get("t");
 	if (!code || !token) return;
 
