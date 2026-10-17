@@ -8,6 +8,7 @@
 import Base from "../layouts/Base.astro";
 import Icon from "../components/Icon.astro";
 import Notice from "../components/Notice.astro";
+import TripSearch from "../components/TripSearch.astro";
 import { BOOK_SLUG, LOCALE_META, accountPath, bookPath, localizePath } from "../i18n/locales";
 import { useTranslations } from "../i18n/ui";
 import type { WizardPage } from "../lib/booking-page";
@@ -23,7 +24,6 @@ const t = useTranslations(locale);
 const intl = LOCALE_META[locale].intl;
 const money = (minor: number) => formatTry(minor / 100, locale);
 const card = "bg-white border border-solid border-gray-200 rounded-2xl shadow-[0_6px_20px_-12px_rgb(16_24_40/0.18)]";
-const today = new Date().toISOString().slice(0, 10);
 const trip = page.trip;
 const tripQuery = new URLSearchParams(
 	Object.entries(trip)
@@ -71,57 +71,17 @@ const promises = ["book.why1", "book.why2", "book.why3"] as const;
 				{page.error && <Notice tone="danger">{t(page.error)}</Notice>}
 
 				{/* Step 1: the trip. Always shown, so it can be changed in step 2. */}
-				<form class:list={[card, "form p-6 sm:p-8"]} method="get" action={bookPath(locale)}>
-					<div class="form-row">
-						<div class="field">
-							<label for="bk-from">{t("quick.from")}</label>
-							<select id="bk-from" name="from" required>
-								<option value="" disabled selected={!trip.from}>{t("form.choose")}</option>
-								<optgroup label={t("book.airports")}>
-									{airports.map((z) => <option value={z.id} selected={trip.from === z.id}>{z.name}</option>)}
-								</optgroup>
-								<optgroup label={t("book.districts")}>
-									{districts.map((z) => <option value={z.id} selected={trip.from === z.id}>{z.name}</option>)}
-								</optgroup>
-							</select>
-						</div>
-						<div class="field">
-							<label for="bk-to">{t("quick.to")}</label>
-							<select id="bk-to" name="to" required>
-								<option value="" disabled selected={!trip.to}>{t("form.choose")}</option>
-								<optgroup label={t("book.districts")}>
-									{districts.map((z) => <option value={z.id} selected={trip.to === z.id}>{z.name}</option>)}
-								</optgroup>
-								<optgroup label={t("book.airports")}>
-									{airports.map((z) => <option value={z.id} selected={trip.to === z.id}>{z.name}</option>)}
-								</optgroup>
-							</select>
-						</div>
-					</div>
-					<div class="form-row">
-						<div class="field">
-							<label for="bk-date">{t("quick.date")}</label>
-							<input id="bk-date" name="date" type="date" required min={today} value={trip.date} />
-						</div>
-						<div class="field">
-							<label for="bk-time">{t("quick.time")}</label>
-							<input id="bk-time" name="time" type="time" required value={trip.time} />
-						</div>
-						<div class="field">
-							<label for="bk-pax">{t("quick.passengers")}</label>
-							<input id="bk-pax" name="pax" type="number" min="1" max="60" inputmode="numeric" required value={trip.pax} />
-						</div>
-						<div class="field">
-							<label for="bk-bags">{t("form.luggage")}</label>
-							<input id="bk-bags" name="bags" type="number" min="0" max="60" inputmode="numeric" required value={trip.bags} />
-						</div>
-					</div>
-					<button type="submit" class="btn btn--primary justify-self-start">
-						{page.step === 1 ? t("book.next") : t("book.update")}
-						{page.step === 1 && <Icon name="arrow" size={18} class="flip-rtl" />}
-					</button>
+				<div class="grid gap-2">
+					<TripSearch
+						locale={locale}
+						action={bookPath(locale)}
+						tone="light"
+						places={[...airports.map((z) => ({ id: z.id, name: z.name, airport: true })), ...districts.map((z) => ({ id: z.id, name: z.name, airport: false }))]}
+						values={trip}
+						submitLabel={page.step === 1 ? t("book.next") : t("book.update")}
+					/>
 					<small class="text-sm text-gray-600">{t("book.timeHint")}</small>
-				</form>
+				</div>
 
 				{/* Step 2: passenger, extras, payment. Sending it asks carriers for prices. */}
 				{
