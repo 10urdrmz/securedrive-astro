@@ -20,8 +20,10 @@ import {
 	sameSecret,
 	transition,
 	type Booking,
+	type Passenger,
 	type PaymentMethod,
 } from "../server/bookings";
+import { NATIONALITIES } from "./nationalities";
 import { isoToIstanbul, istanbulToIso, refundPct } from "../server/pricing";
 import { getCompany, monthSpend } from "../server/companies";
 import { createRequest, offersFor, pickOffer, type OfferCard } from "../server/offers";
@@ -204,6 +206,11 @@ export async function runBookPage(Astro: AstroGlobal, locale: Locale, rest: stri
 	return rest ? bookingDetail(Astro, db, locale, member, rest) : wizard(Astro, db, locale, member);
 }
 
+/** The guest's likely nationality from the site language, as a default on the form. */
+function defaultNationality(locale: Locale): string {
+	return locale === "ru" ? "RU" : locale === "ar" ? "SA" : locale === "en" ? "GB" : "TR";
+}
+
 async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member | null): Promise<Response | WizardPage> {
 	const zones = await loadZones(db);
 	const params = Astro.url.searchParams;
@@ -223,7 +230,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	page.extras = await db.selectFrom("sd_extras").select(["key", "name", "price_minor", "max_qty"]).where("active", "=", 1).orderBy("sort").execute();
 	const fromZone = zones.find((z) => z.id === trip.from);
 	page.addressOnPickup = !!fromZone && fromZone.kind !== "airport";
-	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: "cash" };
+	page.values = { name: member?.name ?? "", phone: member?.phone ?? "", email: member?.email ?? "", payment: "cash", p0_nat: defaultNationality(locale) };
 	if (Astro.request.method !== "POST") return page;
 	if (Astro.request.headers.get("origin") !== Astro.url.origin) return new Response("Forbidden", { status: 403 });
 	const form = await Astro.request.formData();
@@ -244,6 +251,18 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 		payment: field("payment", 20),
 	};
 	for (const [key, qty] of Object.entries(extras)) page.values[`extra_${key}`] = String(qty);
+	// One entry per traveller; the first is the contact person (name above).
+	const pax = trip.pax ?? 1;
+	const passengers: Passenger[] = [];
+	for (let i = 0; i < pax; i++) {
+		const name = i === 0 ? page.values.name : field(`p${i}_name`, 80);
+		const nat = field(`p${i}_nat`, 2).toUpperCase();
+		const doc = field(`p${i}_doc`, 20).toUpperCase();
+		if (i > 0) page.values[`p${i}_name`] = name;
+		page.values[`p${i}_nat`] = nat;
+		page.values[`p${i}_doc`] = doc;
+		passengers.push({ name, nationality: (NATIONALITIES as readonly string[]).includes(nat) ? nat : "XX", doc: doc || null });
+	}
 	const fail = (error: string, status = 422) => {
 		Astro.response.status = status;
 		return { ...page, error: `book.error.${error}` as UiKey };
@@ -252,6 +271,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 	if (field("website")) return redirect(Astro, bookPath(locale));
 	const v = page.values;
 	if (v.name.length < 2 || !PHONE.test(v.phone)) return fail("details");
+	if (passengers.some((p) => p.name.length < 2)) return fail("passengers");
 	if (v.email && !EMAIL.test(v.email)) return fail("email");
 	if (!REQUEST_METHODS.includes(v.payment as PaymentMethod)) return fail("details");
 	if (form.get("terms") !== "on") return fail("terms");
@@ -268,6 +288,7 @@ async function wizard(Astro: AstroGlobal, db: Db, locale: Locale, member: Member
 		contact: { name: v.name, phone: v.phone, email: v.email || null },
 		flightNo: v.flight || null,
 		signName: v.sign || v.name,
+		passengers,
 		pickupAddress: page.addressOnPickup ? v.address || null : null,
 		dropoffAddress: page.addressOnPickup ? null : v.address || null,
 		notes: v.notes || null,
