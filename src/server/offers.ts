@@ -72,6 +72,15 @@ export async function customerPrice(
   return roundUp(payoutMinor * (1 + offerCommissionPct / 100));
 }
 
+/**
+ * The other way round, for offers from the driver app: the driver types the price the
+ * customer pays and the platform's commission comes off it.
+ */
+export function commissionSplit(priceMinor: number, pct: number) {
+  const commission = Math.round((priceMinor * pct) / 100);
+  return { commission, payout: priceMinor - commission };
+}
+
 export interface NewRequest {
   fromZoneId: string;
   toZoneId: string;
@@ -378,6 +387,8 @@ export async function placeOffer(
     vehicle: string | null;
     vehicleId?: string | null;
     note: string | null;
+    /** The amount is the customer's price (driver app); commission comes off it. */
+    customerPriced?: boolean;
   },
 ) {
   if (!(input.amountMinor >= 10_000))
@@ -391,10 +402,15 @@ export async function placeOffer(
   );
   if (problem) throw new Error(problem);
   const own = bidder.kind === "ops";
-  const payout = own ? 0 : input.amountMinor;
-  const price = own
+  let payout = own ? 0 : input.amountMinor;
+  let price = own
     ? input.amountMinor
     : await customerPrice(db, input.amountMinor);
+  if (!own && input.customerPriced) {
+    const { offerCommissionPct } = await getSettings(db);
+    price = input.amountMinor;
+    payout = commissionSplit(price, offerCommissionPct).payout;
+  }
   const now = new Date().toISOString();
   const values = {
     class_key: input.classKey,
@@ -718,6 +734,8 @@ export interface OpenRequest {
   /** The class the customer asked for, or null for any. */
   class_pref: string | null;
   my_amount: number | null;
+  /** The customer's price of the bidder's own offer. */
+  my_price: number | null;
   my_vehicle: string | null;
   my_status: string | null;
   /** A company request accepts only the classes in its contract; empty means any. */
@@ -760,6 +778,7 @@ export async function openRequestsFor(
       "t.kind as to_kind",
       "mine.class_key as my_class",
       "mine.vehicle as my_vehicle",
+      "mine.price_minor as my_price",
       "mine.status as my_status",
       sql<
         number | null

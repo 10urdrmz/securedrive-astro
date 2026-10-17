@@ -244,7 +244,10 @@ Astro.response.headers.set("Permissions-Policy", "camera=(), microphone=(), geol
 		font-weight: 600;
 		font-size: 15px;
 	}
-	.drv-field input {
+	.drv-field :is(input, select) {
+		min-width: 0;
+		width: 100%;
+		box-sizing: border-box;
 		font: inherit;
 		font-size: 18px;
 		font-weight: 500;

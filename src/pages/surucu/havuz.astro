@@ -10,7 +10,8 @@ import { sessionDriver, when } from "../../server/driver-app";
 import { bidOptions, readBidOption, type FleetOwner } from "../../server/fleet";
 import { formatMoney, parseMoney, readForm, text } from "../../server/ops";
 import { getOpenPoolByCode, openPoolFor, placeBid, takeFixed, withdrawBid } from "../../server/pool";
-import { getOpenRequest, openRequestsFor, placeOffer, withdrawOffer, type OfferBidder } from "../../server/offers";
+import { commissionSplit, getOpenRequest, openRequestsFor, placeOffer, withdrawOffer, type OfferBidder } from "../../server/offers";
+import { getSettings } from "../../server/settings";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
@@ -23,6 +24,7 @@ const bidder: OfferBidder = driver.org_id ? { kind: "partner", id: driver.org_id
 const fleetOwner: FleetOwner = driver.org_id ? { kind: "partner", id: driver.org_id } : { kind: "driver", id: driver.id };
 const poolBidder = { kind: "driver" as const, id: driver.id };
 
+const { offerCommissionPct: commissionPct } = await getSettings(db);
 let notice = "";
 let error = "";
 const form = await readForm(Astro);
@@ -35,10 +37,12 @@ if (form) {
 			if (!request) throw new Error("Bu talep artık açık değil.");
 			if (intent === "offer") {
 				const amount = parseMoney(text(form, "amount", 20));
-				if (!amount) throw new Error("Kazancınızı yazın. Örnek: 1.650");
+				if (!amount) throw new Error("Müşteri fiyatını yazın. Örnek: 2.000");
 				const choice = await readBidOption(db, fleetOwner, text(form, "option", 60));
-				await placeOffer(db, request, bidder, { classKey: choice.classKey, vehicleId: choice.vehicleId, amountMinor: amount, vehicle: choice.vehicle, note: null });
-				notice = `${formatMoney(amount)} ₺ teklifiniz müşteriye iletildi. Müşteri seçerse iş ${driver.org_id ? "firmanıza" : "İşlerim'e"} düşer.`;
+				// The driver types the customer's price; the commission comes off it.
+				await placeOffer(db, request, bidder, { classKey: choice.classKey, vehicleId: choice.vehicleId, amountMinor: amount, vehicle: choice.vehicle, note: null, customerPriced: true });
+				const split = commissionSplit(amount, commissionPct);
+				notice = `Müşteri teklifinizi ${formatMoney(amount)} ₺ olarak görüyor. Komisyon ${formatMoney(split.commission)} ₺, size kalan ${formatMoney(split.payout)} ₺. Müşteri seçerse iş ${driver.org_id ? "firmanıza" : "İşlerim'e"} düşer.`;
 			} else {
 				await withdrawOffer(db, request, bidder);
 				notice = "Teklifiniz geri çekildi.";
@@ -94,8 +98,8 @@ const left = (iso: string) => {
 	{error && <p class="drv-notice error" role="alert">{error}</p>}
 	<h2 class="sec">Müşteri talepleri</h2>
 	<p class="drv-muted">
-		Müşteri yolculuğunu yazdı, fiyat bekliyor. <strong>Kazancınızı</strong> yazın; müşteri teklifleri karşılaştırıp birini seçer. Müşterinin adını, telefonunu
-		ve diğer teklifleri görmezsiniz.
+		Müşteri yolculuğunu yazdı, fiyat bekliyor. <strong>Müşterinin ödeyeceği fiyatı</strong> yazın; müşteri bu fiyatı aynen görür. SecureDrive komisyonu
+		(<strong>%{commissionPct}</strong>) bu fiyattan düşülür, kalanı sizindir. Müşterinin adını, telefonunu ve diğer teklifleri görmezsiniz.
 	</p>
 	{
 		requests.length === 0 && (
@@ -125,10 +129,18 @@ const left = (iso: string) => {
 					{r.notes && <div class="drv-muted meta">Not: {r.notes}</div>}
 					<form method="post">
 						<input type="hidden" name="code" value={r.code} />
+						{active && r.my_price != null && (
+							<div class="split">
+								<span>Teklifiniz <strong>{formatMoney(r.my_price)} ₺</strong></span>
+								<span>Komisyon {formatMoney(r.my_price - (r.my_amount ?? 0))} ₺</span>
+								<span>Size kalan <strong>{formatMoney(r.my_amount ?? 0)} ₺</strong></span>
+							</div>
+						)}
 						<label class="drv-field">
-							Kazancınız (₺){active && ` · şu an ${formatMoney(r.my_amount ?? 0)} ₺`}
-							<input type="text" name="amount" inputmode="decimal" required placeholder="1.650" />
+							Müşteri fiyatı (₺)
+							<input type="text" name="amount" inputmode="decimal" required placeholder="2.000" value={active && r.my_price != null ? formatMoney(r.my_price) : undefined} data-commission={commissionPct} />
 						</label>
+						<p class="drv-muted calc" data-calc aria-live="polite">Komisyon %{commissionPct} · size kalan tutar burada görünür</p>
 						<label class="drv-field">
 							{hasCars ? "Araç" : "Araç tipi"}
 							<select name="option" required>
@@ -224,6 +236,25 @@ const left = (iso: string) => {
 	.pool {
 		display: grid;
 		gap: 8px;
+		min-width: 0;
+	}
+	.pool select {
+		font-size: 16px;
+		text-overflow: ellipsis;
+	}
+	.split {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px 14px;
+		padding: 8px 10px;
+		border-radius: 10px;
+		background: #ecfdf3;
+		color: #067647;
+		font-size: 14px;
+	}
+	.calc {
+		margin: -4px 0 8px;
+		font-size: 14px;
 	}
 	.cars-link {
 		display: flex;
@@ -276,3 +307,29 @@ const left = (iso: string) => {
 		font-size: 22px;
 	}
 </style>
+
+<script is:inline>
+	// Shows the commission and what the driver keeps while they type the customer's price.
+	(() => {
+		const money = (n) => n.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
+		const parse = (v) => {
+			// Same reading as parseMoney (server/ops.ts): "2.000", "2000", "1.250,50".
+			const t = String(v).replace(/\s|₺|TL/gi, "");
+			const n = Number(t.includes(",") ? t.replace(/\./g, "").replace(",", ".") : /^\d{1,3}(\.\d{3})+$/.test(t) ? t.replace(/\./g, "") : t);
+			return Number.isFinite(n) ? n : 0;
+		};
+		for (const input of document.querySelectorAll("input[data-commission]")) {
+			const out = input.closest("form")?.querySelector("[data-calc]");
+			if (!out) continue;
+			const pct = Number(input.dataset.commission) || 0;
+			const render = () => {
+				const price = parse(input.value);
+				if (!price) return;
+				const commission = Math.round(price * pct) / 100;
+				out.textContent = `Komisyon %${pct}: ${money(commission)} ₺ · Size kalan: ${money(price - commission)} ₺`;
+			};
+			input.addEventListener("input", render);
+			render();
+		}
+	})();
+</script>
