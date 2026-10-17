@@ -33,6 +33,7 @@ import { isTracked } from "../../../server/live-location";
 import ChatBox from "../../../components/ChatBox.astro";
 import { canWrite as canChat, listMessages, markRead, postMessage } from "../../../server/messages";
 import { CARRIER_JOB_LABELS, currentCarrierJob, listPartners, offerToPartner, PARTNER_ANSWER_MINUTES, withdrawFromPartner } from "../../../server/partners";
+import { OWN_FLEET_OWNER, bidOptions, readBidOption } from "../../../server/fleet";
 import { classesFitting, offersFor, pickOffer, placeOffer, withdrawOffer } from "../../../server/offers";
 import { awardBid, cancelPool, currentPoolJob, openPool, poolBids, POOL_STATUS_LABELS } from "../../../server/pool";
 
@@ -123,7 +124,8 @@ if (form) {
 		} else if (intent === "offer_own" && canWrite) {
 			const price = parseMoney(text(form, "price", 20));
 			if (!price) throw new Error("Müşteri fiyatını yazın. Örnek: 2.400");
-			await placeOffer(db, booking, OWN_FLEET, { classKey: text(form, "class", 40), amountMinor: price, vehicle: text(form, "vehicle", 80) || null, note: null });
+			const choice = await readBidOption(db, OWN_FLEET_OWNER, text(form, "option", 60));
+			await placeOffer(db, booking, OWN_FLEET, { classKey: choice.classKey, vehicleId: choice.vehicleId, amountMinor: price, vehicle: choice.vehicle ?? (text(form, "vehicle", 80) || null), note: null });
 			notice = `Kendi filomuz için ${formatMoney(price)} ₺ teklif müşteriye gösteriliyor.`;
 		} else if (intent === "offer_own_back" && canWrite) {
 			await withdrawOffer(db, booking, OWN_FLEET);
@@ -209,6 +211,8 @@ const holdOff = isQuote || isBidding;
 const offers = await offersFor(db, booking, ["active", "won", "lost", "withdrawn"]);
 const ownOffer = offers.find((o) => o.bidder_kind === "ops" && o.status === "active");
 const offerClasses = isBidding ? (await classesFitting(db, booking.pax, booking.bags)).filter((c) => !booking!.class_pref || c.key === booking!.class_pref) : [];
+const ownOptions = isBidding ? (await bidOptions(db, OWN_FLEET_OWNER)).filter((o) => offerClasses.some((c) => c.key === o.class_key)) : [];
+const ownHasCars = ownOptions.some((o) => o.value.startsWith("v:"));
 const OFFER_STATUS: Record<string, string> = { active: "Geçerli", won: "Seçildi", lost: "Seçilmedi", withdrawn: "Geri çekildi" };
 const BIDDER_KIND: Record<string, string> = { partner: "Partner", driver: "Bağımsız sürücü", ops: "Kendi filomuz" };
 const messages = await listMessages(db, booking, "ops");
@@ -422,23 +426,25 @@ const chatRoomName = await chatRoom(booking);
 					</tbody>
 				</table>
 			)}
-			{canWrite && isBidding && offerClasses.length > 0 && (
+			{canWrite && isBidding && ownOptions.length > 0 && (
 				<form method="post" class="form-grid" style="margin-top:16px">
 					<input type="hidden" name="version" value={booking.version} />
 					<label>
-						Kendi filomuz · araç sınıfı
-						<select name="class" required>
-							{offerClasses.map((c) => <option value={c.key} selected={c.key === (ownOffer?.class_key ?? booking!.class_key)}>{c.name} ({c.pax_max} kişi)</option>)}
+						Kendi filomuz · {ownHasCars ? "araç" : "araç tipi"}
+						<select name="option" required>
+							{ownOptions.map((o) => <option value={o.value} selected={ownOffer?.vehicle_id ? o.value === `v:${ownOffer.vehicle_id}` : o.class_key === (ownOffer?.class_key ?? booking!.class_key)}>{o.label}</option>)}
 						</select>
 					</label>
 					<label>
 						Müşteri fiyatı (₺)
 						<input type="text" name="price" inputmode="decimal" required value={ownOffer ? formatMoney(ownOffer.price_minor) : ""} placeholder="2.400" />
 					</label>
-					<label>
-						Araç notu
-						<input type="text" name="vehicle" maxlength="80" value={ownOffer?.vehicle ?? ""} placeholder="Mercedes Vito VIP" />
-					</label>
+					{!ownHasCars && (
+						<label>
+							Araç notu
+							<input type="text" name="vehicle" maxlength="80" value={ownOffer?.vehicle ?? ""} placeholder="Mercedes Vito VIP" />
+						</label>
+					)}
 					<div class="actions" style="margin:0">
 						<button class="btn" type="submit" name="intent" value="offer_own">{ownOffer ? "Teklifimizi güncelle" : "Kendi filomuzla teklif ver"}</button>
 						{ownOffer && <button class="btn secondary" type="submit" name="intent" value="offer_own_back" formnovalidate>Geri çek</button>}

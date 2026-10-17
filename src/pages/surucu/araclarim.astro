@@ -1,0 +1,36 @@
+---
+/**
+ * The driver's own cars (independent and own-fleet drivers). Offers from the job pool
+ * name one of them, and the customer sees that car. A partner's drivers use their
+ * firm's cars, which the partner keeps in its panel.
+ */
+import DriverLayout from "../../layouts/DriverLayout.astro";
+import FleetManager from "../../components/FleetManager.astro";
+import { getDb } from "../../server/db";
+import { sessionDriver } from "../../server/driver-app";
+import { handleFleetForm, ownerVehicles, vehicleClasses } from "../../server/fleet";
+import { readForm } from "../../server/ops";
+
+const db = await getDb(Astro.locals);
+const driver = await sessionDriver(db, Astro.cookies);
+if (!driver) return Astro.redirect("/surucu/giris");
+if (driver.org_id) return Astro.redirect("/surucu/havuz");
+const owner = { kind: "driver" as const, id: driver.id };
+
+const form = await readForm(Astro);
+const result = form ? await handleFleetForm(db, owner, form) : {};
+const classes = await vehicleClasses(db);
+const vehicles = await ownerVehicles(db, owner);
+---
+
+<DriverLayout title="Araçlarım" driver={driver} back>
+	<h1>Araçlarım</h1>
+	{result.notice && <p class="drv-notice">{result.notice}</p>}
+	{result.error && <p class="drv-notice error" role="alert">{result.error}</p>}
+	<FleetManager
+		classes={classes}
+		vehicles={vehicles}
+		title="Kayıtlı araçlar"
+		hint="İş havuzunda teklif verirken aracınızı seçersiniz; müşteri teklifinizde aracın fotoğrafını, modelini ve özelliklerini görür. Plaka müşteriye gösterilmez."
+	/>
+</DriverLayout>

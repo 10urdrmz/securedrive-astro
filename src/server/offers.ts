@@ -12,6 +12,7 @@
  * Bidders never see the passenger's name, phone, e-mail or other bidders' amounts.
  */
 import { sql } from "kysely";
+import { featureList, photoUrl } from "./fleet";
 import type { Db } from "./db";
 import {
   addEvent,
@@ -48,6 +49,8 @@ export interface Offer {
   payout_minor: number;
   price_minor: number;
   vehicle: string | null;
+  /** The bidder's own car (sd_fleet_vehicles) the offer is for, if it named one. */
+  vehicle_id: string | null;
   note: string | null;
   status: "active" | "withdrawn" | "won" | "lost";
   created_at: string;
@@ -297,6 +300,7 @@ async function offerProblem(
   booking: Booking,
   bidder: OfferBidder,
   classKey: string,
+  vehicleId: string | null = null,
 ): Promise<string | null> {
   if (booking.status !== "bidding")
     return "Müşteri bu talep için zaten bir teklif seçti ya da talep kapandı.";
@@ -334,14 +338,17 @@ async function offerProblem(
       .select(["kind", "status", "org_id", "class_key"])
       .where("id", "=", bidder.id)
       .executeTakeFirst();
+    // Independent drivers and the own fleet's staff drivers bid for themselves; a
+    // partner's drivers bid in their firm's name (bidder kind "partner").
     if (
       !driver ||
-      driver.kind !== "independent" ||
+      driver.kind === "partner" ||
       driver.org_id ||
       driver.status !== "active"
     )
-      return "Teklif vermek yalnızca onaylı bağımsız sürücülere açık.";
-    if (driver.class_key && driver.class_key !== classKey)
+      return "Teklif vermek yalnızca onaylı sürücülere açık.";
+    // A driver offering with one of their registered cars may use its class.
+    if (!vehicleId && driver.class_key && driver.class_key !== classKey)
       return "Yalnızca kendi araç sınıfınızla teklif verebilirsiniz.";
     const pickup = Date.parse(booking.pickup_at);
     const clash = await db
@@ -369,12 +376,19 @@ export async function placeOffer(
     classKey: string;
     amountMinor: number;
     vehicle: string | null;
+    vehicleId?: string | null;
     note: string | null;
   },
 ) {
   if (!(input.amountMinor >= 10_000))
     throw new Error("Tutarı yazın. Örnek: 1.650");
-  const problem = await offerProblem(db, booking, bidder, input.classKey);
+  const problem = await offerProblem(
+    db,
+    booking,
+    bidder,
+    input.classKey,
+    input.vehicleId ?? null,
+  );
   if (problem) throw new Error(problem);
   const own = bidder.kind === "ops";
   const payout = own ? 0 : input.amountMinor;
@@ -387,6 +401,7 @@ export async function placeOffer(
     payout_minor: payout,
     price_minor: price,
     vehicle: input.vehicle,
+    vehicle_id: input.vehicleId ?? null,
     note: input.note,
     status: "active",
     updated_at: now,
@@ -450,6 +465,14 @@ export interface OfferCard extends Offer {
   rating: number | null;
   ratings: number;
   trips: number;
+  /** The named car, when the offer has one. */
+  car: {
+    model: string;
+    year: number | null;
+    color: string | null;
+    features: string[];
+    photo: string | null;
+  } | null;
 }
 
 const shortName = (name: string) => {
@@ -475,6 +498,7 @@ export async function offersFor(
     .leftJoin("sd_drivers as d", (join) =>
       join.onRef("d.id", "=", "o.bidder_id").on("o.bidder_kind", "=", "driver"),
     )
+    .leftJoin("sd_fleet_vehicles as v", "v.id", "o.vehicle_id")
     .selectAll("o")
     .select([
       "c.name as class_name",
@@ -482,6 +506,11 @@ export async function offersFor(
       "c.bags_max",
       "p.name as partner_name",
       "d.name as driver_name",
+      "v.model as car_model",
+      "v.year as car_year",
+      "v.color as car_color",
+      "v.features as car_features",
+      "v.photo as car_photo",
     ])
     .where("o.booking_id", "=", booking.id)
     .where("o.status", "in", statuses)
@@ -493,10 +522,15 @@ export async function offersFor(
     bags_max: number;
     partner_name: string | null;
     driver_name: string | null;
+    car_model: string | null;
+    car_year: number | null;
+    car_color: string | null;
+    car_features: string | null;
+    car_photo: string | null;
   })[];
   const terms = await buyerTerms(db, booking);
   const cards: OfferCard[] = [];
-  for (const r of rows) {
+  for (const { car_model, car_year, car_color, car_features, car_photo, ...r } of rows) {
     if (terms.classes.length > 0 && !terms.classes.includes(r.class_key))
       continue;
     // Track record: completed trips and passenger ratings of this fleet or driver.
@@ -532,6 +566,16 @@ export async function offersFor(
       rating: stats?.rating ? Math.round(Number(stats.rating) * 10) / 10 : null,
       ratings: Number(stats?.ratings ?? 0),
       trips: Number(stats?.trips ?? 0),
+      // Free text a carrier typed never reaches the customer unmasked.
+      car: car_model
+        ? {
+            model: maskContacts(car_model),
+            year: car_year,
+            color: car_color && maskContacts(car_color),
+            features: featureList(car_features).map(maskContacts),
+            photo: photoUrl(car_photo),
+          }
+        : null,
     });
   }
   return cards;

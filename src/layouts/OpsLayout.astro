@@ -77,6 +77,7 @@ const NAV_ALL: NavItem[] = !user
 				{ href: "/partner", label: "İşler", icon: "calendar", show: true },
 				{ href: "/partner/havuz", label: "İş havuzu", icon: "inbox", show: true },
 				{ href: "/partner/suruculer", label: "Sürücüler", icon: "user", show: true },
+				{ href: "/partner/araclar", label: "Araçlar", icon: "car", show: true },
 				{ href: "/partner/finans", label: "Hakediş", icon: "wallet", show: true },
 			]
 		: [
@@ -92,7 +93,7 @@ const NAV_ALL: NavItem[] = !user
 			{ href: "/ops/raporlar", label: "Raporlar", icon: "gauge", show: can(user, "reports.read") },
 			{ href: "/ops/yonetim/tarifeler", label: "Tarifeler", icon: "tag", show: can(user, "catalog.read"), group: "Ayarlar" },
 			{ href: "/ops/yonetim/bolgeler", label: "Bölgeler", icon: "pin", show: can(user, "catalog.read") },
-			{ href: "/ops/yonetim/araclar", label: "Araç sınıfları", icon: "car", show: can(user, "catalog.read") },
+			{ href: "/ops/yonetim/araclar", label: "Araçlar", icon: "car", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/ekstralar", label: "Ekstralar", icon: "gift", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/ayarlar", label: "Kurallar", icon: "sliders", show: can(user, "catalog.read") },
 			{ href: "/ops/yonetim/kullanicilar", label: "Ekip", icon: "users", show: can(user, "users.manage") },

@@ -1,7 +1,7 @@
 ---
 /**
  * The job pool as a partner sees it. First, customer requests from the site: the
- * partner names a class and what it wants to earn, and the customer picks among the
+ * partner names one of its cars (or a class) and what it wants to earn, and the customer picks among the
  * offers (offers.ts). Then ops' own pool: fixed-payout jobs to take (first come, first
  * served) and auctions to bid on under the ceiling. Won jobs move to "İşler", where
  * the partner puts a driver on them.
@@ -11,6 +11,7 @@ import { audit, formatMoney, parseMoney, readForm, text } from "../../server/ops
 import { requirePartner } from "../../server/partners";
 import { getOpenPoolByCode, openPoolFor, placeBid, takeFixed, withdrawBid } from "../../server/pool";
 import { isoToIstanbul } from "../../server/pricing";
+import { bidOptions, readBidOption } from "../../server/fleet";
 import { classesFitting, getOpenRequest, openRequestsFor, placeOffer, withdrawOffer } from "../../server/offers";
 
 const ctx = await requirePartner(Astro);
@@ -31,10 +32,12 @@ if (form) {
 			if (intent === "offer") {
 				const amount = parseMoney(text(form, "amount", 20));
 				if (!amount) throw new Error("Kazancınızı yazın. Örnek: 1.650");
+				const choice = await readBidOption(db, bidder, text(form, "option", 60));
 				await placeOffer(db, request, bidder, {
-					classKey: text(form, "class", 40),
+					classKey: choice.classKey,
+					vehicleId: choice.vehicleId,
 					amountMinor: amount,
-					vehicle: text(form, "vehicle", 80) || null,
+					vehicle: choice.vehicle,
 					note: text(form, "note", 200) || null,
 				});
 				await audit(db, user, "offer.place", "booking", request.id, { code, org: org.id, amount });
@@ -69,6 +72,8 @@ if (form) {
 const jobs = await openPoolFor(db, bidder);
 const requests = await openRequestsFor(db, bidder);
 const classes = await classesFitting(db, 1, 0);
+const options = await bidOptions(db, bidder);
+const hasCars = options.some((o) => o.value.startsWith("v:"));
 const when = (iso: string) => {
 	const { date, time } = isoToIstanbul(iso);
 	return `${date.split("-").reverse().join(".")} ${time}`;
@@ -84,14 +89,15 @@ const left = (iso: string) => {
 	{error && <p class="notice error">{error}</p>}
 	<h2 style="margin:0 0 4px">Müşteri talepleri</h2>
 	<p class="muted" style="margin-top:0">
-		Sitedeki müşteriler yolculuğunu yazdı, fiyat bekliyor. Araç sınıfını ve <strong>sizin kazancınızı</strong> yazın; müşteri teklifleri yan yana görür
+		Sitedeki müşteriler yolculuğunu yazdı, fiyat bekliyor. Aracı seçin ve <strong>sizin kazancınızı</strong> yazın; müşteri teklifleri yan yana görür
 		ve birini seçer. Seçilirseniz iş "İşler" sayfasına onaylı olarak düşer. Müşterinin adını ve iletişim bilgisini, diğer teklifleri görmezsiniz. Teklifinizi
 		alıştan 1 saat öncesine kadar değiştirebilirsiniz.
 	</p>
+	{!hasCars && <p class="notice">Henüz araç eklemediniz. <a href="/partner/araclar">Araçlar</a> sayfasından ekleyin; müşteri teklifinizde aracınızın fotoğrafını ve özelliklerini görür.</p>}
 	{requests.length === 0 && <div class="card muted">Şu an teklif bekleyen müşteri talebi yok.</div>}
 	{
 		requests.map((r) => {
-			const fits = classes.filter((c) => c.pax_max >= r.pax && c.bags_max >= r.bags && (r.allowed_classes.length === 0 || r.allowed_classes.includes(c.key)));
+			const fits = options.filter((o) => o.pax_max >= r.pax && o.bags_max >= r.bags && (r.allowed_classes.length === 0 || r.allowed_classes.includes(o.class_key)));
 			const active = r.my_status === "active";
 			return (
 				<div class="card job">
@@ -116,11 +122,11 @@ const left = (iso: string) => {
 					<form method="post" class="actions" style="align-items:end;flex-wrap:wrap">
 						<input type="hidden" name="code" value={r.code} />
 						<label>
-							Araç sınıfı
-							<select name="class" required>
-								{fits.map((c) => (
-									<option value={c.key} selected={r.my_class === c.key}>
-										{c.name} ({c.pax_max} kişi)
+							{hasCars ? "Araç" : "Araç tipi"}
+							<select name="option" required>
+								{fits.map((o) => (
+									<option value={o.value} selected={r.my_vehicle ? o.label.startsWith(r.my_vehicle) : r.my_class === o.class_key}>
+										{o.label}
 									</option>
 								))}
 							</select>
@@ -128,10 +134,6 @@ const left = (iso: string) => {
 						<label>
 							Kazancınız (₺)
 							<input type="text" name="amount" inputmode="decimal" required value={active && r.my_amount ? formatMoney(r.my_amount) : ""} placeholder="1.650" />
-						</label>
-						<label>
-							Araç (model, renk)
-							<input type="text" name="vehicle" maxlength="80" value={r.my_vehicle ?? ""} placeholder="Mercedes Vito, siyah" />
 						</label>
 						<button class="btn" type="submit" name="intent" value="offer">
 							{active ? "Teklifi güncelle" : "Teklif ver"}

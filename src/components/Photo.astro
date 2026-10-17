@@ -19,7 +19,7 @@ interface Props {
 const { image, fallback, alt, class: className, sizes = "(max-width: 700px) 100vw, 50vw", loading = "lazy", width = 1376, height = 768 } = Astro.props;
 const media = image && typeof image === "object" && "id" in image && (image as { id?: string }).id ? image : null;
 // Prefer the smaller bundled variant for card-sized slots.
-const small = fallback?.replace(/\.webp$/, "-sm.webp");
+const small = fallback && !fallback.startsWith("/api/") ? fallback.replace(/\.webp$/, "-sm.webp") : undefined;
 ---
 
 {

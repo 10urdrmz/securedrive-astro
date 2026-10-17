@@ -1,0 +1,337 @@
+---
+/**
+ * A carrier's own cars: list, add, edit, deactivate (server/fleet.ts handleFleetForm).
+ * Used by ops (own fleet), partners and drivers, so it brings its own styles and works
+ * in both the ops layout and the driver app. Photos shrink in the browser before upload
+ * (public/photo-resize.js) and upload as a plain file without it.
+ */
+import { featureList, photoUrl, vehicleLabel, type FleetVehicle, type VehicleClassRow } from "../server/fleet";
+
+interface Props {
+	classes: VehicleClassRow[];
+	vehicles: (FleetVehicle & { class_name: string })[];
+	title?: string;
+	hint?: string;
+	canWrite?: boolean;
+}
+
+const { classes, vehicles, title = "Araçlarım", hint, canWrite = true } = Astro.props;
+const activeClasses = classes.filter((c) => c.active);
+const thisYear = new Date().getFullYear();
+const classPhoto = (key: string) => photoUrl(classes.find((c) => c.key === key)?.photo);
+---
+
+<section class="fm">
+	<header class="fm-head">
+		<h2>{title}</h2>
+		{hint && <p>{hint}</p>}
+	</header>
+
+	{vehicles.length === 0 && <p class="fm-empty">Henüz araç eklenmedi. Araç eklemeden de teklif verebilirsiniz; o zaman müşteri aracın tipine ait standart fotoğrafı görür.</p>}
+
+	<div class="fm-list">
+		{
+			vehicles.map((v) => {
+				const img = photoUrl(v.photo) ?? classPhoto(v.class_key);
+				return (
+					<article class:list={["fm-card", v.status !== "active" && "is-off"]}>
+						<div class="fm-photo">{img ? <img src={img} alt="" loading="lazy" /> : <span>Fotoğraf yok</span>}</div>
+						<div class="fm-body">
+							<div class="fm-title">
+								<strong>{vehicleLabel(v)}</strong>
+								<span class:list={["fm-badge", v.status === "active" ? "ok" : "off"]}>{v.status === "active" ? "Aktif" : "Pasif"}</span>
+							</div>
+							<span class="fm-meta">
+								{v.class_name}
+								{v.plate && <> · <span class="fm-plate">{v.plate}</span></>}
+								{!v.photo && img && " · tip fotoğrafı"}
+							</span>
+							{featureList(v.features).length > 0 && (
+								<ul class="fm-chips">
+									{featureList(v.features).map((f) => (
+										<li>{f}</li>
+									))}
+								</ul>
+							)}
+							{canWrite && (
+								<details class="fm-edit">
+									<summary>Düzenle</summary>
+									<form method="post" enctype="multipart/form-data" class="fm-form">
+										<input type="hidden" name="vehicle_id" value={v.id} />
+										<label>
+											Araç tipi
+											<select name="class_key" required>
+												{activeClasses.map((c) => (
+													<option value={c.key} selected={c.key === v.class_key}>
+														{c.name}
+													</option>
+												))}
+											</select>
+										</label>
+										<label>
+											Marka ve model
+											<input name="model" value={v.model} maxlength="80" required />
+										</label>
+										<label>
+											Model yılı
+											<input name="year" value={v.year ?? ""} inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder={String(thisYear)} />
+										</label>
+										<label>
+											Renk
+											<input name="color" value={v.color ?? ""} maxlength="40" />
+										</label>
+										<label>
+											Plaka (müşteriye gösterilmez)
+											<input name="plate" value={v.plate ?? ""} maxlength="16" />
+										</label>
+										<label class="wide">
+											Özellikler (her satıra bir tane)
+											<textarea name="features" rows="3" maxlength="800">{v.features ?? ""}</textarea>
+										</label>
+										<label class="wide">
+											Fotoğraf {v.photo ? "(yenisini seçerseniz değişir)" : ""}
+											<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-resize />
+										</label>
+										{v.photo && (
+											<label class="fm-check">
+												<input type="checkbox" name="remove_photo" /> Fotoğrafı kaldır
+											</label>
+										)}
+										<div class="fm-actions wide">
+											<button class="fm-btn" type="submit" name="fleet_intent" value="save">
+												Kaydet
+											</button>
+											<button class="fm-btn ghost" type="submit" name="fleet_intent" value="toggle" formnovalidate>
+												{v.status === "active" ? "Pasife al" : "Aktif yap"}
+											</button>
+										</div>
+									</form>
+								</details>
+							)}
+						</div>
+					</article>
+				);
+			})
+		}
+	</div>
+
+	{
+		canWrite && activeClasses.length > 0 && (
+			<details class="fm-new" open={vehicles.length === 0}>
+				<summary>+ Yeni araç ekle</summary>
+				<form method="post" enctype="multipart/form-data" class="fm-form">
+					<input type="hidden" name="fleet_intent" value="save" />
+					<label>
+						Araç tipi
+						<select name="class_key" required>
+							{activeClasses.map((c) => (
+								<option value={c.key}>
+									{c.name} ({c.pax_max} kişi)
+								</option>
+							))}
+						</select>
+					</label>
+					<label>
+						Marka ve model
+						<input name="model" maxlength="80" required placeholder="Mercedes-Benz Vito" />
+					</label>
+					<label>
+						Model yılı
+						<input name="year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" placeholder={String(thisYear)} />
+					</label>
+					<label>
+						Renk
+						<input name="color" maxlength="40" placeholder="Siyah" />
+					</label>
+					<label>
+						Plaka (müşteriye gösterilmez)
+						<input name="plate" maxlength="16" placeholder="34 ABC 123" />
+					</label>
+					<label class="wide">
+						Özellikler (her satıra bir tane)
+						<textarea name="features" rows="3" maxlength="800" placeholder={"Deri koltuk\nWi-Fi\nSu ikramı"} />
+					</label>
+					<label class="wide">
+						Fotoğraf
+						<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-resize />
+					</label>
+					<div class="fm-actions wide">
+						<button class="fm-btn" type="submit">
+							Aracı ekle
+						</button>
+					</div>
+				</form>
+			</details>
+		)
+	}
+</section>
+<script src="/photo-resize.js" defer is:inline></script>
+
+<style>
+	.fm {
+		display: grid;
+		gap: 14px;
+		margin: 0 0 24px;
+	}
+	.fm-head h2 {
+		margin: 0;
+		font-size: 1.125rem;
+	}
+	.fm-head p,
+	.fm-empty {
+		margin: 4px 0 0;
+		color: #5b6470;
+		font-size: 0.9rem;
+	}
+	.fm-list {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+		gap: 12px;
+	}
+	.fm-card {
+		display: grid;
+		grid-template-rows: auto 1fr;
+		background: #fff;
+		border: 1px solid #e4e7ec;
+		border-radius: 14px;
+		overflow: hidden;
+	}
+	.fm-card.is-off {
+		opacity: 0.65;
+	}
+	.fm-photo {
+		aspect-ratio: 16 / 9;
+		background: #f2f4f7;
+		display: grid;
+		place-items: center;
+		color: #98a2b3;
+		font-size: 0.85rem;
+	}
+	.fm-photo img {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	.fm-body {
+		display: grid;
+		align-content: start;
+		gap: 6px;
+		padding: 12px 14px 14px;
+	}
+	.fm-title {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+	}
+	.fm-meta {
+		color: #5b6470;
+		font-size: 0.875rem;
+	}
+	.fm-plate {
+		font-family: ui-monospace, monospace;
+		font-weight: 700;
+		color: #101828;
+	}
+	.fm-badge {
+		flex-shrink: 0;
+		border-radius: 999px;
+		padding: 2px 8px;
+		font-size: 0.75rem;
+		font-weight: 600;
+	}
+	.fm-badge.ok {
+		background: #ecfdf3;
+		color: #067647;
+	}
+	.fm-badge.off {
+		background: #f2f4f7;
+		color: #475467;
+	}
+	.fm-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 4px;
+		margin: 2px 0 0;
+		padding: 0;
+		list-style: none;
+	}
+	.fm-chips li {
+		background: #f2f4f7;
+		border-radius: 999px;
+		padding: 2px 8px;
+		font-size: 0.75rem;
+		color: #344054;
+	}
+	.fm-edit summary,
+	.fm-new summary {
+		cursor: pointer;
+		font-weight: 600;
+		color: #144c7f;
+	}
+	.fm-new {
+		background: #fff;
+		border: 1px dashed #d0d5dd;
+		border-radius: 14px;
+		padding: 14px;
+	}
+	.fm-form {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+		gap: 10px 12px;
+		margin-top: 12px;
+	}
+	.fm-form label {
+		display: grid;
+		gap: 4px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		color: #344054;
+	}
+	.fm-form .wide {
+		grid-column: 1 / -1;
+	}
+	.fm-form :is(input:not([type="checkbox"]), select, textarea) {
+		width: 100%;
+		box-sizing: border-box;
+		min-height: 42px;
+		padding: 8px 10px;
+		border: 1px solid #d0d5dd;
+		border-radius: 10px;
+		background: #fff;
+		font: inherit;
+		font-weight: 400;
+		color: #101828;
+	}
+	.fm-form input[type="file"] {
+		padding: 8px;
+	}
+	.fm-check {
+		display: flex !important;
+		align-items: center;
+		gap: 6px;
+		font-weight: 400 !important;
+	}
+	.fm-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.fm-btn {
+		min-height: 42px;
+		padding: 0 18px;
+		border: 0;
+		border-radius: 10px;
+		background: #144c7f;
+		color: #fff;
+		font: inherit;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.fm-btn.ghost {
+		background: #fff;
+		color: #344054;
+		border: 1px solid #d0d5dd;
+	}
+</style>
