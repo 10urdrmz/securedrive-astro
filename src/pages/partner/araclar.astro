@@ -1,0 +1,34 @@
+---
+/**
+ * The partner's own cars. When the partner (or one of its drivers) sends an offer it
+ * names one of them, and the customer sees that car's photo and details.
+ */
+import OpsLayout from "../../layouts/OpsLayout.astro";
+import FleetManager from "../../components/FleetManager.astro";
+import { handleFleetForm, ownerVehicles, vehicleClasses } from "../../server/fleet";
+import { audit, readForm } from "../../server/ops";
+import { requirePartner } from "../../server/partners";
+
+const ctx = await requirePartner(Astro);
+if (ctx instanceof Response) return ctx;
+const { db, user, org } = ctx;
+const owner = { kind: "partner" as const, id: org.id };
+
+const form = await readForm(Astro);
+const result = form ? await handleFleetForm(db, owner, form) : {};
+if (result.notice) await audit(db, user, "partner.vehicle.save", "fleet_vehicle", null, { org: org.id });
+
+const classes = await vehicleClasses(db);
+const vehicles = await ownerVehicles(db, owner);
+---
+
+<OpsLayout title="Araçlar" user={user} panel="partner">
+	{result.notice && <p class="notice">{result.notice}</p>}
+	{result.error && <p class="notice error">{result.error}</p>}
+	<FleetManager
+		classes={classes}
+		vehicles={vehicles}
+		title="Filonuzdaki araçlar"
+		hint="Teklif verirken aracı seçersiniz; müşteri teklifinizde o aracın fotoğrafını, modelini, yılını ve özelliklerini görür. Plaka müşteriye gösterilmez."
+	/>
+</OpsLayout>

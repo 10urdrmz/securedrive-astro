@@ -26,6 +26,7 @@ import {
 import { NATIONALITIES } from "./nationalities";
 import { isoToIstanbul, istanbulToIso, refundPct } from "../server/pricing";
 import { getCompany, monthSpend } from "../server/companies";
+import { featureList, photoUrl, vehicleClasses } from "../server/fleet";
 import { createRequest, offersFor, pickOffer, type OfferCard } from "../server/offers";
 import { getSettings } from "../server/settings";
 import { getLocalized, slugOf, texts } from "./content";
@@ -141,7 +142,7 @@ export interface VehicleCatalogEntry {
 }
 
 /** The public fleet catalog (the "vehicles" CMS collection), keyed by class slug. sd_vehicle_classes.key matches it. */
-async function loadVehicleCatalog(Astro: AstroGlobal, locale: Locale): Promise<Record<string, VehicleCatalogEntry>> {
+async function loadVehicleCatalog(Astro: AstroGlobal, locale: Locale, db?: Db): Promise<Record<string, VehicleCatalogEntry>> {
 	const entries = await getLocalized(Astro, "vehicles", locale);
 	const map: Record<string, VehicleCatalogEntry> = {};
 	for (const entry of entries) {
@@ -158,6 +159,18 @@ async function loadVehicleCatalog(Astro: AstroGlobal, locale: Locale): Promise<R
 			modelYear: typeof d.model_year === "string" ? d.model_year : null,
 			features: texts(d.features),
 		};
+	}
+	// The photo and features ops keep on the class (Ops → Araçlar) win over the CMS copy.
+	if (db) {
+		for (const c of await vehicleClasses(db)) {
+			const entry = (map[c.key] ??= { name: c.name, classLabel: null, image: null, fallbackImage: null, seats: c.pax_max, luggage: c.bags_max, engine: null, transmission: null, modelYear: null, features: [] });
+			const photo = photoUrl(c.photo);
+			if (photo) {
+				entry.image = null;
+				entry.fallbackImage = photo;
+			}
+			if (c.features) entry.features = featureList(c.features);
+		}
 	}
 	return map;
 }
@@ -215,7 +228,7 @@ function readTrip(params: URLSearchParams): Partial<Trip> {
 
 async function loadVehicleChoices(Astro: AstroGlobal, db: Db, locale: Locale): Promise<VehicleChoice[]> {
 	const classes = await db.selectFrom("sd_vehicle_classes").select(["key", "name", "pax_max", "bags_max"]).where("active", "=", 1).orderBy("pax_max").orderBy("sort").execute();
-	const catalog = await loadVehicleCatalog(Astro, locale);
+	const catalog = await loadVehicleCatalog(Astro, locale, db);
 	return classes.map((c) => ({ ...c, name: catalog[c.key]?.name || c.name, image: catalog[c.key]?.image ?? null, fallbackImage: catalog[c.key]?.fallbackImage ?? null }));
 }
 
@@ -366,7 +379,7 @@ async function bookingDetail(
 		canReview: false,
 		receipt: Astro.url.searchParams.get("makbuz") === "1" && !["cancelled", "bidding"].includes(booking.status),
 		offers: booking.status === "bidding" ? await offersFor(db, booking) : [],
-		vehicleCatalog: booking.status === "bidding" ? await loadVehicleCatalog(Astro, locale) : {},
+		vehicleCatalog: booking.status === "bidding" ? await loadVehicleCatalog(Astro, locale, db) : {},
 		requestedExtras:
 			booking.status === "bidding" ? await db.selectFrom("sd_booking_extras").select(["name", "qty", "price_minor"]).where("booking_id", "=", booking.id).execute() : [],
 	};

@@ -1,21 +1,27 @@
 ---
 /**
- * The job pool for independent drivers: customer requests from the site to send a
- * price for (offers.ts), then fixed-payout jobs to take and auctions to bid on, for
- * the class they drive. A won job lands in "İşlerim", already accepted.
+ * The driver's job pool: customer requests from the site to send a price for with one
+ * of their cars (offers.ts, fleet.ts), then, for independent drivers, fixed-payout jobs
+ * to take and auctions to bid on. A won job lands in "İşlerim", already accepted.
  */
 import DriverLayout from "../../layouts/DriverLayout.astro";
 import { getDb } from "../../server/db";
 import { sessionDriver, when } from "../../server/driver-app";
+import { bidOptions, readBidOption, type FleetOwner } from "../../server/fleet";
 import { formatMoney, parseMoney, readForm, text } from "../../server/ops";
 import { getOpenPoolByCode, openPoolFor, placeBid, takeFixed, withdrawBid } from "../../server/pool";
-import { getOpenRequest, openRequestsFor, placeOffer, withdrawOffer } from "../../server/offers";
+import { getOpenRequest, openRequestsFor, placeOffer, withdrawOffer, type OfferBidder } from "../../server/offers";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
 if (!driver) return Astro.redirect("/surucu/giris");
-if (driver.kind !== "independent" || driver.org_id) return Astro.redirect("/surucu");
-const bidder = { kind: "driver" as const, id: driver.id };
+// Independent and own-fleet drivers bid for themselves with their own cars; a partner's
+// drivers bid in their firm's name with the firm's cars. The fixed-payout and auction
+// pool stays with independent drivers.
+const independent = driver.kind === "independent" && !driver.org_id;
+const bidder: OfferBidder = driver.org_id ? { kind: "partner", id: driver.org_id } : { kind: "driver", id: driver.id };
+const fleetOwner: FleetOwner = driver.org_id ? { kind: "partner", id: driver.org_id } : { kind: "driver", id: driver.id };
+const poolBidder = { kind: "driver" as const, id: driver.id };
 
 let notice = "";
 let error = "";
@@ -30,25 +36,26 @@ if (form) {
 			if (intent === "offer") {
 				const amount = parseMoney(text(form, "amount", 20));
 				if (!amount) throw new Error("Kazancınızı yazın. Örnek: 1.650");
-				await placeOffer(db, request, bidder, { classKey: driver.class_key ?? "", amountMinor: amount, vehicle: text(form, "vehicle", 80) || null, note: null });
-				notice = `${formatMoney(amount)} ₺ teklifiniz müşteriye iletildi. Müşteri seçerse iş İşlerim'e düşer.`;
+				const choice = await readBidOption(db, fleetOwner, text(form, "option", 60));
+				await placeOffer(db, request, bidder, { classKey: choice.classKey, vehicleId: choice.vehicleId, amountMinor: amount, vehicle: choice.vehicle, note: null });
+				notice = `${formatMoney(amount)} ₺ teklifiniz müşteriye iletildi. Müşteri seçerse iş ${driver.org_id ? "firmanıza" : "İşlerim'e"} düşer.`;
 			} else {
 				await withdrawOffer(db, request, bidder);
 				notice = "Teklifiniz geri çekildi.";
 			}
-		} else {
+		} else if (independent) {
 		const job = await getOpenPoolByCode(db, code);
 		if (!job) throw new Error("Bu iş artık havuzda değil.");
 		if (intent === "take") {
-			await takeFixed(db, job, bidder, { kind: "driver", userId: null });
+			await takeFixed(db, job, poolBidder, { kind: "driver", userId: null });
 			return Astro.redirect(`/surucu/is/${code}`, 303);
 		} else if (intent === "bid") {
 			const amount = parseMoney(text(form, "amount", 20));
 			if (!amount) throw new Error("Teklif tutarını yazın. Örnek: 1.650");
-			await placeBid(db, job, bidder, amount, null);
+			await placeBid(db, job, poolBidder, amount, null);
 			notice = `${formatMoney(amount)} ₺ teklifiniz kaydedildi. Süre bitince en düşük teklif kazanır.`;
 		} else if (intent === "withdraw") {
-			await withdrawBid(db, job, bidder);
+			await withdrawBid(db, job, poolBidder);
 			notice = "Teklifiniz geri çekildi.";
 		}
 		}
@@ -57,15 +64,12 @@ if (form) {
 	}
 }
 
-const jobs = await openPoolFor(db, bidder, driver.class_key);
-const myClass = driver.class_key
-	? await db.selectFrom("sd_vehicle_classes").select(["name", "pax_max", "bags_max"]).where("key", "=", driver.class_key).executeTakeFirst()
-	: undefined;
-const requests = myClass
-	? (await openRequestsFor(db, bidder, { paxMax: myClass.pax_max, bagsMax: myClass.bags_max })).filter(
-			(r) => r.allowed_classes.length === 0 || r.allowed_classes.includes(driver.class_key ?? ""),
-		)
-	: [];
+const jobs = independent ? await openPoolFor(db, poolBidder, driver.class_key) : [];
+const options = await bidOptions(db, fleetOwner, driver.org_id ? null : driver.class_key);
+const hasCars = options.some((o) => o.value.startsWith("v:"));
+const fitting = (r: { pax: number; bags: number; allowed_classes: string[] }) =>
+	options.filter((o) => o.pax_max >= r.pax && o.bags_max >= r.bags && (r.allowed_classes.length === 0 || r.allowed_classes.includes(o.class_key)));
+const requests = (await openRequestsFor(db, bidder)).filter((r) => fitting(r).length > 0);
 const left = (iso: string) => {
 	const minutes = Math.max(0, Math.round((Date.parse(iso) - Date.now()) / 60_000));
 	return minutes >= 120 ? `${Math.floor(minutes / 60)} saat` : `${minutes} dk`;
@@ -74,10 +78,18 @@ const left = (iso: string) => {
 
 <DriverLayout title="İş havuzu" driver={driver} back refresh={form ? undefined : 60}>
 	<h1>İş havuzu</h1>
-	<p class="drv-muted">
-		<strong>Sabit</strong> işleri ilk alan alır. <strong>İhalede</strong> tavanın altında teklif verin; süre bitince en düşük teklif kazanır. Kazandığınız
-		iş İşlerim'e düşer.
-	</p>
+	{
+		!driver.org_id && (
+			<a class="drv-card cars-link" href="/surucu/araclarim">
+				<span>
+					<strong>Araçlarım</strong>
+					<span class="drv-muted">{hasCars ? "Teklifte müşteri seçtiğiniz aracı görür." : "Araç ekleyin; müşteri teklifinizde aracınızın fotoğrafını görsün."}</span>
+				</span>
+				<span aria-hidden="true">›</span>
+			</a>
+		)
+	}
+	{driver.org_id && <p class="drv-muted">Teklifleriniz firmanız adına ve firmanızın araçlarıyla verilir.</p>}
 	{notice && <p class="drv-notice">{notice}</p>}
 	{error && <p class="drv-notice error" role="alert">{error}</p>}
 	<h2 class="sec">Müşteri talepleri</h2>
@@ -88,7 +100,7 @@ const left = (iso: string) => {
 	{
 		requests.length === 0 && (
 			<div class="drv-card" style="text-align:center;padding:20px 16px">
-				<span class="drv-muted">Aracınıza uygun açık talep yok.</span>
+				<span class="drv-muted">Araçlarınıza uygun açık talep yok.</span>
 			</div>
 		)
 	}
@@ -118,11 +130,17 @@ const left = (iso: string) => {
 							<input type="text" name="amount" inputmode="decimal" required placeholder="1.650" />
 						</label>
 						<label class="drv-field">
-							Aracınız (model, renk)
-							<input type="text" name="vehicle" maxlength="80" value={r.my_vehicle ?? ""} />
+							{hasCars ? "Araç" : "Araç tipi"}
+							<select name="option" required>
+								{fitting(r).map((o) => (
+									<option value={o.value} selected={r.my_vehicle ? o.label.startsWith(r.my_vehicle) : o.class_key === r.my_class}>
+										{o.label}
+									</option>
+								))}
+							</select>
 						</label>
 						<button class="drv-btn" type="submit" name="intent" value="offer">
-							{active ? "Teklifi güncelle" : `Teklif ver · ${myClass!.name}`}
+							{active ? "Teklifi güncelle" : "Teklif ver"}
 						</button>
 						{active && (
 							<button class="drv-btn ghost" type="submit" name="intent" value="offer_withdraw" formnovalidate style="margin-top:8px">
@@ -134,9 +152,9 @@ const left = (iso: string) => {
 			);
 		})
 	}
-	<h2 class="sec">Operasyon havuzu</h2>
+	{independent && <h2 class="sec">Operasyon havuzu</h2>}
 	{
-		jobs.length === 0 && (
+		independent && jobs.length === 0 && (
 			<div class="drv-card" style="text-align:center;padding:32px 16px">
 				<strong>Şu an havuzda iş yok.</strong>
 				<p class="drv-muted" style="margin:6px 0 0">Sayfa dakikada bir yenilenir.</p>
@@ -206,6 +224,22 @@ const left = (iso: string) => {
 	.pool {
 		display: grid;
 		gap: 8px;
+	}
+	.cars-link {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		color: inherit;
+		text-decoration: none;
+		margin-top: 12px;
+	}
+	.cars-link > span:first-child {
+		display: grid;
+		gap: 2px;
+	}
+	.cars-link .drv-muted {
+		font-size: 14px;
 	}
 	.top {
 		display: flex;

@@ -578,4 +578,32 @@ export const MIGRATIONS: Migration[] = [
 			`ALTER TABLE sd_bookings ADD COLUMN class_pref TEXT`,
 		],
 	},
+	{
+		name: "0020_fleet_vehicles",
+		statements: [
+			// Vehicle class details the ops team keeps: shown when an offer names no own car.
+			`ALTER TABLE sd_vehicle_classes ADD COLUMN description TEXT`,
+			`ALTER TABLE sd_vehicle_classes ADD COLUMN features TEXT`,
+			`ALTER TABLE sd_vehicle_classes ADD COLUMN photo TEXT`,
+			// The real cars of each carrier: the own fleet (ops, owner_id 'own'), partner
+			// fleets and drivers. An offer can name one, and the customer sees that car.
+			`CREATE TABLE IF NOT EXISTS sd_fleet_vehicles (
+				id TEXT PRIMARY KEY,
+				owner_kind TEXT NOT NULL CHECK (owner_kind IN ('ops','partner','driver')),
+				owner_id TEXT NOT NULL,
+				class_key TEXT NOT NULL REFERENCES sd_vehicle_classes(key),
+				model TEXT NOT NULL,
+				year INTEGER,
+				color TEXT,
+				plate TEXT,
+				features TEXT,
+				photo TEXT,
+				status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+				created_at TEXT NOT NULL DEFAULT (${NOW}),
+				updated_at TEXT NOT NULL DEFAULT (${NOW})
+			)`,
+			`CREATE INDEX IF NOT EXISTS sd_fleet_vehicles_owner ON sd_fleet_vehicles(owner_kind, owner_id)`,
+			`ALTER TABLE sd_offers ADD COLUMN vehicle_id TEXT`,
+		],
+	},
 ];

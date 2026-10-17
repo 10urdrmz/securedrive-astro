@@ -5,6 +5,7 @@ import { getDb } from "../../server/db";
 import { driverJobs, jobBadge, sessionDriver, when, type DriverJob } from "../../server/driver-app";
 import { unreadCounts } from "../../server/messages";
 import { openPoolFor } from "../../server/pool";
+import { openRequestsFor } from "../../server/offers";
 
 const db = await getDb(Astro.locals);
 const driver = await sessionDriver(db, Astro.cookies);
@@ -15,7 +16,9 @@ const active = open.filter((j) => ["driver_en_route", "driver_arrived", "on_boar
 const upcoming = open.filter((j) => !active.includes(j));
 const waiting = upcoming.filter((j) => !j.response).length;
 const independent = driver.kind === "independent" && !driver.org_id;
-const poolCount = independent ? (await openPoolFor(db, { kind: "driver", id: driver.id }, driver.class_key)).length : 0;
+const poolCount =
+	(independent ? (await openPoolFor(db, { kind: "driver", id: driver.id }, driver.class_key)).length : 0) +
+	(await openRequestsFor(db, driver.org_id ? { kind: "partner", id: driver.org_id } : { kind: "driver", id: driver.id })).filter((r) => !r.my_status).length;
 const unread = await unreadCounts(db, open.map((j) => j.booking.id), "driver");
 const sections: { title: string; jobs: DriverJob[] }[] = [
 	{ title: "Şu an", jobs: active },
@@ -26,11 +29,15 @@ const sections: { title: string; jobs: DriverJob[] }[] = [
 
 <DriverLayout title="İşlerim" driver={driver} refresh={60}>
 	<h1>Merhaba, {driver.name.split(" ")[0]}</h1>
+	<a class="drv-card earn pool-link" href="/surucu/havuz">
+		<strong>İş havuzu</strong>
+		<span class:list={["drv-pill", poolCount > 0 ? "warn" : "off"]}>{poolCount > 0 ? `${poolCount} açık iş` : "Talepleri gör"} ›</span>
+	</a>
 	{
-		independent && (
-			<a class="drv-card earn pool-link" href="/surucu/havuz">
-				<strong>İş havuzu</strong>
-				<span class:list={["drv-pill", poolCount > 0 ? "warn" : "off"]}>{poolCount > 0 ? `${poolCount} açık iş` : "Şu an boş"} ›</span>
+		!driver.org_id && (
+			<a class="drv-card earn pool-link" href="/surucu/araclarim">
+				<strong>Araçlarım</strong>
+				<span class="drv-pill off">Ekle / düzenle ›</span>
 			</a>
 		)
 	}

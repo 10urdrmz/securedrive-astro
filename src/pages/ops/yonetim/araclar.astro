@@ -1,6 +1,14 @@
 ---
+/**
+ * Vehicles: the classes customers pick from (with the default photo, description and
+ * features shown when an offer names no car), the own fleet's cars, and every
+ * partner's and driver's cars for review.
+ */
 import OpsLayout from "../../../layouts/OpsLayout.astro";
+import FleetManager from "../../../components/FleetManager.astro";
 import { can } from "../../../server/auth/rbac";
+import { OWN_FLEET_OWNER, allFleetVehicles, featureList, handleFleetForm, ownerVehicles, photoUrl, vehicleClasses, vehicleLabel } from "../../../server/fleet";
+import { deletePhoto, savePhoto } from "../../../server/photos";
 import { audit, readForm, requireOps, text } from "../../../server/ops";
 
 const ctx = await requireOps(Astro, "catalog.read");
@@ -16,7 +24,21 @@ const int = (value: string, min: number, max: number) => {
 let notice = "";
 let error = "";
 const form = canWrite ? await readForm(Astro) : null;
-if (form) {
+if (form && text(form, "fleet_intent", 20)) {
+	const result = await handleFleetForm(db, OWN_FLEET_OWNER, form);
+	notice = result.notice ?? "";
+	error = result.error ?? "";
+	if (result.notice) await audit(db, user, "fleet_vehicle.save", "fleet_vehicle", text(form, "vehicle_id", 40) || null, { owner: "own" });
+} else if (form && text(form, "intent", 20) === "carrier_toggle") {
+	const id = text(form, "id", 40);
+	const car = await db.selectFrom("sd_fleet_vehicles").select(["id", "model", "status"]).where("id", "=", id).executeTakeFirst();
+	if (car) {
+		const status = car.status === "active" ? "inactive" : "active";
+		await db.updateTable("sd_fleet_vehicles").set({ status, updated_at: new Date().toISOString() }).where("id", "=", id).execute();
+		await audit(db, user, "fleet_vehicle.status", "fleet_vehicle", id, { status });
+		notice = `${car.model} ${status === "active" ? "aktif" : "pasif"}.`;
+	}
+} else if (form) {
 	const key = text(form, "key", 60)
 		.toLowerCase()
 		.replace(/[^a-z0-9-]/g, "");
@@ -25,65 +47,119 @@ if (form) {
 	const bags = int(text(form, "bags_max", 3), 0, 60);
 	const sort = int(text(form, "sort", 3), 0, 999) ?? 0;
 	const active = form.get("active") === "on" ? 1 : 0;
+	const raw = form.get("features");
 	if (!key || !name || pax === null || bags === null) {
 		error = "Anahtar, ad, kişi ve bagaj kapasitesi gerekli.";
 	} else {
-		const values = { name, pax_max: pax, bags_max: bags, sort, active };
-		await db
-			.insertInto("sd_vehicle_classes")
-			.values({ key, ...values })
-			.onConflict((oc) => oc.column("key").doUpdateSet(values))
-			.execute();
-		await audit(db, user, "vehicle_class.save", "vehicle_class", key, values);
-		notice = `${name} kaydedildi.`;
+		try {
+			const existing = await db.selectFrom("sd_vehicle_classes").select("photo").where("key", "=", key).executeTakeFirst();
+			const uploaded = await savePhoto(form.get("photo"));
+			const photo = uploaded ?? (form.get("remove_photo") === "on" ? null : (existing?.photo ?? null));
+			const values = {
+				name,
+				pax_max: pax,
+				bags_max: bags,
+				sort,
+				active,
+				description: text(form, "description", 600) || null,
+				features: featureList(typeof raw === "string" ? raw : "").join("\n") || null,
+				photo,
+			};
+			await db
+				.insertInto("sd_vehicle_classes")
+				.values({ key, ...values })
+				.onConflict((oc) => oc.column("key").doUpdateSet(values))
+				.execute();
+			if (existing?.photo && existing.photo !== photo) await deletePhoto(existing.photo);
+			await audit(db, user, "vehicle_class.save", "vehicle_class", key, { ...values, photo: !!photo });
+			notice = `${name} kaydedildi.`;
+		} catch (e) {
+			error = e instanceof Error ? e.message : "Kaydedilemedi.";
+		}
 	}
 }
 
-const classes = await db.selectFrom("sd_vehicle_classes").selectAll().orderBy("sort").execute();
+const classes = await vehicleClasses(db);
+const ownCars = await ownerVehicles(db, OWN_FLEET_OWNER);
+const carrierCars = (await allFleetVehicles(db)).filter((v) => v.owner_kind !== "ops");
+const ownerName = (v: (typeof carrierCars)[number]) => (v.owner_kind === "partner" ? `${v.org_name ?? "Partner"} (partner)` : `${v.driver_name ?? "Sürücü"} (sürücü)`);
 ---
 
-<OpsLayout title="Araç sınıfları" user={user}>
+<OpsLayout title="Araçlar" user={user}>
 	{notice && <p class="notice">{notice}</p>}
 	{error && <p class="notice error">{error}</p>}
+
+	<h2>Araç tipleri</h2>
 	<p class="muted">
-		Anahtar, içerik panelindeki araç kaydının adresiyle aynı olmalı (ör. mercedes-vito-vip); böylece filo sayfası fiyatı
-		tarifeden okuyabilir. Pasif sınıf tarifede ve rezervasyonda görünmez.
+		Müşteri rezervasyonda bu tiplerden birini seçebilir. Teklif veren kendi aracını seçmezse müşteri burada yüklenen fotoğrafı, açıklamayı ve
+		özellikleri görür. Fotoğraf yoksa içerik panelindeki filo fotoğrafı kullanılır. Anahtar, içerik panelindeki araç kaydının adresiyle aynı olmalı (ör.
+		mercedes-vito-vip). Pasif tip rezervasyonda ve teklifte görünmez.
 	</p>
-	{
-		classes.map((c) => (
-			<form class="card form-grid" method="post">
-				<label>
-					Anahtar
-					<input type="text" name="key" value={c.key} readonly />
-				</label>
-				<label>
-					Ad
-					<input type="text" name="name" value={c.name} required disabled={!canWrite} />
-				</label>
-				<label>
-					En çok kişi
-					<input type="number" name="pax_max" value={c.pax_max} min="1" max="60" disabled={!canWrite} />
-				</label>
-				<label>
-					En çok bagaj
-					<input type="number" name="bags_max" value={c.bags_max} min="0" max="60" disabled={!canWrite} />
-				</label>
-				<label>
-					Sıra
-					<input type="number" name="sort" value={c.sort} min="0" max="999" disabled={!canWrite} />
-				</label>
-				<label class="inline">
-					<input type="checkbox" name="active" checked={!!c.active} disabled={!canWrite} /> Aktif
-				</label>
-				{canWrite && <div><button class="btn" type="submit">Kaydet</button></div>}
-			</form>
-		))
-	}
+	<div class="vc-list">
+		{
+			classes.map((c) => (
+				<form class="card vc" method="post" enctype="multipart/form-data">
+					<div class="vc-photo">{photoUrl(c.photo) ? <img src={photoUrl(c.photo)!} alt="" loading="lazy" /> : <span>Sitedeki filo fotoğrafı kullanılıyor</span>}</div>
+					<div class="form-grid vc-fields">
+						<label>
+							Anahtar
+							<input type="text" name="key" value={c.key} readonly />
+						</label>
+						<label>
+							Ad
+							<input type="text" name="name" value={c.name} required disabled={!canWrite} />
+						</label>
+						<label>
+							En çok kişi
+							<input type="number" name="pax_max" value={c.pax_max} min="1" max="60" disabled={!canWrite} />
+						</label>
+						<label>
+							En çok bagaj
+							<input type="number" name="bags_max" value={c.bags_max} min="0" max="60" disabled={!canWrite} />
+						</label>
+						<label>
+							Sıra
+							<input type="number" name="sort" value={c.sort} min="0" max="999" disabled={!canWrite} />
+						</label>
+						<label class="inline">
+							<input type="checkbox" name="active" checked={!!c.active} disabled={!canWrite} /> Aktif
+						</label>
+						<label class="span">
+							Açıklama
+							<textarea name="description" rows="2" maxlength="600" disabled={!canWrite}>{c.description ?? ""}</textarea>
+						</label>
+						<label class="span">
+							Özellikler (her satıra bir tane)
+							<textarea name="features" rows="3" maxlength="800" disabled={!canWrite}>{c.features ?? ""}</textarea>
+						</label>
+						{canWrite && (
+							<label class="span">
+								Fotoğraf {c.photo ? "(yenisini seçerseniz değişir)" : ""}
+								<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-resize />
+							</label>
+						)}
+						{canWrite && c.photo && (
+							<label class="inline">
+								<input type="checkbox" name="remove_photo" /> Fotoğrafı kaldır
+							</label>
+						)}
+						{canWrite && (
+							<div class="span">
+								<button class="btn" type="submit">
+									Kaydet
+								</button>
+							</div>
+						)}
+					</div>
+				</form>
+			))
+		}
+	</div>
 	{
 		canWrite && (
-			<>
-				<h2>Yeni sınıf</h2>
-				<form class="card form-grid" method="post">
+			<details class="card" style="margin-bottom:28px">
+				<summary style="cursor:pointer;font-weight:600">+ Yeni araç tipi</summary>
+				<form class="form-grid" method="post" enctype="multipart/form-data" style="margin-top:12px">
 					<label>
 						Anahtar
 						<input type="text" name="key" placeholder="mercedes-s-class" pattern="[a-z0-9-]+" required />
@@ -107,9 +183,127 @@ const classes = await db.selectFrom("sd_vehicle_classes").selectAll().orderBy("s
 					<label class="inline">
 						<input type="checkbox" name="active" checked /> Aktif
 					</label>
-					<div><button class="btn" type="submit">Ekle</button></div>
+					<label class="span">
+						Açıklama
+						<textarea name="description" rows="2" maxlength="600" />
+					</label>
+					<label class="span">
+						Özellikler (her satıra bir tane)
+						<textarea name="features" rows="3" maxlength="800" />
+					</label>
+					<label class="span">
+						Fotoğraf
+						<input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-resize />
+					</label>
+					<div class="span">
+						<button class="btn" type="submit">
+							Ekle
+						</button>
+					</div>
 				</form>
-			</>
+			</details>
+		)
+	}
+
+	<FleetManager
+		classes={classes}
+		vehicles={ownCars}
+		title="Kendi filomuzun araçları"
+		hint="Rezervasyon sayfasında kendi filomuzla teklif verirken bu araçlardan birini seçin; müşteri o aracın fotoğrafını ve özelliklerini görür."
+		canWrite={canWrite}
+	/>
+
+	<h2>Partner ve sürücü araçları</h2>
+	<p class="muted">Partnerler ve sürücüler araçlarını kendi panellerinden ekler. Uygun görmediğiniz aracı pasife alırsanız tekliflerde seçilemez.</p>
+	{
+		carrierCars.length === 0 ? (
+			<div class="card muted">Henüz partner ya da sürücü aracı eklenmedi.</div>
+		) : (
+			<table>
+				<thead>
+					<tr>
+						<th>Fotoğraf</th>
+						<th>Araç</th>
+						<th>Tip</th>
+						<th>Plaka</th>
+						<th>Sahibi</th>
+						<th>Durum</th>
+						<th />
+					</tr>
+				</thead>
+				<tbody>
+					{carrierCars.map((v) => (
+						<tr>
+							<td>{photoUrl(v.photo) ? <img class="thumb" src={photoUrl(v.photo)!} alt="" loading="lazy" /> : <span class="muted">—</span>}</td>
+							<td>
+								{vehicleLabel(v)}
+								{featureList(v.features).length > 0 && <div class="muted">{featureList(v.features).join(", ")}</div>}
+							</td>
+							<td>{v.class_name}</td>
+							<td>{v.plate ?? "—"}</td>
+							<td>{ownerName(v)}</td>
+							<td>
+								<span class:list={["badge", v.status === "active" ? "ok" : "off"]}>{v.status === "active" ? "Aktif" : "Pasif"}</span>
+							</td>
+							<td>
+								{canWrite && (
+									<form method="post">
+										<input type="hidden" name="intent" value="carrier_toggle" />
+										<input type="hidden" name="id" value={v.id} />
+										<button class="btn secondary" type="submit">
+											{v.status === "active" ? "Pasife al" : "Aktif yap"}
+										</button>
+									</form>
+								)}
+							</td>
+						</tr>
+					))}
+				</tbody>
+			</table>
 		)
 	}
 </OpsLayout>
+
+<style>
+	.vc-list {
+		display: grid;
+		gap: 14px;
+		margin-bottom: 16px;
+	}
+	.vc {
+		display: grid;
+		grid-template-columns: 220px minmax(0, 1fr);
+		gap: 16px;
+		align-items: start;
+	}
+	.vc-photo {
+		aspect-ratio: 16 / 10;
+		border-radius: 10px;
+		overflow: hidden;
+		background: #f2f4f7;
+		display: grid;
+		place-items: center;
+		color: #98a2b3;
+		font-size: 0.85rem;
+	}
+	.vc-photo img,
+	.thumb {
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+		display: block;
+	}
+	.thumb {
+		width: 88px;
+		height: 56px;
+		border-radius: 8px;
+	}
+	.span {
+		grid-column: 1 / -1;
+	}
+	@media (max-width: 720px) {
+		.vc {
+			grid-template-columns: 1fr;
+		}
+	}
+</style>

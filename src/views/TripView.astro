@@ -173,7 +173,11 @@ const chatRoomName = await chatRoom(booking);
 									const v = page.vehicleCatalog[offer.class_key];
 									return (
 										<li class="grid gap-3 border-0 border-t border-solid border-gray-100 py-4 first:border-t-0 first:pt-0 last:pb-0 grid-cols-[56px_minmax(0,1fr)] sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
-											{v && (v.image || v.fallbackImage) ? (
+											{offer.car?.photo ? (
+												<div class="h-[42px] w-[56px] overflow-hidden rounded-lg bg-gray-100 sm:h-[54px] sm:w-[72px]">
+													<img src={offer.car.photo} alt={offer.car.model} class="h-full w-full object-cover" loading="lazy" width="144" height="108" />
+												</div>
+											) : v && (v.image || v.fallbackImage) ? (
 												<div class="h-[42px] w-[56px] overflow-hidden rounded-lg bg-gray-100 sm:h-[54px] sm:w-[72px]">
 													<Photo image={v.image} fallback={v.fallbackImage} alt={v.name} class="h-full w-full object-cover" sizes="72px" width={144} height={108} />
 												</div>
@@ -189,7 +193,7 @@ const chatRoomName = await chatRoom(booking);
 												</div>
 												<span class="truncate text-sm text-gray-600">
 													{offer.display_name}
-													{offer.vehicle && <> · {offer.vehicle}</>}
+													{offer.car ? <> · {[[offer.car.model, offer.car.year].filter(Boolean).join(" "), offer.car.color].filter(Boolean).join(" · ")}</> : offer.vehicle && <> · {offer.vehicle}</>}
 												</span>
 												<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
 													<span class="inline-flex items-center gap-1"><Icon name="users" size={13} />{offer.pax_max}</span>
@@ -203,7 +207,7 @@ const chatRoomName = await chatRoom(booking);
 														<span>{t("offers.new")}</span>
 													)}
 													{offer.trips > 0 && <span>{t("offers.trips", { n: offer.trips })}</span>}
-													{v && (v.engine || v.transmission || v.modelYear || v.features.length > 0) && (
+													{!offer.car && v && (v.engine || v.transmission || v.modelYear || v.features.length > 0) && (
 														<details class="basis-full">
 															<summary class="cursor-pointer select-none font-semibold text-navy-700">{t("offers.seeVehicle")}</summary>
 															<dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
@@ -224,6 +228,13 @@ const chatRoomName = await chatRoom(booking);
 														</details>
 													)}
 												</span>
+												{offer.car && offer.car.features.length > 0 && (
+													<ul class="m-0 mt-1 flex list-none flex-wrap gap-1 p-0">
+														{offer.car.features.slice(0, 6).map((f) => (
+															<li class="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-700">{f}</li>
+														))}
+													</ul>
+												)}
 												{offer.note && <p class="m-0 mt-1 text-sm text-gray-600">{offer.note}</p>}
 											</div>
 											<form method="post" class="col-span-2 m-0 flex items-center justify-between gap-3 sm:col-span-1 sm:justify-end">
