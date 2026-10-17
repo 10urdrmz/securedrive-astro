@@ -11,9 +11,14 @@ const ctx = await requireOps(Astro);
 if (ctx instanceof Response) return ctx;
 const { db, user } = ctx;
 
-const count = async (table: string, where?: [string, string, unknown]) => {
+const count = async (table: string, where?: [string, string, unknown] | [string, string, unknown][]) => {
 	let query = db.selectFrom(table).select((eb) => eb.fn.countAll<number>().as("n"));
-	if (where) query = query.where(where[0], where[1] as "=", where[2]);
+	if (where) {
+		const conditions = Array.isArray(where[0]) ? (where as [string, string, unknown][]) : [where as [string, string, unknown]];
+		for (const [col, op, val] of conditions) {
+			query = query.where(col, op as "=", val);
+		}
+	}
 	return Number((await query.executeTakeFirst())?.n ?? 0);
 };
 
@@ -24,7 +29,7 @@ const [zones, classes, tariffs, team] = await Promise.all([
 	count("sd_memberships", ["org_id", "=", "internal"]),
 ]);
 // Every serviceable district needs a price from each airport, for each class, in both directions.
-const airports = await count("sd_zones", ["kind", "=", "airport"]);
+const airports = await count("sd_zones", [["kind", "=", "airport"], ["serviceable", "=", 1]]);
 const expected = airports * (zones - airports) * classes * 2;
 
 // Today's and the coming day's work, Istanbul time.
@@ -238,7 +243,8 @@ const kpis: Kpi[] = showBookings
 														<span class="inline-flex items-center gap-1">
 															<Icon name="plane" size={12} /> {b.flight_no}
 															{b.flight_status && (() => {
-																const v = flightView({ status: b.flight_status, scheduled_at: b.flight_scheduled, estimated_at: b.flight_estimated, actual_at: b.flight_actual, flight_no: b.flight_no } as Flight)!;
+																const v = flightView({ status: b.flight_status, scheduled_at: b.flight_scheduled, estimated_at: b.flight_estimated, actual_at: b.flight_actual, flight_no: b.flight_no } as Flight);
+																if (!v) return null;
 																const bad = v.delayMin >= 15 || v.status === "cancelled" || v.status === "diverted";
 																return (
 																	<span class:list={["font-semibold", bad ? "text-red-600" : v.status === "landed" ? "text-emerald-700" : "text-gray-600"]}>

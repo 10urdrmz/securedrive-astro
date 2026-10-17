@@ -26,7 +26,7 @@ const QUOTE_ERRORS: Record<string, string> = {
 	past: "Seçilen saat geçmişte.",
 };
 
-const now = isoToIstanbul(new Date(Date.now() + 3 * 3600_000).toISOString());
+const now = isoToIstanbul(new Date().toISOString());
 let v: Record<string, string> = { date: now.date, time: now.time, pax: "2", bags: "2", payment: "cash", class_key: classes[0]?.key ?? "" };
 let error = "";
 let preview = "";

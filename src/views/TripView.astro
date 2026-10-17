@@ -135,18 +135,35 @@ const chatRoomName = await chatRoom(booking);
 
 					{
 						isBidding && (
-							<section class:list={[card, "grid gap-4 p-5 sm:p-6"]} aria-labelledby="offers-title" data-offers>
+							<section
+								class:list={[card, "grid gap-4 p-5 sm:p-6 transition-all duration-300"]}
+								aria-labelledby="offers-title"
+								data-offers
+								data-code={booking.code}
+								data-token={booking.tracking_token}
+								data-count={page.offers.length}
+							>
 								<div class="grid gap-1">
 									<h2 id="offers-title" class="m-0 font-display text-xl font-bold">{t("offers.title")}</h2>
 									<p class="m-0 max-w-prose text-sm text-gray-600">{t("offers.lead")}</p>
 								</div>
 								{page.offers.length === 0 ? (
-									<div class="flex items-center gap-3 rounded-xl bg-gray-50 p-4 text-sm text-gray-700">
-										<span class="relative flex size-3 shrink-0">
-											<span class="absolute inline-flex size-full animate-ping rounded-full bg-amber-300 opacity-75 motion-reduce:animate-none" />
-											<span class="relative inline-flex size-3 rounded-full bg-amber-400" />
-										</span>
-										{t("offers.empty")}
+									<div class="rounded-2xl border border-solid border-amber-200 bg-gradient-to-br from-amber-50/80 via-white to-amber-50/30 p-6 text-center shadow-sm">
+										<div class="relative mx-auto mb-4 flex size-14 items-center justify-center">
+											<span class="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-40 motion-reduce:animate-none"></span>
+											<span class="relative inline-flex size-12 items-center justify-center rounded-full bg-amber-500 text-white shadow-md">
+												<Icon name="plane" size={24} />
+											</span>
+										</div>
+										<h3 class="m-0 font-display text-lg font-bold text-gray-900">Taşıyıcılardan Teklifler Toplanıyor</h3>
+										<p class="mx-auto mt-2 max-w-md text-sm text-gray-600">
+											Talebiniz bölgedeki onaylı VIP taşıyıcılara ve sürücülere iletildi. En uygun araç ve fiyat alternatifleri dakikalar içinde bu ekrana düşecek.
+										</p>
+										<div class="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs font-medium text-gray-500 border-t border-solid border-amber-100 pt-3">
+											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> Ücretsiz İptal</span>
+											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> Otoyol & Köprü Dahil</span>
+											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> 60 Dk Ücretsiz Bekleme</span>
+										</div>
 									</div>
 								) : (
 									<ul class="m-0 grid list-none gap-3 p-0">
@@ -598,14 +615,6 @@ const chatRoomName = await chatRoom(booking);
 		</div>
 	</section>
 	{live && page.driver && <script src="/live-map.js" defer is:inline />}
-	{
-		isBidding && (
-			<script is:inline>
-				// New offers arrive while the customer waits: reload every 30 s unless they are typing.
-				setInterval(() => {
-					if (document.visibilityState === "visible" && !document.querySelector("textarea:focus, input:focus")) location.replace(location.href);
-				}, 30000);
-			</script>
-		)
-	}
+	{isBidding && <script src="/bidding-live.js" defer is:inline />}
+	{!closed && !isBidding && <script src="/passenger-live.js" defer is:inline />}
 </Base>

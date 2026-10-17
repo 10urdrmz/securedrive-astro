@@ -39,3 +39,4 @@ Thumbs.db
 *.log
 npm-debug.log*
 !.env.example
+.temp_files/

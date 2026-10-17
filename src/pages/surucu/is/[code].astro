@@ -238,6 +238,7 @@ const flight = b.flight_no ? flightView(await getFlight(db, b.id)) : null;
 </DriverLayout>
 
 {tripStarted && <script src="/driver-location.js" defer is:inline />}
+<script src="/driver-live.js" defer is:inline />
 
 <style>
 	.track {
