@@ -15,7 +15,6 @@ import type { WizardPage } from "../lib/booking-page";
 import { formatTry } from "../lib/format";
 import { NATIONALITIES, nationalityName } from "../lib/nationalities";
 import { SITE, telHref, whatsappHref } from "../lib/site";
-import { istanbulToIso } from "../server/pricing";
 
 type Props = WizardPage;
 
@@ -35,11 +34,10 @@ const steps = [t("book.step1"), t("book.step2"), t("book.step3")];
 const airports = page.zones.filter((z) => z.kind === "airport");
 const districts = page.zones.filter((z) => z.kind !== "airport");
 const zoneName = (id?: string) => page.zones.find((z) => z.id === id)?.name ?? "";
-const pickupIso = trip.date && trip.time ? istanbulToIso(trip.date, trip.time) : null;
-const when = pickupIso
-	? `${new Intl.DateTimeFormat(intl, { dateStyle: "full", timeZone: "UTC" }).format(new Date(`${trip.date}T00:00:00Z`))} · ${trip.time}`
-	: "";
 const promises = ["book.why1", "book.why2", "book.why3"] as const;
+const whenShort = trip.date && trip.time
+	? `${new Intl.DateTimeFormat(intl, { day: "numeric", month: "short", weekday: "short", timeZone: "UTC" }).format(new Date(`${trip.date}T00:00:00Z`))} · ${trip.time}`
+	: "";
 const paxCount = Math.min(Math.max(trip.pax ?? 1, 1), 60);
 const travellers = Array.from({ length: paxCount }, (_, i) => i);
 ---
@@ -73,9 +71,10 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 			<div class="grid gap-6 min-w-0">
 				{page.error && <Notice tone="danger">{t(page.error)}</Notice>}
 
-				{/* Step 1: the trip. Always shown, so it can be changed in step 2. */}
-				<div class="grid gap-2">
-					<TripSearch
+				{/* Step 1: the trip. In step 2 it folds into a one-line summary that opens to edit. */}
+				{page.step === 1 ? (
+					<div class="grid gap-2">
+						<TripSearch
 						locale={locale}
 						action={bookPath(locale)}
 						tone="light"
@@ -84,76 +83,109 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 						submitLabel={page.step === 1 ? t("book.next") : t("book.update")}
 					/>
 					<small class="text-sm text-gray-600">{t("book.timeHint")}</small>
-				</div>
+					</div>
+				) : (
+					<details class="bk-trip" open={!!page.error && !page.values.name}>
+						<summary>
+							<span class="bk-trip-route">
+								<Icon name="route" size={18} />
+								<strong>{zoneName(trip.from)}</strong>
+								<Icon name="arrow" size={14} class="flip-rtl" />
+								<strong>{zoneName(trip.to)}</strong>
+							</span>
+							<span class="bk-trip-meta">
+								<span><Icon name="calendar" size={16} />{whenShort}</span>
+								<span><Icon name="users" size={16} />{t("book.capacity", { pax: trip.pax ?? 1, bags: trip.bags ?? 0 })}</span>
+							</span>
+							<span class="bk-trip-edit">{t("book.editTrip")}</span>
+						</summary>
+						<div class="bk-trip-body">
+							<TripSearch
+						locale={locale}
+						action={bookPath(locale)}
+						tone="light"
+						places={[...airports.map((z) => ({ id: z.id, name: z.name, airport: true })), ...districts.map((z) => ({ id: z.id, name: z.name, airport: false }))]}
+						values={trip}
+						submitLabel={t("book.update")}
+					/>
+					<small class="text-sm text-gray-600">{t("book.timeHint")}</small>
+						</div>
+					</details>
+				)}
 
 				{/* Step 2: travellers, trip details, extras, payment. Sending it asks carriers for prices. */}
 				{
 					page.step === 2 && (
-						<form id="bilgiler" class="bk-form" method="post" action={`${bookPath(locale)}?${tripQuery}#bilgiler`}>
-							<section class:list={[card, "bk-section"]}>
-								<header class="bk-head">
-									<span class="bk-num">1</span>
-									<div>
-										<h2>{t("book.travellers")}</h2>
-										<p>{t("book.travellersHint", { n: paxCount })}</p>
+						<form id="bilgiler" class:list={[card, "bk-form"]} method="post" action={`${bookPath(locale)}?${tripQuery}#bilgiler`}>
+							<section class="bk-section">
+								<h2>{t("book.travellers")}</h2>
+								<div class="bk-grid bk-grid--3">
+									<div class="field">
+										<label for="bk-p0-name">{t("form.name")}</label>
+										<input id="bk-p0-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={page.values.name} />
 									</div>
-								</header>
-								{travellers.map((i) => (
-									<fieldset class="bk-traveller">
-										<legend>
-											<span class="bk-avatar" aria-hidden="true"><Icon name="user" size={16} /></span>
-											{t("book.travellerN", { n: i + 1 })}
-											{i === 0 && <span class="bk-tag">{t("book.leadTraveller")}</span>}
-										</legend>
+									<div class="field">
+										<label for="bk-phone">{t("form.phone")}</label>
+										<input id="bk-phone" name="phone" type="tel" required maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={page.values.phone} />
+									</div>
+									<div class="field">
+										<label for="bk-email">{t("form.emailOptional")}</label>
+										<input id="bk-email" name="email" type="email" maxlength="120" autocomplete="email" dir="ltr" value={page.values.email} />
+									</div>
+								</div>
+								{paxCount > 1 && (
+									<div class="bk-others field">
+										<p class="bk-hint">{t("book.othersHint", { n: paxCount - 1 })}</p>
 										<div class="bk-grid">
-											<div class="field bk-span-2">
-												<label for={`bk-p${i}-name`}>{t("form.name")}</label>
-												{i === 0 ? (
-													<input id="bk-p0-name" name="name" required minlength="2" maxlength="80" autocomplete="name" value={page.values.name} />
-												) : (
-													<input id={`bk-p${i}-name`} name={`p${i}_name`} required minlength="2" maxlength="80" autocomplete="off" value={page.values[`p${i}_name`] ?? ""} />
-												)}
-											</div>
-											{i === 0 && (
-												<>
-													<div class="field">
-														<label for="bk-phone">{t("form.phone")}</label>
-														<input id="bk-phone" name="phone" type="tel" required maxlength="24" autocomplete="tel" dir="ltr" placeholder="+90 5xx xxx xx xx" value={page.values.phone} />
-													</div>
-													<div class="field">
-														<label for="bk-email">{t("form.emailOptional")}</label>
-														<input id="bk-email" name="email" type="email" maxlength="120" autocomplete="email" dir="ltr" value={page.values.email} />
-													</div>
-												</>
-											)}
-											<div class="field">
-												<label for={`bk-p${i}-nat`}>{t("form.nationality")}</label>
-												<select id={`bk-p${i}-nat`} name={`p${i}_nat`}>
+											{travellers.slice(1).map((i) => (
+												<label class="bk-name-row" for={`bk-p${i}-name`}>
+													<span class="bk-badge" aria-hidden="true">{i + 1}</span>
+													<input
+														id={`bk-p${i}-name`}
+														name={`p${i}_name`}
+														required
+														minlength="2"
+														maxlength="80"
+														autocomplete="off"
+														placeholder={t("book.travellerNamePh", { n: i + 1 })}
+														aria-label={t("book.travellerNamePh", { n: i + 1 })}
+														value={page.values[`p${i}_name`] ?? ""}
+													/>
+												</label>
+											))}
+										</div>
+									</div>
+								)}
+								<details class="bk-more" open={travellers.some((i) => page.values[`p${i}_doc`])}>
+									<summary><Icon name="plus" size={16} />{t("book.addIdDetails")}</summary>
+									<div class="bk-id-list field">
+										{travellers.map((i) => (
+											<div class="bk-id-row">
+												<span class="bk-id-who">{i === 0 ? page.values.name || t("book.travellerN", { n: 1 }) : t("book.travellerN", { n: i + 1 })}</span>
+												<select name={`p${i}_nat`} aria-label={`${t("book.travellerN", { n: i + 1 })} · ${t("form.nationality")}`}>
 													{NATIONALITIES.map((code) => (
 														<option value={code} selected={(page.values[`p${i}_nat`] || page.values.p0_nat || "TR") === code}>
 															{nationalityName(code, intl, t("form.nationalityOther"))}
 														</option>
 													))}
 												</select>
+												<input
+													name={`p${i}_doc`}
+													maxlength="20"
+													autocomplete="off"
+													dir="ltr"
+													placeholder={t("form.idDocShort")}
+													aria-label={`${t("book.travellerN", { n: i + 1 })} · ${t("form.idDocShort")}`}
+													value={page.values[`p${i}_doc`] ?? ""}
+												/>
 											</div>
-											<div class="field">
-												<label for={`bk-p${i}-doc`}>{t("form.idDoc")}</label>
-												<input id={`bk-p${i}-doc`} name={`p${i}_doc`} maxlength="20" autocomplete="off" dir="ltr" value={page.values[`p${i}_doc`] ?? ""} />
-											</div>
-										</div>
-										{i === 0 && <p class="bk-note">{t("book.leadHint")}</p>}
-									</fieldset>
-								))}
+										))}
+									</div>
+								</details>
 							</section>
 
-							<section class:list={[card, "bk-section"]}>
-								<header class="bk-head">
-									<span class="bk-num">2</span>
-									<div>
-										<h2>{t("book.tripDetails")}</h2>
-										<p>{zoneName(trip.from)} → {zoneName(trip.to)} · {when}</p>
-									</div>
-								</header>
+							<section class="bk-section">
+								<h2>{t("book.tripDetails")}</h2>
 								<div class="bk-grid">
 									<div class="field">
 										<label for="bk-flight">{t("form.flight")}</label>
@@ -167,24 +199,19 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 										<label for="bk-address">{page.addressOnPickup ? t("book.pickupAddress") : t("book.dropoffAddress")}</label>
 										<input id="bk-address" name="address" maxlength="200" autocomplete="street-address" value={page.values.address} />
 									</div>
-									<div class="field bk-span-2">
-										<label for="bk-notes">{t("form.notes")}</label>
-										<textarea id="bk-notes" name="notes" rows="3" maxlength="1000">{page.values.notes}</textarea>
-									</div>
 								</div>
+								<details class="bk-more" open={!!page.values.notes}>
+									<summary><Icon name="plus" size={16} />{t("book.addNote")}</summary>
+									<div class="field"><textarea id="bk-notes" name="notes" rows="3" maxlength="1000" aria-label={t("form.notes")}>{page.values.notes}</textarea></div>
+								</details>
 							</section>
 
 							{page.extras && page.extras.length > 0 && (
-								<section class:list={[card, "bk-section"]}>
-									<header class="bk-head">
-										<span class="bk-num">3</span>
-										<div>
-											<h2>{t("book.extras")}</h2>
-										</div>
-									</header>
+								<section class="bk-section">
+									<h2>{t("book.extras")}</h2>
 									<div class="bk-extras">
 										{page.extras.map((extra) => (
-											<label class="bk-extra" for={`bk-extra-${extra.key}`}>
+											<label class="bk-extra field" for={`bk-extra-${extra.key}`}>
 												<span class="bk-extra-text">
 													<strong>{extra.name}</strong>
 													<small>{extra.price_minor ? money(extra.price_minor) : t("book.free")}</small>
@@ -200,25 +227,20 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 								</section>
 							)}
 
-							<section class:list={[card, "bk-section"]}>
-								<header class="bk-head">
-									<span class="bk-num">{page.extras && page.extras.length > 0 ? 4 : 3}</span>
-									<div>
-										<h2>{t("book.payment")}</h2>
-									</div>
-								</header>
-								<div class="bk-pay">
+							<section class="bk-section">
+								<h2>{t("book.payment")}</h2>
+								<div class="bk-pay" role="radiogroup" aria-label={t("book.payment")}>
 									{(["cash", "card_in_vehicle"] as const).map((method) => (
 										<label class="bk-pay-option">
 											<input type="radio" name="payment" value={method} checked={(page.values.payment || "cash") === method} />
-											<span class="bk-pay-icon" aria-hidden="true"><Icon name={method === "cash" ? "wallet" : "card"} size={20} /></span>
-											<span class="bk-pay-text">
-												<strong>{t(`book.pay.${method}`)}</strong>
-												<small>{t(`book.payHint.${method}`)}</small>
-											</span>
+											<Icon name={method === "cash" ? "wallet" : "card"} size={18} />
+											<span>{t(`book.pay.${method}`)}</span>
 										</label>
 									))}
 								</div>
+							</section>
+
+							<section class="bk-section bk-send">
 								<div class="hp-field" aria-hidden="true">
 									<label>Website <input name="website" tabindex="-1" autocomplete="off" /></label>
 								</div>
@@ -229,16 +251,19 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 										<a href={localizePath(locale, "iptal-ve-iade")} target="_blank">{t("book.cancelLink")}</a> — {t("book.terms")}
 									</span>
 								</label>
-								{!page.member && (
-									<p class="text-sm text-gray-600 m-0">
-										<a class="underline" href={accountPath(locale, "giris")}>{t("account.loginButton")}</a> · {t("book.loginHint")}
-									</p>
-								)}
 								<button type="submit" class="btn btn--primary btn--block bk-submit">
 									{t("book.sendRequest")}
 									<Icon name="arrow" size={18} class="flip-rtl" />
 								</button>
-								<small class="text-sm text-gray-600 text-center">{t("book.requestHint")}</small>
+								<p class="bk-hint bk-center">
+									{t("book.requestHint")}
+									{!page.member && (
+										<>
+											{" "}
+											<a class="underline" href={accountPath(locale, "giris")}>{t("account.loginButton")}</a>
+										</>
+									)}
+								</p>
 							</section>
 						</form>
 					)
@@ -246,18 +271,6 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 			</div>
 
 			<aside class="grid gap-6 lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]">
-				{
-					page.step === 2 && (
-						<div class:list={[card, "grid gap-2 p-6"]}>
-							<h2 class="font-display text-lg font-bold m-0">{t("book.summary")}</h2>
-							<p class="m-0 font-semibold">
-								{zoneName(trip.from)} → {zoneName(trip.to)}
-							</p>
-							<p class="m-0 text-sm text-gray-600">{when}</p>
-							<p class="m-0 text-sm text-gray-600">{t("book.capacity", { pax: trip.pax ?? 1, bags: trip.bags ?? 0 })}</p>
-						</div>
-					)
-				}
 				<div class:list={[card, "grid gap-3 p-6"]}>
 					<h2 class="font-display text-lg font-bold m-0">{t("book.howTitle")}</h2>
 					<ul class="grid gap-3 list-none p-0 m-0 text-sm text-gray-700">
@@ -282,102 +295,94 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 </Base>
 
 <style>
-	.bk-form {
-		display: grid;
-		gap: var(--space-5);
+	.bk-trip {
+		background: #fff;
+		border: 1px solid var(--color-border);
+		border-radius: 16px;
 	}
 
-	.bk-section {
-		display: grid;
-		gap: var(--space-5);
-		padding: var(--space-6);
-	}
-
-	@media (min-width: 640px) {
-		.bk-section {
-			padding: var(--space-8);
-		}
-	}
-
-	.bk-head {
+	.bk-trip summary {
 		display: flex;
-		align-items: flex-start;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--space-2) var(--space-5);
+		padding: var(--space-4) var(--space-5);
+		cursor: pointer;
+		list-style: none;
+	}
+
+	.bk-trip summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.bk-trip-route,
+	.bk-trip-meta,
+	.bk-trip-meta span {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+	}
+
+	.bk-trip-route {
+		color: var(--ink-900);
+		min-width: 0;
+	}
+
+	.bk-trip-meta {
 		gap: var(--space-4);
-	}
-
-	.bk-head h2 {
-		margin: 0;
-		font-size: var(--text-xl);
-	}
-
-	.bk-head p {
-		margin: 2px 0 0;
 		font-size: var(--text-sm);
 		color: var(--color-muted);
 	}
 
-	.bk-num {
-		display: grid;
-		place-items: center;
-		flex-shrink: 0;
-		width: 34px;
-		height: 34px;
-		border-radius: 50%;
-		background: var(--navy-700, #1e4f86);
-		color: #fff;
-		font-weight: 700;
+	.bk-trip-edit {
+		margin-inline-start: auto;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--navy-700, #1e4f86);
 	}
 
-	.bk-traveller {
+	.bk-trip[open] .bk-trip-edit {
+		visibility: hidden;
+	}
+
+	.bk-trip-body {
+		padding: 0 var(--space-4) var(--space-4);
+	}
+
+	.bk-form {
+		display: grid;
+	}
+
+	.bk-section {
 		display: grid;
 		gap: var(--space-4);
-		margin: 0;
-		padding: var(--space-5);
-		border: 1px solid var(--color-border);
-		border-radius: 14px;
-		background: var(--gray-50, #f9fafb);
-		min-width: 0;
+		padding: var(--space-6);
 	}
 
-	.bk-traveller legend {
-		display: inline-flex;
-		align-items: center;
-		gap: var(--space-2);
-		float: left;
-		width: 100%;
+	.bk-section + .bk-section {
+		border-top: 1px solid var(--color-border);
+	}
+
+	@media (min-width: 640px) {
+		.bk-section {
+			padding: var(--space-6) var(--space-8);
+		}
+	}
+
+	.bk-section h2 {
 		margin: 0;
-		padding: 0;
+		font-size: var(--text-base);
 		font-weight: 700;
-	}
-
-	.bk-traveller legend + * {
-		clear: both;
-	}
-
-	.bk-avatar {
-		display: grid;
-		place-items: center;
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: #fff;
-		border: 1px solid var(--color-border);
-		color: var(--navy-700, #1e4f86);
-	}
-
-	.bk-tag {
-		padding: 2px 10px;
-		border-radius: 999px;
-		background: #e8f0fa;
-		color: var(--navy-700, #1e4f86);
-		font-size: var(--text-xs);
-		font-weight: 600;
 	}
 
 	.bk-grid {
 		display: grid;
 		grid-template-columns: repeat(2, minmax(0, 1fr));
-		gap: var(--space-4);
+		gap: var(--space-3) var(--space-4);
+	}
+
+	.bk-grid--3 {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
 	}
 
 	.bk-grid .field {
@@ -388,27 +393,120 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 		grid-column: 1 / -1;
 	}
 
+	@media (max-width: 760px) {
+		.bk-grid--3 {
+			grid-template-columns: minmax(0, 1fr);
+		}
+	}
+
 	@media (max-width: 560px) {
 		.bk-grid {
 			grid-template-columns: minmax(0, 1fr);
 		}
 	}
 
-	.bk-traveller input,
-	.bk-traveller select {
-		background-color: #fff;
-	}
-
-	.bk-note {
+	.bk-hint {
 		margin: 0;
 		font-size: var(--text-sm);
 		color: var(--color-muted);
 	}
 
+	.bk-center {
+		text-align: center;
+	}
+
+	.bk-others {
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.bk-name-row {
+		position: relative;
+		display: block;
+		margin: 0;
+	}
+
+	.bk-name-row input {
+		width: 100%;
+		font-size: var(--text-base);
+		font-weight: 400;
+		padding-inline-start: 2.75rem;
+	}
+
+	.bk-badge {
+		position: absolute;
+		inset-inline-start: 10px;
+		top: 50%;
+		translate: 0 -50%;
+		display: grid;
+		place-items: center;
+		width: 24px;
+		height: 24px;
+		border-radius: 50%;
+		background: var(--gray-100, #f3f4f6);
+		font-size: var(--text-xs);
+		font-weight: 700;
+		color: var(--gray-600, #4b5563);
+		pointer-events: none;
+	}
+
+	.bk-more summary {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--navy-700, #1e4f86);
+		cursor: pointer;
+		list-style: none;
+	}
+
+	.bk-more summary::-webkit-details-marker {
+		display: none;
+	}
+
+	.bk-more[open] summary {
+		margin-bottom: var(--space-3);
+	}
+
+	.bk-more textarea {
+		width: 100%;
+	}
+
+	.bk-id-list {
+		display: grid;
+		gap: var(--space-2);
+	}
+
+	.bk-id-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+		align-items: center;
+		gap: var(--space-3);
+	}
+
+	.bk-id-who {
+		font-size: var(--text-sm);
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	@media (max-width: 560px) {
+		.bk-id-row {
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		}
+
+		.bk-id-who {
+			grid-column: 1 / -1;
+		}
+	}
+
 	.bk-extras {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-		gap: var(--space-3);
+		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+		gap: var(--space-2);
 	}
 
 	.bk-extra {
@@ -417,10 +515,14 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 		justify-content: space-between;
 		gap: var(--space-3);
 		margin: 0;
-		padding: var(--space-4);
+		padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
 		border: 1px solid var(--color-border);
-		border-radius: 14px;
+		border-radius: 12px;
 		cursor: pointer;
+	}
+
+	:global([dir="rtl"]) .bk-extra {
+		padding: var(--space-2) var(--space-4) var(--space-2) var(--space-2);
 	}
 
 	.bk-extra:has(option:checked:not([value="0"])) {
@@ -431,6 +533,8 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 	.bk-extra-text {
 		display: grid;
 		min-width: 0;
+		font-size: var(--text-sm);
+		line-height: 1.3;
 	}
 
 	.bk-extra-text small {
@@ -440,24 +544,40 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 	.bk-extra select {
 		width: auto;
 		min-width: 4.5rem;
+		min-height: 40px;
+		padding-block: 6px;
 	}
 
 	.bk-pay {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-		gap: var(--space-3);
+		display: inline-grid;
+		grid-auto-flow: column;
+		grid-auto-columns: minmax(0, 1fr);
+		gap: 4px;
+		padding: 4px;
+		border-radius: 12px;
+		background: var(--gray-100, #f3f4f6);
+	}
+
+	@media (max-width: 420px) {
+		.bk-pay {
+			grid-auto-flow: row;
+		}
 	}
 
 	.bk-pay-option {
 		position: relative;
 		display: flex;
 		align-items: center;
-		gap: var(--space-3);
+		justify-content: center;
+		gap: var(--space-2);
 		margin: 0;
-		padding: var(--space-4);
-		border: 1.5px solid var(--color-border);
-		border-radius: 14px;
+		padding: 10px var(--space-4);
+		border-radius: 9px;
+		font-size: var(--text-sm);
+		font-weight: 600;
+		color: var(--gray-600, #4b5563);
 		cursor: pointer;
+		white-space: nowrap;
 	}
 
 	.bk-pay-option input {
@@ -467,38 +587,23 @@ const travellers = Array.from({ length: paxCount }, (_, i) => i);
 	}
 
 	.bk-pay-option:has(input:checked) {
-		border-color: var(--navy-700, #1e4f86);
-		background: #f4f8fd;
-		box-shadow: 0 0 0 1px var(--navy-700, #1e4f86);
+		background: #fff;
+		color: var(--ink-900);
+		box-shadow: 0 1px 3px rgb(16 24 40 / 0.12);
 	}
 
 	.bk-pay-option:has(input:focus-visible) {
 		outline: 2px solid var(--navy-700, #1e4f86);
-		outline-offset: 2px;
+		outline-offset: 1px;
 	}
 
-	.bk-pay-icon {
-		display: grid;
-		place-items: center;
-		flex-shrink: 0;
-		width: 40px;
-		height: 40px;
-		border-radius: 12px;
-		background: var(--gray-100, #f3f4f6);
-		color: var(--navy-700, #1e4f86);
-	}
-
-	.bk-pay-text {
-		display: grid;
-	}
-
-	.bk-pay-text small {
-		color: var(--color-muted);
-		font-size: var(--text-sm);
+	.bk-send {
+		background: var(--gray-50, #f9fafb);
+		border-radius: 0 0 16px 16px;
 	}
 
 	.bk-submit {
-		min-height: 56px;
+		min-height: 54px;
 		font-size: var(--text-lg);
 	}
 </style>
