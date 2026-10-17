@@ -1,8 +1,8 @@
 ---
 /**
- * One booking, as the passenger sees it: a trip screen in the style of ride and
- * transfer apps. What matters now comes first (status, driver, live map, messages);
- * trip facts, payment, help and cancelling follow. Data and actions come from
+ * One booking, as the passenger sees it, in one narrow column: a compact status
+ * header with the route, then what needs the passenger now (offers, quote, payment,
+ * driver and live map, messages), then trip facts with payment, help and cancelling. Data and actions come from
  * lib/booking-page.ts; the wizard lives in BookView.
  */
 import { chatRoom } from "../server/realtime";
@@ -55,7 +55,13 @@ const initials = (page.driver?.name ?? "")
 	.map((w) => w[0]!.toLocaleUpperCase(intl))
 	.join("");
 const vehicleLine = [page.driver?.vehicle, page.className].find(Boolean);
-const headTone = closed ? "from-gray-700 to-gray-800" : status === "completed" ? "from-emerald-700 to-emerald-800" : waiting || status === "pending_payment" ? "from-amber-600 to-amber-700" : "from-navy-800 to-ink-900";
+const pillTone = closed
+	? "bg-gray-100 text-gray-700"
+	: status === "completed"
+		? "bg-emerald-50 text-emerald-700"
+		: waiting || status === "pending_payment"
+			? "bg-amber-50 text-amber-700"
+			: "bg-navy-50 text-navy-700";
 const payTone = booking.payment_status === "paid" ? "bg-emerald-50 text-emerald-800 ring-emerald-200" : "bg-gray-100 text-gray-700 ring-gray-200";
 const receiptHref = `${bookPath(locale, booking.code, booking.tracking_token)}&makbuz=1`;
 
@@ -70,48 +76,54 @@ const NOTICE: Partial<Record<NonNullable<BookingDetail["notice"]>, UiKey>> = {
 };
 const chatRoomName = await chatRoom(booking);
 ---
-
 <Base locale={locale} path={`${BOOK_SLUG}/${booking.code}`} title={t("book.detailTitle", { code: booking.code })} description={t("book.lead")} noindex hideDock>
 	<section class="bg-gray-100 pb-16 pt-4 sm:pt-8 min-h-[70vh]">
-		<div class="container max-w-5xl grid gap-4 sm:gap-6">
+		<div class="container max-w-3xl grid gap-4">
 			{page.error && <Notice tone="danger">{t(page.error)}</Notice>}
 			{page.notice === "created" && <Notice tone="success">{t("book.created", { code: booking.code })}</Notice>}
 			{page.notice && NOTICE[page.notice] && <Notice tone={page.notice === "cancelled" || page.notice === "quoteDeclined" ? "info" : "success"}>{t(NOTICE[page.notice]!)}</Notice>}
 			{page.notice === "paymentFailed" && <Notice tone="danger">{t("book.paymentFailed")}</Notice>}
 
-			<!-- Status: the one thing the passenger wants to know first. -->
-			<header class:list={["relative overflow-hidden rounded-3xl bg-gradient-to-br p-5 text-white sm:p-8", headTone]}>
-				<div class="flex flex-wrap items-center justify-between gap-2 text-sm text-white/75">
-					<span class="inline-flex items-center gap-2">
-						<span>{t("trip.code")}</span>
-						<strong class="font-mono tracking-wide text-white" dir="ltr">{booking.code}</strong>
+			<!-- Status and route: the one thing the passenger wants to know first. -->
+			<header class:list={[card, "grid gap-4 p-5 sm:p-6"]} data-booking-code={booking.code}>
+				<div class="flex flex-wrap items-center justify-between gap-2">
+					<span class:list={["inline-flex items-center gap-2 rounded-full px-2.5 py-1 text-xs font-semibold", pillTone]}>
+						<span class="relative flex size-2">
+							{(live || isBidding) && <span class="absolute inline-flex size-full animate-ping rounded-full bg-current opacity-60 motion-reduce:animate-none" />}
+							<span class="relative inline-flex size-2 rounded-full bg-current" />
+						</span>
+						{t(`book.status.${status}` as UiKey)}
+					</span>
+					<span class="text-sm text-gray-500">
+						{t("trip.code")} <strong class="font-mono tracking-wide text-gray-900" dir="ltr">{booking.code}</strong>
+					</span>
+				</div>
+				<div class="grid gap-1">
+					<h1 class="m-0 font-display text-[1.5rem] font-bold leading-tight text-gray-900 sm:text-[1.75rem]">{t(`trip.head.${status}` as UiKey)}</h1>
+					<p class="m-0 max-w-xl text-gray-600">{t(`trip.sub.${status}` as UiKey)}</p>
+				</div>
+				<div class="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+					<span class="inline-flex min-w-0 flex-wrap items-center gap-x-2 font-semibold text-gray-900">
+						<span>{page.fromName}</span>
+						<Icon name="arrow" size={16} class="shrink-0 text-gray-400 rtl:-scale-x-100" />
+						<span>{page.toName}</span>
 					</span>
 					<span class="inline-flex items-center gap-1.5">
-						<Icon name="calendar" size={16} />
-						{pickupDay} · <strong class="text-white tabular-nums" dir="ltr">{pickup.time}</strong>
+						<Icon name="calendar" size={16} class="text-gray-400" />
+						{pickupDay} · <strong class="tabular-nums text-gray-900" dir="ltr">{pickup.time}</strong>
+					</span>
+					<span class="inline-flex items-center gap-3">
+						<span class="inline-flex items-center gap-1" title={t("quick.passengers")}><Icon name="users" size={16} class="text-gray-400" />{booking.pax}</span>
+						<span class="inline-flex items-center gap-1" title={t("form.luggage")}><Icon name="luggage" size={16} class="text-gray-400" />{booking.bags}</span>
 					</span>
 				</div>
-				<div class="mt-5 flex items-center gap-3">
-					{
-						live && (
-							<span class="relative flex size-3 shrink-0">
-								<span class="absolute inline-flex size-full animate-ping rounded-full bg-emerald-300 opacity-75 motion-reduce:animate-none" />
-								<span class="relative inline-flex size-3 rounded-full bg-emerald-400" />
-							</span>
-						)
-					}
-					<h1 class="m-0 font-display text-[1.625rem] font-bold leading-tight text-white sm:text-[2.25rem]">{t(`trip.head.${status}` as UiKey)}</h1>
-				</div>
-				<p class="mt-2 mb-0 max-w-xl text-white/80">{t(`trip.sub.${status}` as UiKey)}</p>
 				{
 					stepAt >= 0 && (
-						<ol class="mt-6 grid grid-cols-4 gap-1.5 list-none p-0 m-0" aria-label={t(`book.status.${status}` as UiKey)}>
+						<ol class="m-0 grid list-none grid-cols-4 gap-1.5 p-0" aria-label={t(`book.status.${status}` as UiKey)}>
 							{STEPS.map((step, i) => (
 								<li class="grid gap-1.5" aria-current={i === stepAt ? "step" : undefined}>
-									<span class:list={["h-1.5 rounded-full", i <= stepAt ? "bg-white" : "bg-white/25"]} />
-									<span class:list={["text-[11px] leading-tight sm:text-xs", i <= stepAt ? "font-semibold text-white" : "text-white/60"]}>
-										{t(`book.status.${step}` as UiKey)}
-									</span>
+									<span class:list={["h-1 rounded-full", i <= stepAt ? (status === "completed" ? "bg-emerald-500" : "bg-navy-700") : "bg-gray-200"]} />
+									<span class:list={["text-[11px] leading-tight sm:text-xs", i <= stepAt ? "font-semibold text-gray-900" : "text-gray-500"]}>{t(`book.status.${step}` as UiKey)}</span>
 								</li>
 							))}
 						</ol>
@@ -119,410 +131,365 @@ const chatRoomName = await chatRoom(booking);
 				}
 			</header>
 
-			<div class="grid items-start gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-				<div class="grid min-w-0 gap-4 sm:gap-6">
-					{
-						page.payHref && (
-							<div class:list={[card, "grid gap-3 p-5 sm:p-6 border-amber-300 ring-1 ring-amber-200"]}>
-								<p class="m-0 text-gray-700">{t("book.awaitingPayment")}</p>
-								<a class="btn btn--primary justify-self-start" href={page.payHref}>
-									<Icon name="card" size={18} />
-									{t("book.payNow")} · {money(booking.price_minor)}
-								</a>
-							</div>
-						)
-					}
+			{
+				page.payHref && (
+					<div class:list={[card, "flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6 border-amber-300"]}>
+						<p class="m-0 text-gray-700">{t("book.awaitingPayment")}</p>
+						<a class="btn btn--primary" href={page.payHref}>
+							<Icon name="card" size={18} />
+							{t("book.payNow")} · {money(booking.price_minor)}
+						</a>
+					</div>
+				)
+			}
 
-					{
-						isBidding && (
-							<section
-								class:list={[card, "grid gap-4 p-5 sm:p-6 transition-all duration-300"]}
-								aria-labelledby="offers-title"
-								data-offers
-								data-code={booking.code}
-								data-token={booking.tracking_token}
-								data-count={page.offers.length}
-								data-count-label={t("offers.liveCount")}
-							>
-								<div class="grid gap-1">
-									<h2 id="offers-title" class="m-0 font-display text-xl font-bold">{t("offers.title")}</h2>
-									<p class="m-0 max-w-prose text-sm text-gray-600">{t("offers.lead")}</p>
-								</div>
-								{page.offers.length === 0 ? (
-									<div class="rounded-2xl border border-solid border-amber-200 bg-gradient-to-br from-amber-50/80 via-white to-amber-50/30 p-6 text-center shadow-sm">
-										<div class="relative mx-auto mb-4 flex size-14 items-center justify-center">
-											<span class="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-40 motion-reduce:animate-none"></span>
-											<span class="relative inline-flex size-12 items-center justify-center rounded-full bg-amber-500 text-white shadow-md">
-												<Icon name="plane" size={24} />
-											</span>
-										</div>
-										<h3 class="m-0 font-display text-lg font-bold text-gray-900">{t("offers.waitTitle")}</h3>
-										<p class="mx-auto mt-2 max-w-md text-sm text-gray-600">
-											{t("offers.waitBody")}
-										</p>
-										<div class="mt-4 flex flex-wrap items-center justify-center gap-4 text-xs font-medium text-gray-500 border-t border-solid border-amber-100 pt-3">
-											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> {t("perk.freeCancel")}</span>
-											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> {t("perk.tolls")}</span>
-											<span class="inline-flex items-center gap-1.5"><Icon name="tick" size={14} class="text-emerald-600" /> {t("perk.wait60")}</span>
-										</div>
-									</div>
-								) : (
-									<ul class="m-0 grid list-none gap-3 p-0">
-										{page.offers.map((offer, i) => {
-											const v = page.vehicleCatalog[offer.class_key];
-											return (
-											<li class:list={["grid gap-3 rounded-2xl border border-solid p-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center", i === 0 ? "border-emerald-300 bg-emerald-50/40" : "border-gray-200"]}>
-												<div class="grid min-w-0 gap-3 sm:grid-cols-[72px_minmax(0,1fr)]">
-													{v && (v.image || v.fallbackImage) ? (
-														<div class="h-[54px] w-[72px] shrink-0 overflow-hidden rounded-lg bg-gray-100">
-															<Photo image={v.image} fallback={v.fallbackImage} alt={v.name} class="h-full w-full object-cover" sizes="72px" width={144} height={108} />
-														</div>
-													) : (
-														<div class="hidden h-[54px] w-[72px] shrink-0 sm:block" />
-													)}
-													<div class="grid min-w-0 gap-1">
-														<div class="flex flex-wrap items-center gap-2">
-															<strong class="text-gray-900">{offer.display_name}</strong>
-															{i === 0 && page.offers.length > 1 && (
-																<span class="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">{t("offers.best")}</span>
-															)}
-														</div>
-														<span class="text-sm text-gray-700">
-															{offer.class_name}
-															{offer.vehicle && <> · {offer.vehicle}</>}
-														</span>
-														<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
-															<span class="inline-flex items-center gap-1">
-																<Icon name="users" size={14} />
-																{offer.pax_max}
-															</span>
-															<span class="inline-flex items-center gap-1">
-																<Icon name="luggage" size={14} />
-																{offer.bags_max}
-															</span>
-															{offer.rating !== null ? (
-																<span class="inline-flex items-center gap-1">
-																	<Icon name="star-fill" size={14} class="text-amber-400" />
-																	{offer.rating.toFixed(1)} ({offer.ratings})
-																</span>
-															) : (
-																<span>{t("offers.new")}</span>
-															)}
-															{offer.trips > 0 && <span>{t("offers.trips", { n: offer.trips })}</span>}
-														</span>
-														{offer.note && <p class="m-0 text-sm text-gray-600">{offer.note}</p>}
-														{v && (v.engine || v.transmission || v.modelYear || v.features.length > 0) && (
-															<details class="mt-1 text-xs">
-																<summary class="cursor-pointer select-none font-semibold text-navy-700">{t("offers.seeVehicle")}</summary>
-																<dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
-																	{v.engine && (<><dt class="text-gray-500">{t("fleet.engine")}</dt><dd class="m-0">{v.engine}</dd></>)}
-																	{v.transmission && (<><dt class="text-gray-500">{t("fleet.transmission")}</dt><dd class="m-0">{v.transmission}</dd></>)}
-																	{v.modelYear && (<><dt class="text-gray-500">{t("fleet.year")}</dt><dd class="m-0">{v.modelYear}</dd></>)}
-																</dl>
-																{v.features.length > 0 && (
-																	<ul class="m-0 mt-2 grid list-none gap-1 p-0 sm:grid-cols-2">
-																		{v.features.map((f) => (
-																			<li class="flex items-center gap-1 text-gray-700">
-																				<Icon name="check" size={12} />
-																				{f}
-																			</li>
-																		))}
-																	</ul>
-																)}
-															</details>
-														)}
-													</div>
+			{
+				isBidding && (
+					<section
+						class:list={[card, "grid gap-4 p-5 sm:p-6 transition-all duration-300"]}
+						aria-labelledby="offers-title"
+						data-offers
+						data-code={booking.code}
+						data-token={booking.tracking_token}
+						data-count={page.offers.length}
+						data-count-label={t("offers.liveCount")}
+					>
+						<div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+							<h2 id="offers-title" class="m-0 font-display text-lg font-bold">{t("offers.title")}</h2>
+							{page.offers.length > 0 && <span class="text-sm font-semibold text-gray-500 tabular-nums">{page.offers.length}</span>}
+						</div>
+						{page.offers.length === 0 ? (
+							<div class="grid justify-items-center gap-2 rounded-xl border border-dashed border-gray-300 px-5 py-8 text-center">
+								<span class="relative mb-1 flex size-3">
+									<span class="absolute inline-flex size-full animate-ping rounded-full bg-amber-400 opacity-60 motion-reduce:animate-none" />
+									<span class="relative inline-flex size-3 rounded-full bg-amber-500" />
+								</span>
+								<h3 class="m-0 text-base font-bold text-gray-900">{t("offers.waitTitle")}</h3>
+								<p class="m-0 max-w-md text-sm text-gray-600">{t("offers.waitBody")}</p>
+							</div>
+						) : (
+							<ul class="m-0 grid list-none gap-0 p-0">
+								{page.offers.map((offer, i) => {
+									const v = page.vehicleCatalog[offer.class_key];
+									return (
+										<li class="grid gap-3 border-0 border-t border-solid border-gray-100 py-4 first:border-t-0 first:pt-0 last:pb-0 grid-cols-[56px_minmax(0,1fr)] sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
+											{v && (v.image || v.fallbackImage) ? (
+												<div class="h-[42px] w-[56px] overflow-hidden rounded-lg bg-gray-100 sm:h-[54px] sm:w-[72px]">
+													<Photo image={v.image} fallback={v.fallbackImage} alt={v.name} class="h-full w-full object-cover" sizes="72px" width={144} height={108} />
 												</div>
-												<form method="post" class="m-0 flex items-center justify-between gap-3 sm:grid sm:justify-items-end">
-													<input type="hidden" name="intent" value="pick" />
-													<input type="hidden" name="offer" value={offer.id} />
-													<strong class="font-display text-2xl tabular-nums text-gray-900" dir="ltr">{money(offer.price_minor)}</strong>
-													<button class="btn btn--primary btn--sm" type="submit">{t("offers.pick")}</button>
-												</form>
-											</li>
-											);
-										})}
-									</ul>
-								)}
-								{page.requestedExtras.length > 0 && (
-									<p class="m-0 text-sm text-gray-600">
-										{t("offers.extras", {
-											x: page.requestedExtras.map((e) => `${e.name}${e.qty > 1 ? ` × ${e.qty}` : ""}${e.price_minor ? ` (${money(e.price_minor * e.qty)})` : ""}`).join(", "),
-										})}
-									</p>
-								)}
-								<p class="m-0 text-xs text-gray-500">{t("offers.hint")}</p>
-							</section>
-						)
-					}
+											) : (
+												<div class="grid h-[42px] w-[56px] place-items-center rounded-lg bg-gray-100 text-gray-400 sm:h-[54px] sm:w-[72px]">
+													<Icon name="car" size={22} />
+												</div>
+											)}
+											<div class="grid min-w-0 gap-0.5">
+												<div class="flex flex-wrap items-center gap-2">
+													<strong class="text-gray-900">{offer.class_name}</strong>
+													{i === 0 && page.offers.length > 1 && <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">{t("offers.best")}</span>}
+												</div>
+												<span class="truncate text-sm text-gray-600">
+													{offer.display_name}
+													{offer.vehicle && <> · {offer.vehicle}</>}
+												</span>
+												<span class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+													<span class="inline-flex items-center gap-1"><Icon name="users" size={13} />{offer.pax_max}</span>
+													<span class="inline-flex items-center gap-1"><Icon name="luggage" size={13} />{offer.bags_max}</span>
+													{offer.rating !== null ? (
+														<span class="inline-flex items-center gap-1">
+															<Icon name="star-fill" size={13} class="text-amber-400" />
+															{offer.rating.toFixed(1)} ({offer.ratings})
+														</span>
+													) : (
+														<span>{t("offers.new")}</span>
+													)}
+													{offer.trips > 0 && <span>{t("offers.trips", { n: offer.trips })}</span>}
+													{v && (v.engine || v.transmission || v.modelYear || v.features.length > 0) && (
+														<details class="basis-full">
+															<summary class="cursor-pointer select-none font-semibold text-navy-700">{t("offers.seeVehicle")}</summary>
+															<dl class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-gray-700 sm:grid-cols-3">
+																{v.engine && (<><dt class="text-gray-500">{t("fleet.engine")}</dt><dd class="m-0">{v.engine}</dd></>)}
+																{v.transmission && (<><dt class="text-gray-500">{t("fleet.transmission")}</dt><dd class="m-0">{v.transmission}</dd></>)}
+																{v.modelYear && (<><dt class="text-gray-500">{t("fleet.year")}</dt><dd class="m-0">{v.modelYear}</dd></>)}
+															</dl>
+															{v.features.length > 0 && (
+																<ul class="m-0 mt-2 grid list-none gap-1 p-0 sm:grid-cols-2">
+																	{v.features.map((f) => (
+																		<li class="flex items-center gap-1 text-gray-700">
+																			<Icon name="check" size={12} />
+																			{f}
+																		</li>
+																	))}
+																</ul>
+															)}
+														</details>
+													)}
+												</span>
+												{offer.note && <p class="m-0 mt-1 text-sm text-gray-600">{offer.note}</p>}
+											</div>
+											<form method="post" class="col-span-2 m-0 flex items-center justify-between gap-3 sm:col-span-1 sm:justify-end">
+												<input type="hidden" name="intent" value="pick" />
+												<input type="hidden" name="offer" value={offer.id} />
+												<strong class="font-display text-xl tabular-nums text-gray-900" dir="ltr">{money(offer.price_minor)}</strong>
+												<button class:list={["btn btn--sm", i === 0 ? "btn--primary" : "btn--ghost"]} type="submit">{t("offers.pick")}</button>
+											</form>
+										</li>
+									);
+								})}
+							</ul>
+						)}
+						{page.requestedExtras.length > 0 && (
+							<p class="m-0 text-sm text-gray-600">
+								{t("offers.extras", {
+									x: page.requestedExtras.map((e) => `${e.name}${e.qty > 1 ? ` × ${e.qty}` : ""}${e.price_minor ? ` (${money(e.price_minor * e.qty)})` : ""}`).join(", "),
+								})}
+							</p>
+						)}
+						<p class="m-0 text-xs text-gray-500">{t("offers.hint")}</p>
+					</section>
+				)
+			}
 
-					{
-						isQuote && (
-							<div class:list={[card, "grid gap-4 p-5 sm:p-6 border-amber-300 ring-1 ring-amber-200"]}>
-								<div class="flex flex-wrap items-start justify-between gap-3">
-									<div class="grid gap-1">
-										<h2 class="m-0 font-display text-xl font-bold">{t("book.quoteTitle")}</h2>
-										<p class="m-0 max-w-prose text-sm text-gray-600">{t("book.quoteLead")}</p>
-									</div>
-									<strong class="font-display text-3xl tabular-nums text-gray-900" dir="ltr">
-										{money(booking.price_minor)}
-									</strong>
-								</div>
-								<form method="post" class="m-0">
-									<button class="btn btn--primary btn--block sm:w-auto" type="submit" name="intent" value="quote_accept">
-										<Icon name="check" size={18} />
-										{t("book.quoteAccept")}
-									</button>
-								</form>
-								<details>
-									<summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-red-700 [&::-webkit-details-marker]:hidden">
-										<Icon name="x-circle" size={16} />
-										{t("book.quoteDecline")}
-									</summary>
-									<form method="post" class="m-0 mt-3 grid gap-3">
-										<p class="m-0 text-sm text-gray-600">{t("book.quoteDeclineConfirm")}</p>
-										<button class="btn btn--ghost btn--sm justify-self-start border-red-300 text-red-700" type="submit" name="intent" value="quote_decline">
-											{t("book.quoteDecline")}
-										</button>
-									</form>
-								</details>
+			{
+				isQuote && (
+					<div class:list={[card, "grid gap-4 p-5 sm:p-6 border-amber-300"]}>
+						<div class="flex flex-wrap items-start justify-between gap-3">
+							<div class="grid gap-1">
+								<h2 class="m-0 font-display text-lg font-bold">{t("book.quoteTitle")}</h2>
+								<p class="m-0 max-w-prose text-sm text-gray-600">{t("book.quoteLead")}</p>
 							</div>
-						)
-					}
-
-					{
-						showDriver && (
-							<section class:list={[card, "overflow-hidden"]} aria-label={t("book.driver")}>
-								{page.driver ? (
-									<div class="flex items-center gap-4 p-5 sm:p-6">
-										<span class="grid size-14 shrink-0 place-items-center rounded-full bg-navy-700 font-display text-lg font-bold text-white" aria-hidden="true">
-											{initials || <Icon name="user" size={24} />}
-										</span>
-										<div class="grid min-w-0 flex-1 gap-1">
-											<span class="text-xs font-semibold uppercase tracking-wide text-gray-500 rtl:tracking-normal">{t("book.driver")}</span>
-											<strong class="truncate text-lg text-gray-900">{page.driver.name}</strong>
-											<span class="flex flex-wrap items-center gap-2 text-sm text-gray-600">
-												{vehicleLine}
-												{page.driver.plate && (
-													<span
-														class="inline-flex items-center rounded-md border border-solid border-gray-900 bg-white px-2 py-0.5 font-mono text-xs font-bold tracking-wider text-gray-900"
-														dir="ltr"
-														title={t("trip.plate")}
-													>
-														{page.driver.plate}
-													</span>
-												)}
-											</span>
-										</div>
-										<a class="btn btn--primary btn--sm shrink-0" href="#mesajlar">
-											<Icon name="message" size={16} />
-											<span class="hidden sm:inline">{t("trip.message")}</span>
-										</a>
-									</div>
-								) : (
-									<div class="flex items-center gap-4 p-5 sm:p-6">
-										<span class="grid size-14 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-400">
-											<Icon name="clock" size={24} />
-										</span>
-										<div class="grid gap-1">
-											<strong class="text-gray-900">{t("book.driver")}</strong>
-											<p class="m-0 text-sm text-gray-600">{t("book.driverPending")}</p>
-										</div>
-									</div>
-								)}
-								{page.driver && live && (
-									<div
-										class="grid gap-2 border-0 border-t border-solid border-gray-100 p-3 sm:p-4"
-										data-live-map
-										data-mode="one"
-										data-src={`/api/konum.json?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`}
-										data-waiting={t("book.liveWaiting")}
-										data-updated={t("book.liveUpdated")}
-										data-ended={t("book.liveEnded")}
-										data-now={t("book.liveNow")}
-										data-min={t("book.liveMin")}
-										data-hour={t("book.liveHour")}
-										data-failed={t("book.liveFailed")}
-									>
-										<div data-live-map-canvas dir="ltr" class="overflow-hidden rounded-xl" />
-										<p class="m-0 px-1 text-sm text-gray-600" data-live-map-note role="status">
-											{t("book.liveWaiting")}
-										</p>
-									</div>
-								)}
-							</section>
-						)
-					}
-
-					{
-						!waiting && (
-							<ChatBox
-								messages={page.messages}
-								me="passenger"
-								src={`/api/mesajlar.json?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`}
-								room={chatRoomName}
-								writable={page.chatWritable}
-								dir={dir}
-								labels={{
-									title: t("book.chat.title"),
-									privacy: t("book.chat.privacy"),
-									empty: t("book.chat.empty"),
-									placeholder: t("book.chat.placeholder"),
-									send: t("book.chat.send"),
-									closed: t("book.chat.closed"),
-									passenger: t("book.chat.passenger"),
-									driver: t("book.chat.driver"),
-									ops: t("book.chat.ops"),
-									system: t("book.chat.system"),
-									you: t("book.chat.you"),
-								}}
-								quick={page.driver && !closed && status !== "completed" ? [t("book.chat.q1"), t("book.chat.q2"), t("book.chat.q3"), t("book.chat.q4")] : []}
-							/>
-						)
-					}
-
-					{
-						page.canReview && (
-							<form method="post" class:list={[card, "form m-0 grid gap-4 p-5 sm:p-6"]}>
-								<input type="hidden" name="intent" value="review" />
-								<h2 class="m-0 font-display text-lg font-bold">{t("book.reviewTitle")}</h2>
-								<fieldset class="m-0 grid gap-2 border-0 p-0">
-									<legend class="mb-2 text-sm font-semibold">{t("book.reviewRating")}</legend>
-									<div class="flex flex-wrap gap-2">
-										{[5, 4, 3, 2, 1].map((n) => (
-											<label class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-solid border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500">
-												<input type="radio" name="rating" value={n} required checked={n === 5} class="sr-only" />
-												<span class="tabular-nums">{n}</span>
-												<Icon name="star-fill" size={16} class="text-amber-400" />
-											</label>
-										))}
-									</div>
-								</fieldset>
-								<div class="field">
-									<label for="rv-comment">{t("book.reviewComment")}</label>
-									<textarea id="rv-comment" name="comment" rows="3" maxlength="1000" />
-								</div>
-								<button type="submit" class="btn btn--primary justify-self-start">
-									{t("book.reviewSubmit")}
+							<strong class="font-display text-3xl tabular-nums text-gray-900" dir="ltr">
+								{money(booking.price_minor)}
+							</strong>
+						</div>
+						<div class="flex flex-wrap items-center gap-x-4 gap-y-3">
+							<form method="post" class="m-0">
+								<button class="btn btn--primary" type="submit" name="intent" value="quote_accept">
+									<Icon name="check" size={18} />
+									{t("book.quoteAccept")}
 								</button>
 							</form>
-						)
-					}
-					{
-						page.review && (
-							<div class:list={[card, "grid gap-2 p-5 sm:p-6"]}>
-								<h2 class="m-0 font-display text-lg font-bold">{t("book.yourReview")}</h2>
-								<p class="m-0 flex gap-1" role="img" aria-label={`${page.review.rating}/5`}>
-									{[1, 2, 3, 4, 5].map((n) => (
-										<Icon name={n <= page.review!.rating ? "star-fill" : "star"} size={22} class={n <= page.review!.rating ? "text-amber-400" : "text-gray-300"} />
-									))}
-								</p>
-								{page.review.comment && <p class="m-0 text-gray-700">{page.review.comment}</p>}
-							</div>
-						)
-					}
-				</div>
+							<details class="group">
+								<summary class="inline-flex cursor-pointer list-none items-center gap-1.5 text-sm font-semibold text-red-700 [&::-webkit-details-marker]:hidden">
+									{t("book.quoteDecline")}
+								</summary>
+								<form method="post" class="m-0 mt-3 grid gap-3">
+									<p class="m-0 text-sm text-gray-600">{t("book.quoteDeclineConfirm")}</p>
+									<button class="btn btn--ghost btn--sm justify-self-start border-red-300 text-red-700" type="submit" name="intent" value="quote_decline">
+										{t("book.quoteDecline")}
+									</button>
+								</form>
+							</details>
+						</div>
+					</div>
+				)
+			}
 
-				<aside class="grid min-w-0 gap-4 sm:gap-6 lg:sticky lg:top-[calc(var(--header-h)+1.5rem)]">
-					<section class:list={[card, "grid gap-5 p-5 sm:p-6"]}>
-						<h2 class="m-0 text-base font-bold text-gray-900">{t("trip.details")}</h2>
-						<ol class="relative m-0 grid list-none gap-5 p-0">
-							<span class="absolute start-[7px] top-4 bottom-4 w-0.5 bg-gray-200" aria-hidden="true" />
-							<li class="relative flex items-start gap-3">
-								<span class="mt-1 size-4 shrink-0 rounded-full border-4 border-solid border-navy-700 bg-white" aria-hidden="true" />
-								<div class="grid min-w-0 gap-0.5">
-									<span class="text-xs text-gray-500" dir="ltr">{pickup.time}</span>
-									<span class="font-semibold text-gray-900">{page.fromName}</span>
-									{booking.pickup_address && <span class="text-sm text-gray-600">{booking.pickup_address}</span>}
+			{
+				showDriver && (
+					<section class:list={[card, "overflow-hidden"]} aria-label={t("book.driver")}>
+						{page.driver ? (
+							<div class="flex items-center gap-4 p-5 sm:p-6">
+								<span class="grid size-12 shrink-0 place-items-center rounded-full bg-navy-700 font-display text-base font-bold text-white" aria-hidden="true">
+									{initials || <Icon name="user" size={22} />}
+								</span>
+								<div class="grid min-w-0 flex-1 gap-0.5">
+									<strong class="truncate text-gray-900">{page.driver.name}</strong>
+									<span class="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+										{vehicleLine}
+										{page.driver.plate && (
+											<span class="inline-flex items-center rounded-md border border-solid border-gray-900 bg-white px-2 py-0.5 font-mono text-xs font-bold tracking-wider text-gray-900" dir="ltr" title={t("trip.plate")}>
+												{page.driver.plate}
+											</span>
+										)}
+									</span>
 								</div>
-							</li>
-							<li class="relative flex items-start gap-3">
-								<span class="mt-1 size-4 shrink-0 rounded-sm bg-navy-700" aria-hidden="true" />
-								<div class="grid min-w-0 gap-0.5">
-									<span class="font-semibold text-gray-900">{page.toName}</span>
-									{booking.dropoff_address && <span class="text-sm text-gray-600">{booking.dropoff_address}</span>}
+								<a class="btn btn--primary btn--sm shrink-0" href="#mesajlar">
+									<Icon name="message" size={16} />
+									<span class="hidden sm:inline">{t("trip.message")}</span>
+								</a>
+							</div>
+						) : (
+							<div class="flex items-center gap-4 p-5 sm:p-6">
+								<span class="grid size-12 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-400">
+									<Icon name="clock" size={22} />
+								</span>
+								<div class="grid gap-0.5">
+									<strong class="text-gray-900">{t("book.driver")}</strong>
+									<p class="m-0 text-sm text-gray-600">{t("book.driverPending")}</p>
 								</div>
-							</li>
-						</ol>
-						{
-							page.flight && !closed && (
-								<div
-									class:list={[
-										"grid gap-1 rounded-xl p-3 text-sm ring-1 ring-inset",
-										page.flight.status === "cancelled" || page.flight.status === "diverted" || page.flight.delayMin >= 15
-											? "bg-amber-50 ring-amber-200"
-											: page.flight.status === "landed"
-												? "bg-emerald-50 ring-emerald-200"
-												: "bg-sky-50 ring-sky-200",
-									]}
-								>
-									<div class="flex flex-wrap items-center justify-between gap-2">
-										<span class="inline-flex items-center gap-1.5 font-semibold text-gray-900">
-											<Icon name="plane" size={16} />
-											{t("flight.title")} <span dir="ltr">{page.flight.flightNo}</span>
-										</span>
-										<strong class="text-gray-900">{t(`flight.${page.flight.status}` as UiKey)}</strong>
-									</div>
-									<p class="m-0 text-gray-700">
-										{[
-											page.flight.at && t(page.flight.status === "landed" ? "flight.landedAt" : "flight.eta", { t: isoToIstanbul(page.flight.at).time }),
-											page.flight.delayMin > 0 && t("flight.delay", { m: page.flight.delayMin }),
-											page.flight.terminal && t("flight.terminal", { x: page.flight.terminal }),
-											page.flight.belt && t("flight.belt", { x: page.flight.belt }),
-										]
-											.filter(Boolean)
-											.join(" · ")}
-									</p>
-									{page.flight.status !== "landed" && <p class="m-0 text-xs text-gray-600">{t("flight.note")}</p>}
-								</div>
-							)
-						}
-						<dl class="m-0 grid grid-cols-2 gap-x-4 gap-y-3 border-0 border-t border-solid border-gray-100 pt-4 text-sm">
+							</div>
+						)}
+						{page.driver && live && (
+							<div
+								class="grid gap-2 border-0 border-t border-solid border-gray-100 p-3 sm:p-4"
+								data-live-map
+								data-mode="one"
+								data-src={`/api/konum.json?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`}
+								data-waiting={t("book.liveWaiting")}
+								data-updated={t("book.liveUpdated")}
+								data-ended={t("book.liveEnded")}
+								data-now={t("book.liveNow")}
+								data-min={t("book.liveMin")}
+								data-hour={t("book.liveHour")}
+								data-failed={t("book.liveFailed")}
+							>
+								<div data-live-map-canvas dir="ltr" class="overflow-hidden rounded-xl" />
+								<p class="m-0 px-1 text-sm text-gray-600" data-live-map-note role="status">
+									{t("book.liveWaiting")}
+								</p>
+							</div>
+						)}
+					</section>
+				)
+			}
+
+			{
+				page.flight && !closed && (
+					<div
+						class:list={[
+							"grid gap-1 rounded-2xl border border-solid p-4 text-sm",
+							page.flight.status === "cancelled" || page.flight.status === "diverted" || page.flight.delayMin >= 15
+								? "bg-amber-50 border-amber-200"
+								: page.flight.status === "landed"
+									? "bg-emerald-50 border-emerald-200"
+									: "bg-sky-50 border-sky-200",
+						]}
+					>
+						<div class="flex flex-wrap items-center justify-between gap-2">
+							<span class="inline-flex items-center gap-1.5 font-semibold text-gray-900">
+								<Icon name="plane" size={16} />
+								{t("flight.title")} <span dir="ltr">{page.flight.flightNo}</span>
+							</span>
+							<strong class="text-gray-900">{t(`flight.${page.flight.status}` as UiKey)}</strong>
+						</div>
+						<p class="m-0 text-gray-700">
 							{[
-								{ icon: "calendar", label: t("book.pickupTime"), value: `${pickupLong} · ${pickup.time}`, wide: true },
-								!isBidding && { icon: "car", label: t("form.vehicle"), value: page.className, wide: true },
-								{ icon: "users", label: t("quick.passengers"), value: String(booking.pax) },
-								{ icon: "luggage", label: t("form.luggage"), value: String(booking.bags) },
-								booking.flight_no && !(page.flight && !closed) && { icon: "plane", label: t("track.flight"), value: booking.flight_no, ltr: true },
-								booking.sign_name && { icon: "sign", label: t("book.signName"), value: booking.sign_name },
+								page.flight.at && t(page.flight.status === "landed" ? "flight.landedAt" : "flight.eta", { t: isoToIstanbul(page.flight.at).time }),
+								page.flight.delayMin > 0 && t("flight.delay", { m: page.flight.delayMin }),
+								page.flight.terminal && t("flight.terminal", { x: page.flight.terminal }),
+								page.flight.belt && t("flight.belt", { x: page.flight.belt }),
 							]
 								.filter(Boolean)
-								.map((item: any) => (
-									<div class:list={["flex min-w-0 items-start gap-2.5", item.wide && "col-span-2"]}>
-										<Icon name={item.icon} size={18} class="mt-0.5 shrink-0 text-gray-400" />
-										<div class="min-w-0">
-											<dt class="text-xs text-gray-500">{item.label}</dt>
-											<dd class="m-0 font-semibold text-gray-900" dir={item.ltr ? "ltr" : undefined}>
-												{item.value}
-											</dd>
-										</div>
-									</div>
-								))}
-						</dl>
-					</section>
+								.join(" · ")}
+						</p>
+						{page.flight.status !== "landed" && <p class="m-0 text-xs text-gray-600">{t("flight.note")}</p>}
+					</div>
+				)
+			}
 
-					<section class:list={[card, "grid gap-3 p-5 sm:p-6"]}>
-						<div class="flex items-center justify-between gap-3">
-							<h2 class="m-0 text-base font-bold text-gray-900">{t("trip.payment")}</h2>
-							<span class:list={["inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset", payTone]}>
-								{booking.payment_status === "paid" && <Icon name="tick" size={14} />}
-								{t(`book.paymentStatus.${booking.payment_status}` as UiKey)}
-							</span>
+			{
+				!waiting && (
+					<ChatBox
+						messages={page.messages}
+						me="passenger"
+						src={`/api/mesajlar.json?${new URLSearchParams({ code: booking.code, t: booking.tracking_token })}`}
+						room={chatRoomName}
+						writable={page.chatWritable}
+						dir={dir}
+						labels={{
+							title: t("book.chat.title"),
+							privacy: t("book.chat.privacy"),
+							empty: t("book.chat.empty"),
+							placeholder: t("book.chat.placeholder"),
+							send: t("book.chat.send"),
+							closed: t("book.chat.closed"),
+							passenger: t("book.chat.passenger"),
+							driver: t("book.chat.driver"),
+							ops: t("book.chat.ops"),
+							system: t("book.chat.system"),
+							you: t("book.chat.you"),
+						}}
+						quick={page.driver && !closed && status !== "completed" ? [t("book.chat.q1"), t("book.chat.q2"), t("book.chat.q3"), t("book.chat.q4")] : []}
+					/>
+				)
+			}
+
+			{
+				page.canReview && (
+					<form method="post" class:list={[card, "form m-0 grid gap-4 p-5 sm:p-6"]}>
+						<input type="hidden" name="intent" value="review" />
+						<h2 class="m-0 font-display text-lg font-bold">{t("book.reviewTitle")}</h2>
+						<fieldset class="m-0 grid gap-2 border-0 p-0">
+							<legend class="mb-2 text-sm font-semibold">{t("book.reviewRating")}</legend>
+							<div class="flex flex-wrap gap-2">
+								{[5, 4, 3, 2, 1].map((n) => (
+									<label class="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-solid border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold has-[:checked]:border-amber-400 has-[:checked]:bg-amber-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-sky-500">
+										<input type="radio" name="rating" value={n} required checked={n === 5} class="sr-only" />
+										<span class="tabular-nums">{n}</span>
+										<Icon name="star-fill" size={16} class="text-amber-400" />
+									</label>
+								))}
+							</div>
+						</fieldset>
+						<div class="field">
+							<label for="rv-comment">{t("book.reviewComment")}</label>
+							<textarea id="rv-comment" name="comment" rows="3" maxlength="1000" />
 						</div>
-						<div class="flex items-end justify-between gap-3">
-							<span class="inline-flex items-center gap-2 text-sm text-gray-600">
-								<Icon name={booking.payment_method === "cash" ? "wallet" : "card"} size={18} class="text-gray-400" />
-								{t(`book.pay.${booking.payment_method}` as UiKey)}
-							</span>
-							{!isBidding && (
-								<strong class="font-display text-2xl tabular-nums text-gray-900" dir="ltr">
-									{money(booking.price_minor)}
-								</strong>
-							)}
+						<button type="submit" class="btn btn--primary justify-self-start">
+							{t("book.reviewSubmit")}
+						</button>
+					</form>
+				)
+			}
+			{
+				page.review && (
+					<div class:list={[card, "grid gap-2 p-5 sm:p-6"]}>
+						<h2 class="m-0 font-display text-lg font-bold">{t("book.yourReview")}</h2>
+						<p class="m-0 flex gap-1" role="img" aria-label={`${page.review.rating}/5`}>
+							{[1, 2, 3, 4, 5].map((n) => (
+								<Icon name={n <= page.review!.rating ? "star-fill" : "star"} size={22} class={n <= page.review!.rating ? "text-amber-400" : "text-gray-300"} />
+							))}
+						</p>
+						{page.review.comment && <p class="m-0 text-gray-700">{page.review.comment}</p>}
+					</div>
+				)
+			}
+
+			<!-- Trip facts and payment in one card: label on the left, value on the right. -->
+			<section class:list={[card, "flex flex-col gap-1 p-5 sm:p-6"]} aria-labelledby="trip-details">
+				<h2 id="trip-details" class="m-0 mb-2 text-base font-bold text-gray-900">{t("trip.details")}</h2>
+				<dl class="m-0 text-sm">
+					{[
+						{ label: t("quick.from"), value: page.fromName, sub: booking.pickup_address },
+						{ label: t("quick.to"), value: page.toName, sub: booking.dropoff_address },
+						{ label: t("book.pickupTime"), value: `${pickupLong} · ${pickup.time}` },
+						!isBidding && { label: t("form.vehicle"), value: page.className },
+						booking.flight_no && !(page.flight && !closed) && { label: t("track.flight"), value: booking.flight_no, ltr: true },
+						booking.sign_name && { label: t("book.signName"), value: booking.sign_name },
+						{ label: t("trip.payment"), value: t(`book.pay.${booking.payment_method}` as UiKey), pill: true },
+					]
+						.filter(Boolean)
+						.map((item: any) => (
+							<div class="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 border-0 border-t border-solid border-gray-100 py-2.5 first:border-t-0">
+								<dt class="text-gray-500">{item.label}</dt>
+								<dd class="m-0 grid justify-items-end gap-0.5 text-end">
+									<span class="inline-flex flex-wrap items-center justify-end gap-2 font-semibold text-gray-900" dir={item.ltr ? "ltr" : undefined}>
+										{item.value}
+										{item.pill && (
+											<span class:list={["inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset", payTone]}>
+												{booking.payment_status === "paid" && <Icon name="tick" size={12} />}
+												{t(`book.paymentStatus.${booking.payment_status}` as UiKey)}
+											</span>
+										)}
+									</span>
+									{item.sub && <span class="text-gray-600">{item.sub}</span>}
+								</dd>
+							</div>
+						))}
+				</dl>
+				{
+					!isBidding && (
+						<div class="flex items-center justify-between gap-3 border-0 border-t border-solid border-gray-200 pt-3">
+							<span class="font-semibold text-gray-900">{t("book.total")}</span>
+							<strong class="font-display text-xl tabular-nums text-gray-900" dir="ltr">{money(booking.price_minor)}</strong>
 						</div>
-						{
-							page.lines.length > 0 && (
-								<details class="group text-sm">
+					)
+				}
+				{
+					(page.lines.length > 0 || (status !== "cancelled" && !waiting)) && (
+						<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pt-2 text-sm">
+							{page.lines.length > 0 && !isBidding && (
+								<details class="group min-w-0 flex-1">
 									<summary class="inline-flex cursor-pointer list-none items-center gap-1 font-semibold text-navy-700 [&::-webkit-details-marker]:hidden">
 										{t("trip.breakdown")}
 										<Icon name="chevron" size={14} class="transition group-open:rotate-180" />
@@ -536,83 +503,77 @@ const chatRoomName = await chatRoom(booking);
 										))}
 									</ul>
 								</details>
-							)
-						}
-						{
-							status !== "cancelled" && !waiting && (
-								<a class="btn btn--ghost btn--sm btn--block" href={receiptHref}>
+							)}
+							{status !== "cancelled" && !waiting && (
+								<a class="inline-flex items-center gap-1.5 font-semibold text-navy-700 no-underline hover:underline" href={receiptHref}>
 									<Icon name="receipt" size={16} />
 									{t("book.receipt")}
 								</a>
-							)
-						}
-					</section>
-
-					<section class:list={[card, "grid gap-3 p-5 sm:p-6"]}>
-						<div class="flex items-start gap-3">
-							<span class="grid size-10 shrink-0 place-items-center rounded-full bg-navy-50 text-navy-700">
-								<Icon name="headset" size={20} />
-							</span>
-							<div class="grid gap-0.5">
-								<h2 class="m-0 text-base font-bold text-gray-900">{t("trip.help")}</h2>
-								<p class="m-0 text-sm text-gray-600">{t("trip.helpLead")}</p>
-							</div>
+							)}
 						</div>
-						<div class="grid grid-cols-3 gap-2">
-							{
-								!waiting && (
-									<a class="flex flex-col items-center gap-1 rounded-xl bg-gray-50 px-2 py-3 text-xs font-semibold text-gray-800 no-underline hover:bg-gray-100" href="#mesajlar">
-										<Icon name="message" size={20} class="text-navy-700" />
-										{t("trip.message")}
-									</a>
-								)
-							}
-							<a class="flex flex-col items-center gap-1 rounded-xl bg-gray-50 px-2 py-3 text-xs font-semibold text-gray-800 no-underline hover:bg-gray-100" href={telHref} aria-label={SITE.phoneDisplay}>
-								<Icon name="phone" size={20} class="text-navy-700" />
-								{t("nav.call")}
-							</a>
-							<a class="flex flex-col items-center gap-1 rounded-xl bg-gray-50 px-2 py-3 text-xs font-semibold text-gray-800 no-underline hover:bg-gray-100" href={whatsappHref()} target="_blank" rel="noopener">
-								<Icon name="whatsapp" size={20} class="text-emerald-600" />
-								WhatsApp
-							</a>
-						</div>
-					</section>
+					)
+				}
+			</section>
 
+			<!-- Help: one slim row. -->
+			<section class:list={[card, "flex flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-6"]} aria-label={t("trip.help")}>
+				<span class="inline-flex items-center gap-2 text-sm font-semibold text-gray-900">
+					<Icon name="headset" size={18} class="text-navy-700" />
+					{t("trip.help")}
+				</span>
+				<div class="flex flex-wrap gap-2">
 					{
-						canManage && (
-							<details class:list={[card, "group p-5 sm:p-6"]}>
-								<summary class="flex cursor-pointer list-none items-center justify-between gap-2 font-semibold text-gray-700 [&::-webkit-details-marker]:hidden">
-									{t("trip.manage")}
-									<Icon name="chevron" size={16} class="transition group-open:rotate-180" />
-								</summary>
-								<div class="mt-4 grid gap-3">
-									{page.canCancel ? (
-										<form method="post" class="m-0 grid gap-3">
-											<input type="hidden" name="intent" value="cancel" />
-											<p class="m-0 text-sm text-gray-600">{isBidding ? t("offers.withdrawHint") : t("book.cancelFree", { h: page.freeCancelHours })}</p>
-											<button type="submit" class="btn btn--sm justify-self-start border border-solid border-red-300 bg-white text-red-700 hover:bg-red-50">
-												<Icon name="x-circle" size={16} />
-												{isBidding ? t("offers.withdraw") : t("book.cancel")}
-											</button>
-										</form>
-									) : (
-										<p class="m-0 text-sm text-gray-600">{t("book.cancelClosed")}</p>
-									)}
-								</div>
-							</details>
-						)
-					}
-
-					{
-						closed && (
-							<a class="btn btn--primary btn--block" href={bookPath(locale)}>
-								<Icon name="calendar" size={18} />
-								{t("nav.book")}
+						!waiting && (
+							<a class="btn btn--ghost btn--sm" href="#mesajlar">
+								<Icon name="message" size={16} />
+								{t("trip.message")}
 							</a>
 						)
 					}
-				</aside>
-			</div>
+					<a class="btn btn--ghost btn--sm" href={telHref} aria-label={SITE.phoneDisplay}>
+						<Icon name="phone" size={16} />
+						{t("nav.call")}
+					</a>
+					<a class="btn btn--ghost btn--sm" href={whatsappHref()} target="_blank" rel="noopener">
+						<Icon name="whatsapp" size={16} class="text-emerald-600" />
+						WhatsApp
+					</a>
+				</div>
+			</section>
+
+			{
+				canManage && (
+					<details class="group px-1">
+						<summary class="inline-flex cursor-pointer list-none items-center gap-1 text-sm font-semibold text-gray-600 [&::-webkit-details-marker]:hidden">
+							{t("trip.manage")}
+							<Icon name="chevron" size={14} class="transition group-open:rotate-180" />
+						</summary>
+						<div class:list={[card, "mt-3 p-5"]}>
+							{page.canCancel ? (
+								<form method="post" class="m-0 grid gap-3">
+									<input type="hidden" name="intent" value="cancel" />
+									<p class="m-0 text-sm text-gray-600">{isBidding ? t("offers.withdrawHint") : t("book.cancelFree", { h: page.freeCancelHours })}</p>
+									<button type="submit" class="btn btn--sm justify-self-start border border-solid border-red-300 bg-white text-red-700 hover:bg-red-50">
+										<Icon name="x-circle" size={16} />
+										{isBidding ? t("offers.withdraw") : t("book.cancel")}
+									</button>
+								</form>
+							) : (
+								<p class="m-0 text-sm text-gray-600">{t("book.cancelClosed")}</p>
+							)}
+						</div>
+					</details>
+				)
+			}
+
+			{
+				closed && (
+					<a class="btn btn--primary btn--block" href={bookPath(locale)}>
+						<Icon name="calendar" size={18} />
+						{t("nav.book")}
+					</a>
+				)
+			}
 		</div>
 	</section>
 	{live && page.driver && <script src="/live-map.js" defer is:inline />}
